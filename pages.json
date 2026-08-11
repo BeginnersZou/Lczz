@@ -1,0 +1,203 @@
+{
+	"easycom": {
+		"autoscan": true,
+		"custom": {
+			"^u--(.*)": "uview-plus/components/u-$1/u-$1.vue",
+			"^up-(.*)": "uview-plus/components/u-$1/u-$1.vue",
+			"^u-([^-].*)": "uview-plus/components/u-$1/u-$1.vue"
+		}
+	},
+	"pages": [
+		{
+			"path": "pages/login/login",
+			"style": {
+				"navigationStyle": "custom",
+				"enablePullDownRefresh": false,
+				"app-plus": {
+					"titleView": false
+				}
+			}
+		},
+		{
+			"path": "pages/index/index",
+			"style": {
+				"enablePullDownRefresh": true,
+				"navigationBarTitleText": "鑫立创",
+				"navigationBarBackgroundColor": "#0b63ce",
+				"navigationBarTextStyle": "white",
+				"backgroundColorTop": "#0b63ce",
+				"backgroundColorBottom": "#f4f7fb"
+			}
+		},
+		{
+			"path": "pages/notice/notice",
+			"style": {
+				"navigationBarTitleText": "空调资讯",
+				"enablePullDownRefresh": true,
+				"navigationBarTextStyle": "black",
+				"backgroundColorTop": "#f4f7fb",
+				"backgroundColorBottom": "#f4f7fb"
+			}
+		},
+		{
+			"path": "pages/official/official",
+			"style": {
+				"navigationBarTitleText": "品牌服务",
+				"enablePullDownRefresh": false,
+				"navigationStyle": "custom",
+				"navigationBarTextStyle": "black",
+				"backgroundColorTop": "#0b63ce",
+				"backgroundColorBottom": "#f4f7fb"
+			}
+		},
+		{
+			"path": "pages/order/order",
+			"style": {
+				"navigationBarTitleText": "我的订单",
+				"enablePullDownRefresh": true,
+				"navigationBarTextStyle": "black",
+				"backgroundColorTop": "#f4f7fb",
+				"backgroundColorBottom": "#f4f7fb"
+			}
+		},
+		{
+			"path": "pages/user/user",
+			"style": {
+				"navigationBarTitleText": "我的",
+				"navigationStyle": "custom",
+				"navigationBarTextStyle": "black",
+				"backgroundColorTop": "#0b63ce",
+				"backgroundColorBottom": "#f4f7fb"
+			}
+		}
+	],
+	"subPackages": [
+		{
+			"root": "packageA",
+			"pages": [
+				{
+					"path": "order-detail/order-detail",
+					"style": {
+						"navigationBarTitleText": "订单详情",
+						"navigationBarTextStyle": "black",
+						"backgroundColorTop": "#f4f7fb",
+						"backgroundColorBottom": "#f4f7fb"
+					}
+				},
+				{
+					"path": "order-evaluate/order-evaluate",
+					"style": {
+						"navigationBarTitleText": "订单评价",
+						"navigationBarTextStyle": "black",
+						"backgroundColorTop": "#f4f7fb",
+						"backgroundColorBottom": "#f4f7fb"
+					}
+				},
+				{
+					"path": "agreement/user",
+					"style": {
+						"navigationBarTitleText": "用户服务协议",
+						"navigationBarBackgroundColor": "#f8fafc",
+						"navigationBarTextStyle": "black"
+					}
+				},
+				{
+					"path": "agreement/privacy",
+					"style": {
+						"navigationBarTitleText": "隐私保护协议",
+						"navigationBarBackgroundColor": "#f8fafc",
+						"navigationBarTextStyle": "black"
+					}
+				},
+				{
+					"path": "goos-details/goos-details",
+					"style": {
+						"navigationBarTitleText": "商品详情",
+						"navigationStyle": "custom"
+					}
+				},
+				{
+					"path": "notices-detail/notices-detail",
+					"style": {
+						"navigationBarTitleText": "公告详情",
+						"navigationStyle": "custom",
+						"backgroundColorTop": "#f4f7fb",
+						"backgroundColorBottom": "#f4f7fb"
+					}
+				},
+				{
+					"path": "settings/settings",
+					"style": {
+						"navigationBarTitleText": "设置",
+						"navigationBarTextStyle": "black",
+						"backgroundColorTop": "#f4f7fb",
+						"backgroundColorBottom": "#f4f7fb"
+					}
+				}
+			]
+		}
+	],
+	"globalStyle": {
+		"navigationBarTextStyle": "black",
+		"navigationBarTitleText": "鑫立创",
+		"navigationBarBackgroundColor": "#ffffff",
+		"backgroundColor": "#f4f7fb",
+		"backgroundColorTop": "#f4f7fb",
+		"backgroundColorBottom": "#f4f7fb"
+	},
+	"tabBar": {
+		"color": "#808080",
+		"selectedColor": "#0b63ce",
+		"borderStyle": "white",
+		"backgroundColor": "#ffffff",
+		"height": "55px",
+		"spacing": "3px",
+		"iconWidth": "24px",
+		"list": [
+			{
+				"pagePath": "pages/index/index",
+				"text": "首页",
+				"iconPath": "static/tabbar/home.png",
+				"selectedIconPath": "static/tabbar/homeActive.png"
+			},
+			{
+				"pagePath": "pages/notice/notice",
+				"text": "资讯",
+				"iconPath": "static/tabbar/jurassic.png",
+				"selectedIconPath": "static/tabbar/jurassic-active.png"
+			},
+			{
+				"pagePath": "pages/official/official",
+				"text": "服务",
+				"iconPath": "static/tabbar/internet.png",
+				"selectedIconPath": "static/tabbar/internet-active.png"
+			},
+			{
+				"pagePath": "pages/order/order",
+				"text": "订单",
+				"iconPath": "static/tabbar/function.png",
+				"selectedIconPath": "static/tabbar/functionActive.png"
+			},
+			{
+				"pagePath": "pages/user/user",
+				"text": "我的",
+				"iconPath": "static/tabbar/user.png",
+				"selectedIconPath": "static/tabbar/userActive.png"
+			}
+		]
+	},
+	"uniIdRouter": {},
+	"uniSimpleRouter": {},
+	"mp-weixin": {
+		"styleIsolation": "shared"
+	},
+	"mp-alipay": {
+		"styleIsolation": "shared"
+	},
+	"mp-toutiao": {
+		"styleIsolation": "shared"
+	},
+	"mp-baidu": {
+		"styleIsolation": "shared"
+	}
+}
