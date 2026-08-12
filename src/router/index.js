@@ -8,6 +8,12 @@ const routes = [
     meta: { title: '登录', requiresAuth: false }
   },
   {
+    path: '/403',
+    name: 'Forbidden',
+    component: () => import('@/views/Forbidden.vue'),
+    meta: { title: '无权限' }
+  },
+  {
     path: '/',
     component: () => import('@/layout/Layout.vue'),
     redirect: '/dashboard',

@@ -13,6 +13,10 @@ export const useUserStore = defineStore('user', () => {
 
   const isLoggedIn = computed(() => !!token.value)
   const role = computed(() => user.value?.role || '')
+  const isAdmin = computed(() => {
+    const roles = Array.isArray(user.value?.roles) ? user.value.roles : []
+    return role.value === 'admin' || roles.includes('admin')
+  })
   const userName = computed(() => user.value?.name || user.value?.username || '管理员')
 
   /**
@@ -27,6 +31,10 @@ export const useUserStore = defineStore('user', () => {
       // 后端返回 { token, userInfo }
       if (!data?.token || !data?.userInfo) {
         throw new Error('登录响应缺少 token 或 userInfo')
+      }
+      const roles = Array.isArray(data.userInfo.roles) ? data.userInfo.roles : []
+      if (data.userInfo.role !== 'admin' && !roles.includes('admin')) {
+        throw new Error('该账号无后台管理权限')
       }
       token.value = data.token
       user.value = data.userInfo
@@ -75,6 +83,9 @@ export const useUserStore = defineStore('user', () => {
     // 请求后端校验并获取最新用户信息
     try {
       const info = await getUserInfoApi()
+      if (!info || typeof info !== 'object') {
+        throw new Error('用户信息响应格式不正确')
+      }
       user.value = info
       localStorage.setItem('user', JSON.stringify(info))
       return info
@@ -105,6 +116,7 @@ export const useUserStore = defineStore('user', () => {
     token,
     isLoggedIn,
     role,
+    isAdmin,
     userName,
     login,
     logout,

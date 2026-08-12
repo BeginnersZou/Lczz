@@ -6,7 +6,6 @@ import request from '@/utils/request'
  *   - 登录：POST /auth/login，入参 { username, password }，返回 { token, userInfo }
  *   - 获取当前登录用户信息：GET /auth/info，返回 userInfo
  *   - 退出登录：POST /auth/logout
- *   - 修改密码：POST /auth/password，入参 { oldPassword, newPassword }
  */
 
 /**
@@ -44,21 +43,7 @@ export function getUserInfoApi() {
 export function logoutApi() {
   return request({
     url: '/auth/logout',
-    method: 'post'
-  })
-}
-
-/**
- * 修改当前账号密码
- * @param {Object} data
- * @param {string} data.oldPassword - 原密码
- * @param {string} data.newPassword - 新密码
- * @returns {Promise<void>}
- */
-export function changePasswordApi(data) {
-  return request({
-    url: '/auth/password',
     method: 'post',
-    data
+    silent: true
   })
 }
