@@ -1,0 +1,27 @@
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Java / Maven
+backend/target/
+backend/.mvn/wrapper/maven-wrapper.jar
+.m2-cache/
+.m2-central-cache/
+.maven-settings-local.xml
+.maven-user-home/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+backend/src/main/resources/application-local.yml
+backend/src/main/resources/application-prod.yml
+
+# Runtime data
+backend/data/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
