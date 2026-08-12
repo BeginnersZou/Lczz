@@ -13,11 +13,15 @@ export const useUserStore = defineStore('user', () => {
 
   const isLoggedIn = computed(() => !!token.value)
   const role = computed(() => user.value?.role || '')
+  const isAdmin = computed(() => {
+    const roles = Array.isArray(user.value?.roles) ? user.value.roles : []
+    return role.value === 'admin' || roles.includes('admin')
+  })
   const userName = computed(() => user.value?.name || user.value?.username || '管理员')
 
   /**
    * 登录
-   * 优先调用真实后端接口；仅开发环境可按 VITE_ENABLE_MOCK_LOGIN 配置启用本地演示登录。
+   * 仅调用真实后端接口，不再使用前端内置账号回退。
    * @param {Object} credentials - { username, password }
    * @returns {Promise<{success: boolean, message: string}>}
    */
@@ -25,30 +29,23 @@ export const useUserStore = defineStore('user', () => {
     try {
       const data = await loginApi(credentials)
       // 后端返回 { token, userInfo }
+      if (!data?.token || !data?.userInfo) {
+        throw new Error('登录响应缺少 token 或 userInfo')
+      }
+      const roles = Array.isArray(data.userInfo.roles) ? data.userInfo.roles : []
+      if (data.userInfo.role !== 'admin' && !roles.includes('admin')) {
+        throw new Error('该账号无后台管理权限')
+      }
       token.value = data.token
       user.value = data.userInfo
       localStorage.setItem('token', data.token)
       localStorage.setItem('user', JSON.stringify(data.userInfo))
       return { success: true, message: '登录成功' }
     } catch (err) {
-      // 本地演示账号只允许在开发环境启用，生产构建永不回退到前端账号。
-      const allowMockLogin = import.meta.env.DEV && import.meta.env.VITE_ENABLE_MOCK_LOGIN !== 'false'
-      if (allowMockLogin && credentials.username === 'admin' && credentials.password === '123456') {
-        const mockToken = 'test-token-' + Date.now()
-        const mockUser = {
-          id: 1,
-          username: 'admin',
-          name: '管理员',
-          role: 'admin',
-          avatar: ''
-        }
-        token.value = mockToken
-        user.value = mockUser
-        localStorage.setItem('token', mockToken)
-        localStorage.setItem('user', JSON.stringify(mockUser))
-        return { success: true, message: '登录成功' }
+      return {
+        success: false,
+        message: err?.response?.data?.message || err?.message || '登录失败，请检查账号密码'
       }
-      return { success: false, message: '登录失败，请检查账号密码' }
     }
   }
 
@@ -68,7 +65,6 @@ export const useUserStore = defineStore('user', () => {
   /**
    * 通过 token 恢复登录态：先尝试本地缓存，再请求后端校验
    * 用于路由守卫刷新页面后的状态恢复
-   * 测试模式 token（test-token- 前缀）跳过后端请求，直接使用本地缓存
    */
   async function fetchUserInfo() {
     if (!token.value) {
@@ -84,13 +80,12 @@ export const useUserStore = defineStore('user', () => {
         localStorage.removeItem('user')
       }
     }
-    // 测试模式 token：后端未就绪，直接使用本地缓存即可
-    if (token.value.startsWith('test-token-')) {
-      return user.value
-    }
     // 请求后端校验并获取最新用户信息
     try {
       const info = await getUserInfoApi()
+      if (!info || typeof info !== 'object') {
+        throw new Error('用户信息响应格式不正确')
+      }
       user.value = info
       localStorage.setItem('user', JSON.stringify(info))
       return info
@@ -121,6 +116,7 @@ export const useUserStore = defineStore('user', () => {
     token,
     isLoggedIn,
     role,
+    isAdmin,
     userName,
     login,
     logout,

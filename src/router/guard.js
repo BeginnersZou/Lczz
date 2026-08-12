@@ -1,17 +1,18 @@
 import router from './index'
 import { useUserStore } from '@/stores/user'
 
-// 标记是否已执行过首次用户信息拉取，避免每次跳转都请求
-let userInfoFetched = false
+// 记录已经通过 /auth/info 校验的 token；token 变化后必须重新校验。
+let validatedToken = ''
 
 router.beforeEach(async (to, from, next) => {
   const userStore = useUserStore()
   userStore.syncSession()
 
-  // 首次进入且有 token：向后端校验登录态
-  if (!userInfoFetched && userStore.token) {
-    userInfoFetched = true
-    await userStore.fetchUserInfo()
+  if (!userStore.token) {
+    validatedToken = ''
+  } else if (validatedToken !== userStore.token) {
+    const info = await userStore.fetchUserInfo()
+    validatedToken = info ? userStore.token : ''
   }
 
   if (to.path === '/login') {
@@ -29,6 +30,12 @@ router.beforeEach(async (to, from, next) => {
 
   if (!userStore.isLoggedIn) {
     next({ path: '/login', query: { redirect: to.fullPath } })
+    return
+  }
+
+  // 后台只允许管理员进入。即使客户端缓存被修改，也必须以 /auth/info 返回角色为准。
+  if (to.path !== '/403' && !userStore.isAdmin) {
+    next({ path: '/403', query: { from: to.fullPath } })
     return
   }
 

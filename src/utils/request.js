@@ -25,12 +25,15 @@ import router from '@/router'
 const SUCCESS_CODE = 200
 // 未授权状态码（按后端实际约定修改）
 const UNAUTHORIZED_CODE = 401
+const FORBIDDEN_CODE = 403
 // token 在 localStorage 的 key
 const TOKEN_KEY = 'token'
+// API 版本前缀统一由环境变量控制；默认与后端规范保持 /api/v1。
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(/\/+$/, '')
 
 // ====================== Axios 实例 ======================
 const service = axios.create({
-  baseURL: '/api',
+  baseURL: API_BASE_URL,
   timeout: 15000,
   headers: {
     'Content-Type': 'application/json;charset=utf-8'
@@ -81,12 +84,16 @@ service.interceptors.response.use(
       if (!response.config?.silent) handleUnauthorized()
       return Promise.reject(new Error(res.message || '登录已失效，请重新登录'))
     }
+    if (res.code === FORBIDDEN_CODE) {
+      if (!response.config?.silent) handleForbidden(res.message)
+      return Promise.reject(new Error(res.message || '无权访问该资源'))
+    }
     // 其他业务错误
     if (!response.config?.silent) ElMessage.error(res.message || '请求失败')
     return Promise.reject(new Error(res.message || '请求失败'))
   },
   (error) => {
-    // silent 配置：静默失败，不弹出错误提示（用于登录等需要本地回退的场景）
+    // silent 配置：由调用页面展示错误，不重复弹出全局提示。
     if (error.config?.silent) {
       return Promise.reject(error)
     }
@@ -103,7 +110,7 @@ function handleHttpError(error) {
   if (status === 401) {
     handleUnauthorized()
   } else if (status === 403) {
-    ElMessage.error('没有权限访问该资源（403）')
+    handleForbidden(error.response?.data?.message)
   } else if (status === 404) {
     ElMessage.error('请求的资源不存在（404）')
   } else if (status === 400) {
@@ -128,6 +135,13 @@ function handleHttpError(error) {
   } else {
     ElMessage.error(error.message || '请求异常')
   }
+}
+
+function handleForbidden(message) {
+  ElMessage.error(message || '无权访问该资源')
+  if (router.currentRoute.value.path === '/403') return
+  const from = router.currentRoute.value.fullPath
+  router.replace({ path: '/403', query: from && from !== '/403' ? { from } : {} })
 }
 
 // ====================== 登录失效处理 ======================
