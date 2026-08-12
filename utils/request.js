@@ -1,4 +1,5 @@
 import baseUrl from '../config.js'
+import { clearAuthSession, getAuthToken } from './auth-session.js'
 
 // ====================== Loading 管理（计数器，支持并发请求） ======================
 let loadingCount = 0
@@ -19,7 +20,7 @@ function hideLoading() {
 
 // ====================== Token 管理 ======================
 function getToken() {
-  return uni.getStorageSync('token') || ''
+  return getAuthToken()
 }
 
 // ====================== 401 统一处理（防重复跳转） ======================
@@ -29,8 +30,7 @@ function handleUnauthorized() {
   if (isRedirecting) return
   isRedirecting = true
   // 仅清除登录态，保留其他本地数据
-  uni.removeStorageSync('token')
-  uni.removeStorageSync('userInfo')
+  clearAuthSession()
   uni.showToast({ title: '请先登录', icon: 'none' })
   setTimeout(() => {
     uni.reLaunch({ url: '/pages/login/login' })
@@ -108,6 +108,11 @@ const request = (options = {}) => {
           resolve({ code: 401, data: null, msg: body.msg })
           return
         }
+        if (body.code === 403) {
+          uni.showToast({ title: body.msg || '无权执行此操作', icon: 'none' })
+          resolve(body)
+          return
+        }
         // 其他业务错误：统一 toast 后端返回的 msg
         uni.showToast({ title: body.msg || '请求失败', icon: 'none' })
         resolve(body)
@@ -179,6 +184,11 @@ const upload = (options = {}) => {
         if (body.code === 401) {
           handleUnauthorized()
           resolve({ code: 401, data: null, msg: body.msg })
+          return
+        }
+        if (body.code === 403) {
+          uni.showToast({ title: body.msg || '无权执行此操作', icon: 'none' })
+          resolve(body)
           return
         }
         uni.showToast({ title: body.msg || '上传失败', icon: 'none' })

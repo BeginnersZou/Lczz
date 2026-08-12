@@ -67,6 +67,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { authApi } from '@/api/api.js'
+import { clearAuthSession, getAuthToken, getAuthUserInfo, maskPhone } from '@/utils/auth-session.js'
 
 const userInfo = ref({})
 const version = ref('1.0.0')
@@ -74,14 +75,15 @@ const cacheSize = ref('0KB')
 
 // 手机号脱敏
 const formatPhone = (phone) => {
-	if (!phone) return ''
-	const s = String(phone)
-	if (s.length >= 11) return s.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2')
-	return s
+	return maskPhone(phone)
 }
 
 onMounted(() => {
-	userInfo.value = uni.getStorageSync('userInfo') || {}
+	if (!getAuthToken()) {
+		uni.reLaunch({ url: '/pages/login/login' })
+		return
+	}
+	userInfo.value = getAuthUserInfo()
 	computeCacheSize()
 })
 
@@ -149,8 +151,7 @@ const handleLogout = () => {
 			} catch (err) {
 				// 即使接口失败也继续清除本地登录态
 			} finally {
-				uni.removeStorageSync('token')
-				uni.removeStorageSync('userInfo')
+				clearAuthSession()
 				uni.hideLoading()
 				uni.showToast({ title: '已退出登录', icon: 'success' })
 				setTimeout(() => {

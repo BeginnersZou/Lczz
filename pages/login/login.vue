@@ -68,6 +68,12 @@
 import { ref } from 'vue'
 import { authApi } from '@/api/api.js'
 import { USE_MOCK_LOGIN } from '@/config.js'
+import {
+  clearAuthSession,
+  isValidAuthUser,
+  saveAuthSession,
+  saveAuthUserInfo
+} from '@/utils/auth-session.js'
 
 const isAgree = ref(false)
 const showPhoneAuth = ref(false)
@@ -81,13 +87,14 @@ const goToAgreement = (type) => {
   })
 }
 
-// ============ 虚拟登录（后端不可用时的兜底） ============
+// ============ 虚拟登录（仅开发环境显式开启时可用） ============
 const virtualLogin = () => {
-  uni.setStorageSync('token', 'mock_token_' + Date.now())
-  uni.setStorageSync('userInfo', {
+  saveAuthSession('mock_token_' + Date.now(), {
+    id: -1,
     nickname: '体验用户',
     phone: '138****8888',
-    role: 'user'
+    role: 'customer',
+    roles: ['customer']
   })
   uni.showToast({ title: '体验登录成功', icon: 'success' })
   setTimeout(() => {
@@ -128,10 +135,10 @@ const handleWechatLogin = async () => {
       uni.showToast({ title: '请授权手机号完成注册', icon: 'none' })
     } else {
       // 已注册 → 直接登录成功
-      handleLoginSuccess(data)
+      await handleLoginSuccess(data)
     }
   } catch (err) {
-    // request.js 已统一处理错误提示
+    uni.showToast({ title: err?.msg || '微信登录失败，请重试', icon: 'none' })
   } finally {
     uni.hideLoading()
     isLogging.value = false
@@ -162,13 +169,14 @@ const onGetPhoneNumber = async (e) => {
       // 旧版兼容：若后端用 encryptedData/iv 解密，改为传 detail.encryptedData、detail.iv
     })
     if (res.code === 200) {
-      handleLoginSuccess(res.data || {})
+      await handleLoginSuccess(res.data || {})
+    } else {
+      // 后端的一次性登录挑战可能已经被消费，重新从微信 code 步骤开始最可靠。
+      resetToWechatLogin()
     }
   } catch (err) {
-    // 后端不可用时虚拟登录兜底
-    if (USE_MOCK_LOGIN) {
-      virtualLogin()
-    }
+    uni.showToast({ title: err?.msg || '手机号绑定失败，请重新登录', icon: 'none' })
+    resetToWechatLogin()
   } finally {
     uni.hideLoading()
     isLogging.value = false
@@ -177,17 +185,33 @@ const onGetPhoneNumber = async (e) => {
 
 // ============ 登录成功统一处理 ============
 // 入参 data 为后端 res.data：{ token, userInfo, needPhone }
-const handleLoginSuccess = (data = {}) => {
-  // 存储 token（request.js 的 getToken 会自动读取该 key 注入请求头）
-  if (data.token) {
-    uni.setStorageSync('token', data.token)
+const handleLoginSuccess = async (data = {}) => {
+  if (!data.token || !isValidAuthUser(data.userInfo)) {
+    uni.showToast({ title: '登录响应异常，请重试', icon: 'none' })
+    clearAuthSession()
+    return false
   }
-  // 存储用户信息
-  uni.setStorageSync('userInfo', data.userInfo || {})
+  saveAuthSession(data.token, data.userInfo)
+
+  // 立即用 /auth/info 校验 token，并刷新可能变化的角色与账号状态。
+  const session = await authApi.getUserInfo({ loading: false })
+  if (session.code === 200) {
+    if (!saveAuthUserInfo(session.data)) {
+      clearAuthSession()
+      uni.showToast({ title: '用户信息响应异常，请重新登录', icon: 'none' })
+      return false
+    }
+  } else if (session.code === 401 || session.code === 403) {
+    clearAuthSession()
+    resetToWechatLogin()
+    return false
+  }
+
   uni.showToast({ title: '登录成功', icon: 'success' })
   setTimeout(() => {
     uni.reLaunch({ url: '/pages/index/index' })
   }, 1000)
+  return true
 }
 
 // ============ 获取微信 code（Promise 化，失败有明确提示） ============
