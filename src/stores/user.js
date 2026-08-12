@@ -17,7 +17,7 @@ export const useUserStore = defineStore('user', () => {
 
   /**
    * 登录
-   * 优先调用真实后端接口；仅开发环境可按 VITE_ENABLE_MOCK_LOGIN 配置启用本地演示登录。
+   * 仅调用真实后端接口，不再使用前端内置账号回退。
    * @param {Object} credentials - { username, password }
    * @returns {Promise<{success: boolean, message: string}>}
    */
@@ -25,30 +25,19 @@ export const useUserStore = defineStore('user', () => {
     try {
       const data = await loginApi(credentials)
       // 后端返回 { token, userInfo }
+      if (!data?.token || !data?.userInfo) {
+        throw new Error('登录响应缺少 token 或 userInfo')
+      }
       token.value = data.token
       user.value = data.userInfo
       localStorage.setItem('token', data.token)
       localStorage.setItem('user', JSON.stringify(data.userInfo))
       return { success: true, message: '登录成功' }
     } catch (err) {
-      // 本地演示账号只允许在开发环境启用，生产构建永不回退到前端账号。
-      const allowMockLogin = import.meta.env.DEV && import.meta.env.VITE_ENABLE_MOCK_LOGIN !== 'false'
-      if (allowMockLogin && credentials.username === 'admin' && credentials.password === '123456') {
-        const mockToken = 'test-token-' + Date.now()
-        const mockUser = {
-          id: 1,
-          username: 'admin',
-          name: '管理员',
-          role: 'admin',
-          avatar: ''
-        }
-        token.value = mockToken
-        user.value = mockUser
-        localStorage.setItem('token', mockToken)
-        localStorage.setItem('user', JSON.stringify(mockUser))
-        return { success: true, message: '登录成功' }
+      return {
+        success: false,
+        message: err?.response?.data?.message || err?.message || '登录失败，请检查账号密码'
       }
-      return { success: false, message: '登录失败，请检查账号密码' }
     }
   }
 
@@ -68,7 +57,6 @@ export const useUserStore = defineStore('user', () => {
   /**
    * 通过 token 恢复登录态：先尝试本地缓存，再请求后端校验
    * 用于路由守卫刷新页面后的状态恢复
-   * 测试模式 token（test-token- 前缀）跳过后端请求，直接使用本地缓存
    */
   async function fetchUserInfo() {
     if (!token.value) {
@@ -83,10 +71,6 @@ export const useUserStore = defineStore('user', () => {
       } catch {
         localStorage.removeItem('user')
       }
-    }
-    // 测试模式 token：后端未就绪，直接使用本地缓存即可
-    if (token.value.startsWith('test-token-')) {
-      return user.value
     }
     // 请求后端校验并获取最新用户信息
     try {

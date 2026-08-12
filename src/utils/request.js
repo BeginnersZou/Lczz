@@ -27,10 +27,12 @@ const SUCCESS_CODE = 200
 const UNAUTHORIZED_CODE = 401
 // token 在 localStorage 的 key
 const TOKEN_KEY = 'token'
+// API 版本前缀统一由环境变量控制；默认与后端规范保持 /api/v1。
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(/\/+$/, '')
 
 // ====================== Axios 实例 ======================
 const service = axios.create({
-  baseURL: '/api',
+  baseURL: API_BASE_URL,
   timeout: 15000,
   headers: {
     'Content-Type': 'application/json;charset=utf-8'

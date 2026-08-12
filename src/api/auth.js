@@ -11,7 +11,7 @@ import request from '@/utils/request'
 
 /**
  * 登录
- * silent: true —— 后端未就绪时静默失败，由 store 回退到测试模式（admin/123456）
+ * silent: true —— 登录页自行展示后端返回的认证错误。
  * @param {Object} data
  * @param {string} data.username - 用户名
  * @param {string} data.password - 密码
