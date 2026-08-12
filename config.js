@@ -1,6 +1,7 @@
 // API 地址统一包含版本前缀；Vue 3 优先读取 Vite 环境变量，同时兼容 HBuilderX 注入的 VUE_APP_*。
 const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL || process.env.VUE_APP_API_BASE_URL
-const baseUrl = (configuredApiBaseUrl || 'https://www.lczzcompany.com/api/v1').replace(/\/+$/, '')
+// 当前仅用于本地联调；正式域名确定后通过环境变量覆盖，不在代码中硬编码。
+const baseUrl = (configuredApiBaseUrl || 'http://localhost:8080/api/v1').replace(/\/+$/, '')
 
 // ═══ 虚拟登录开关 ═══
 // true：后端不可用时，微信登录失败自动走虚拟登录（mock token），
