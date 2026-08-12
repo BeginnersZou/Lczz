@@ -1,0 +1,554 @@
+<template>
+  <div class="order-page">
+    <!-- 顶部标题操作栏 左右分栏（与订单管理完全统一） -->
+    <div class="page-header">
+      <div class="header-left">
+        <h2 class="page-title">耗材管理</h2>
+        <span class="page-desc">统一管理空调安装耗材，支持发布、修改、检索、删除</span>
+      </div>
+      <div class="header-right">
+        <el-button type="info" plain :icon="Download" :loading="exportLoading" @click="handleBatchExport">
+          导出筛选结果
+        </el-button>
+        <el-button type="primary" :icon="Plus" @click="handleAdd">
+          发布耗材
+        </el-button>
+      </div>
+    </div>
+
+    <!-- 搜索卡片 -->
+    <el-card class="search-card" shadow="light">
+      <div class="search-bar">
+        <div class="search-item">
+          <el-input v-model="searchKeyword" placeholder="输入耗材名称、规格检索耗材" clearable class="search-input"
+            @keyup.enter="handleSearch">
+            <template #prefix>
+              <el-icon>
+                <Search />
+              </el-icon>
+            </template>
+          </el-input>
+          <el-select v-model="searchCategory" placeholder="全部分类" clearable class="category-select" @change="handleSearch">
+            <el-option label="安装辅料" value="安装辅料" />
+            <el-option label="制冷剂" value="制冷剂" />
+            <el-option label="工具" value="工具" />
+            <el-option label="空调设备" value="空调设备" />
+          </el-select>
+          <el-select v-model="stockStatus" placeholder="库存状态" clearable class="category-select" @change="handleSearch">
+            <el-option label="库存充足" value="normal" />
+            <el-option label="库存不足" value="low" />
+            <el-option label="已无库存" value="empty" />
+          </el-select>
+          <el-button type="primary" @click="handleSearch">
+            <el-icon>
+              <Search />
+            </el-icon> 搜索
+          </el-button>
+          <el-button text @click="handleReset">
+            <el-icon>
+              <Refresh />
+            </el-icon> 重置
+          </el-button>
+        </div>
+      </div>
+    </el-card>
+
+    <!-- 耗材表格主体 -->
+    <el-card shadow="light" class="table-card">
+      <div v-if="loadError" class="error-state">
+        <span>{{ loadError }}</span>
+        <el-button type="primary" link @click="loadList">重新加载</el-button>
+      </div>
+      <el-table v-else v-loading="tableLoading" :data="pagedList" border stripe style="width: 100%"
+        empty-text="暂无耗材，点击上方按钮发布第一条耗材">
+        <!-- 序号 -->
+        <el-table-column label="序号" align="center" width="70">
+          <template #default="scope">
+            {{ (currentPage - 1) * pageSize + scope.$index + 1 }}
+          </template>
+        </el-table-column>
+        <!-- 耗材图片 -->
+        <el-table-column label="图片" align="center" width="90">
+          <template #default="scope">
+            <el-image :src="scope.row.image" fit="cover" class="row-img" :preview-src-list="[scope.row.image]"
+              preview-teleported />
+          </template>
+        </el-table-column>
+        <!-- 耗材名称 -->
+        <el-table-column prop="name" label="耗材名称" align="left" />
+        <!-- 耗材分类（二级） -->
+        <el-table-column label="耗材分类" align="left">
+          <template #default="scope">
+            <el-tag size="small" effect="light" type="info">{{ getCategory(scope.row, 0) }}</el-tag>
+            <span class="category-arrow">/</span>
+            <el-tag size="small" effect="light">{{ getCategory(scope.row, 1) }}</el-tag>
+          </template>
+        </el-table-column>
+        <!-- 规格 -->
+        <el-table-column prop="spec" label="规格" align="left" />
+        <!-- 单位 -->
+        <el-table-column prop="unit" label="单位" align="center" width="80" />
+        <!-- 库存 -->
+        <el-table-column prop="stock" label="库存" align="center" width="90">
+          <template #default="scope">
+            <span :class="['stock-num', isLowStock(scope.row) ? 'low' : '']">{{ scope.row.stock }}</span>
+            <div class="secondary-cell">安全库存 {{ scope.row.safetyStock ?? 100 }}</div>
+          </template>
+        </el-table-column>
+        <!-- 创建时间 -->
+        <el-table-column prop="createTime" label="创建时间" align="left" />
+        <!-- 操作 -->
+        <el-table-column label="操作" align="center" width="220">
+          <template #default="scope">
+            <el-button text type="primary" @click="handleEdit(scope.row)">修改</el-button>
+            <el-button text type="success" @click="openStockDialog(scope.row)">调整库存</el-button>
+            <el-button text type="danger" @click="handleDelete(scope.row)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <div class="pagination-wrap" v-if="total > 0">
+        <el-pagination v-model:current-page="currentPage" v-model:page-size="pageSize" :background="background"
+          layout="total, sizes, prev, pager, next" :page-sizes="[10, 20, 50]" :total="total" @size-change="handleSizeChange"
+          @current-change="handleCurrentChange" />
+      </div>
+    </el-card>
+
+    <!-- 删除确认弹窗 -->
+    <el-dialog v-model="deleteDialogVisible" title="提示" width="380px">
+      <p>确定要删除该耗材吗？删除后数据不可恢复</p>
+      <template #footer>
+        <el-button @click="deleteDialogVisible = false">取消</el-button>
+        <el-button type="danger" :loading="deleteLoading" @click="confirmDelete">确认删除</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="stockDialogVisible" title="调整库存" width="480px" @closed="resetStockForm">
+      <el-form label-width="90px">
+        <el-form-item label="耗材"><strong>{{ currentStockRow?.name }}</strong></el-form-item>
+        <el-form-item label="当前库存">{{ currentStockRow?.stock }} {{ currentStockRow?.unit }}</el-form-item>
+        <el-form-item label="调整方式">
+          <el-radio-group v-model="stockForm.type"><el-radio-button value="in">入库</el-radio-button><el-radio-button value="out">出库</el-radio-button></el-radio-group>
+        </el-form-item>
+        <el-form-item label="数量">
+          <el-input-number v-model="stockForm.quantity" :min="1" :max="99999" />
+        </el-form-item>
+        <el-form-item label="原因">
+          <el-input v-model="stockForm.reason" maxlength="100" show-word-limit placeholder="例如：采购入库、施工领用" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="stockDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="stockLoading" @click="confirmStockChange">确认调整</el-button>
+      </template>
+    </el-dialog>
+  </div>
+</template>
+
+<script setup>
+import { ref, reactive, onMounted } from 'vue'
+import { ElMessage } from 'element-plus'
+import {
+  Plus, Search, Refresh, Download
+} from '@element-plus/icons-vue'
+import { useRouter, useRoute } from 'vue-router'
+import { getConsumablesListApi, deleteConsumablesApi, exportConsumablesApi, updateConsumablesApi } from '@/api/consumables'
+
+const router = useRouter()
+const route = useRoute()
+
+// 搜索条件
+const searchKeyword = ref(typeof route.query.keyword === 'string' ? route.query.keyword : '')
+const searchCategory = ref(typeof route.query.category === 'string' ? route.query.category : '')
+const stockStatus = ref(typeof route.query.stockStatus === 'string' ? route.query.stockStatus : '')
+// 分页基础数据
+const currentPage = ref(Number(route.query.page) || 1)
+const pageSize = ref(Number(route.query.pageSize) || 10)
+const total = ref(0)
+const background = ref(true)
+// 表格loading
+const tableLoading = ref(false)
+const exportLoading = ref(false)
+const deleteLoading = ref(false)
+const loadError = ref('')
+
+// 删除相关
+const deleteDialogVisible = ref(false)
+const currentDeleteRow = ref(null)
+const stockDialogVisible = ref(false)
+const currentStockRow = ref(null)
+const stockLoading = ref(false)
+const stockForm = reactive({ type: 'in', quantity: 1, reason: '' })
+
+// 耗材列表（数据全部来自接口）
+const pagedList = ref([])
+
+/**
+ * 加载耗材列表
+ */
+async function loadList() {
+  syncRouteState()
+  tableLoading.value = true
+  loadError.value = ''
+  try {
+    const res = await getConsumablesListApi({
+      page: currentPage.value,
+      pageSize: pageSize.value,
+      keyword: searchKeyword.value.trim(),
+      category: searchCategory.value || undefined,
+      stockStatus: stockStatus.value || undefined
+    })
+    // 响应拦截器已返回 data 层，列表接口返回 { list, total }
+    pagedList.value = res.list || []
+    total.value = res.total || 0
+  } catch (err) {
+    loadError.value = '耗材数据加载失败，请检查网络后重试。'
+  } finally {
+    tableLoading.value = false
+  }
+}
+
+/**
+ * 搜索耗材
+ */
+async function handleSearch() {
+  currentPage.value = 1
+  await loadList()
+}
+
+/**
+ * 重置搜索条件
+ */
+async function handleReset() {
+  searchKeyword.value = ''
+  searchCategory.value = ''
+  stockStatus.value = ''
+  currentPage.value = 1
+  await loadList()
+}
+
+/**
+ * 批量导出（调用导出接口，下载文件流）
+ */
+async function handleBatchExport() {
+  if (exportLoading.value) return
+  exportLoading.value = true
+  try {
+    const blob = await exportConsumablesApi({ keyword: searchKeyword.value.trim(), category: searchCategory.value || undefined })
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `耗材列表_${new Date().toLocaleDateString('zh-CN').replace(/\//g, '')}.xlsx`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+    ElMessage.success('导出成功')
+  } catch (err) {
+    // 错误已由响应拦截器统一提示
+  } finally {
+    exportLoading.value = false
+  }
+}
+
+/**
+ * 发布耗材跳转
+ */
+function handleAdd() {
+  router.push({ name: 'ConsumablesForm' })
+}
+
+/**
+ * 修改耗材跳转
+ * @param {Object} row 当前耗材对象
+ */
+function handleEdit(row) {
+  router.push({ name: 'ConsumablesEdit', params: { id: row.id } })
+}
+
+/**
+ * 打开删除弹窗
+ */
+function handleDelete(row) {
+  currentDeleteRow.value = row
+  deleteDialogVisible.value = true
+}
+
+/**
+ * 确认删除
+ */
+async function confirmDelete() {
+  const targetId = currentDeleteRow.value?.id
+  if (targetId == null) return
+  deleteLoading.value = true
+  try {
+    await deleteConsumablesApi(targetId)
+    ElMessage.success('删除成功')
+    deleteDialogVisible.value = false
+    currentDeleteRow.value = null
+    // 删除后空页回退：当前页仅剩这一条且不是第一页，回退到上一页避免空白
+    if (pagedList.value.length === 1 && currentPage.value > 1) {
+      currentPage.value -= 1
+    }
+    await loadList()
+  } catch (err) {
+    // 错误已由响应拦截器统一提示，弹窗保留以便重试
+  } finally {
+    deleteLoading.value = false
+  }
+}
+
+/**
+ * 分页每页条数切换
+ */
+function handleSizeChange(val) {
+  pageSize.value = val
+  currentPage.value = 1
+  loadList()
+}
+
+/**
+ * 分页页码切换
+ */
+function handleCurrentChange(val) {
+  currentPage.value = val
+  loadList()
+}
+
+function syncRouteState() {
+  router.replace({ query: {
+    ...(searchKeyword.value.trim() ? { keyword: searchKeyword.value.trim() } : {}),
+    ...(searchCategory.value ? { category: searchCategory.value } : {}),
+    ...(stockStatus.value ? { stockStatus: stockStatus.value } : {}),
+    ...(currentPage.value > 1 ? { page: currentPage.value } : {}),
+    ...(pageSize.value !== 10 ? { pageSize: pageSize.value } : {})
+  } })
+}
+
+function getCategory(row, index) {
+  if (Array.isArray(row.category)) return row.category[index] || '-'
+  return index === 0 ? (row.category || '-') : '-'
+}
+
+function isLowStock(row) {
+  return Number(row.stock || 0) <= Number(row.safetyStock ?? 100)
+}
+
+function openStockDialog(row) {
+  currentStockRow.value = row
+  stockDialogVisible.value = true
+}
+
+function resetStockForm() {
+  currentStockRow.value = null
+  stockForm.type = 'in'
+  stockForm.quantity = 1
+  stockForm.reason = ''
+}
+
+async function confirmStockChange() {
+  const row = currentStockRow.value
+  if (!row) return
+  if (!stockForm.reason.trim()) {
+    ElMessage.warning('请填写库存调整原因')
+    return
+  }
+  const delta = stockForm.type === 'in' ? stockForm.quantity : -stockForm.quantity
+  const nextStock = Number(row.stock || 0) + delta
+  if (nextStock < 0) {
+    ElMessage.warning('出库数量不能大于当前库存')
+    return
+  }
+  stockLoading.value = true
+  try {
+    await updateConsumablesApi(row.id, { ...row, stock: nextStock, stockChangeReason: stockForm.reason.trim() })
+    ElMessage.success('库存调整成功')
+    stockDialogVisible.value = false
+    await loadList()
+  } finally {
+    stockLoading.value = false
+  }
+}
+
+// 页面初始化
+onMounted(() => {
+  loadList()
+})
+</script>
+
+<style lang="scss" scoped>
+.order-page {
+  padding: 20px;
+  background-color: #f8fafc;
+  min-height: 100vh;
+
+  // 顶部头部
+  .page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding: 14px 18px;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+
+    .header-left {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+
+      .page-title {
+        font-size: 20px;
+        font-weight: 600;
+        color: #1f2937;
+        margin: 0;
+      }
+
+      .page-desc {
+        font-size: 14px;
+        color: #6b7280;
+      }
+    }
+
+    .header-right {
+      display: flex;
+      gap: 12px;
+
+      :deep(.el-button) {
+        border-radius: 6px;
+        padding: 7px 16px;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+      }
+    }
+  }
+
+  // 搜索卡片
+  .search-card {
+    margin-bottom: 16px;
+    border-radius: 8px;
+    border: none;
+
+    :deep(.el-card__body) {
+      padding: 18px;
+    }
+
+    .search-bar {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+
+      .search-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+
+        .search-input {
+          width: 440px;
+
+          :deep(.el-input__wrapper) {
+            border: 1px solid #d1d5db;
+            box-shadow: none;
+            border-radius: 6px;
+          }
+        }
+      }
+    }
+  }
+
+  // 表格卡片
+  .table-card {
+    border-radius: 8px;
+    border: none;
+    margin-bottom: 16px;
+
+    :deep(.el-card__body) {
+      padding: 12px;
+    }
+
+    // 行内耗材图片
+    .row-img {
+      width: 48px;
+      height: 48px;
+      border-radius: 6px;
+      display: block;
+      margin: 0 auto;
+    }
+
+    // 分类标签间距
+    .category-arrow {
+      margin: 0 4px;
+      color: #94a3b8;
+    }
+
+    // 库存数量样式
+    .stock-num {
+      font-weight: 600;
+      color: #16a34a;
+
+      &.low {
+        color: #ef4444;
+      }
+    }
+
+    :deep(.el-table) {
+      border-radius: 6px;
+    }
+
+    :deep(.el-table th) {
+      background-color: #f8fafc;
+      color: #1f2937;
+    }
+  }
+
+  // 分页
+  .el-pagination-style {
+    margin-top: 24px;
+    display: flex;
+    justify-content: flex-end;
+
+    :deep(.el-pagination) {
+
+      .btn-prev,
+      .btn-next,
+      .number {
+        border-radius: 4px;
+      }
+    }
+  }
+}
+
+// 移动端适配
+@media (max-width: 768px) {
+  .order-page {
+    padding: 12px;
+
+    .page-header {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 14px;
+      width: 100%;
+
+      .header-right {
+        width: 100%;
+        flex-wrap: wrap;
+      }
+    }
+
+    .search-bar {
+      width: 100%;
+
+      .search-item {
+        width: 100%;
+        flex-wrap: wrap;
+
+        .search-input {
+          width: 100%;
+        }
+      }
+    }
+  }
+}
+</style>

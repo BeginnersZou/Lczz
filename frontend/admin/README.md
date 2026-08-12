@@ -1,30 +1,6 @@
 # Lczz
 武汉力创之尊项目，后台管理系统以及微信小程序端
 
-## 项目目录
-
-- `backend/`：Java 21 + Spring Boot 后端。
-- `frontend/admin/`：Vue 3 + Vite 后台管理系统。
-- `frontend/miniprogram/`：uni-app 微信小程序。
-- `docs/`：开发规范、架构与数据库文档。
-
-日常功能开发统一从 `dev` 创建分支。后台管理端和小程序需要独立发布时，分别从 `frontend/admin`、`frontend/miniprogram` 生成发布候选，提交到 `release/admin`、`release/miniprogram`。
-
-本地启动后台管理系统：
-
-```bash
-cd frontend/admin
-npm ci
-npm run dev
-```
-
-小程序依赖安装：
-
-```bash
-cd frontend/miniprogram
-npm ci
-```
-
 
 鑫立创业务系统说明
 一、注册认证

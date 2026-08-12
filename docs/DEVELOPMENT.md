@@ -31,6 +31,21 @@
 - “产品”一期实际展示耗材，但接口和前端命名优先使用 `product`/“产品”，通过商品类型区分耗材，为后续扩展其他商品留空间。
 - “我的”一期只展示个人信息；其余按钮允许展示，但不实现跳转和业务逻辑。
 
+### 2.3 仓库目录
+
+`dev` 是三端完整集成基线，目录固定为：
+
+```text
+backend/                  Java 后端
+frontend/admin/           后台管理系统
+frontend/miniprogram/     微信小程序
+docs/                     项目文档
+```
+
+- 后台管理系统和小程序分别拥有自己的 `package.json`、锁文件和环境变量示例，不在仓库根目录共享前端依赖。
+- 两套前端最初分别从 `release/admin`、`release/miniprogram` 以 Git subtree 方式导入，保留原提交血缘。
+- 功能分支必须从 `dev` 创建，并直接修改 `frontend/admin` 或 `frontend/miniprogram` 下的源码；`release/*` 不再作为开发源分支。
+
 ## 3. 角色与权限
 
 | 角色 | 主要权限 |
@@ -216,6 +231,18 @@ Issue 状态按以下方向流转：
 独立发布流向为：
 
 `feature/fix -> dev -> release/admin 或 release/miniprogram -> 部署验收 -> master`
+
+由于 `dev` 是多工程目录，而现有 `release/admin`、`release/miniprogram` 分别以对应前端工程作为仓库根目录，发布时禁止将整个 `dev` 普通合并到 `release/*`。应从已验收的 `dev` 提交生成对应 subtree 发布分支，再发起 PR：
+
+```bash
+# 后台管理端发布候选
+git subtree split --prefix=frontend/admin dev -b release-candidate/admin-<version>
+
+# 微信小程序发布候选
+git subtree split --prefix=frontend/miniprogram dev -b release-candidate/miniprogram-<version>
+```
+
+生成的候选分支分别向 `release/admin`、`release/miniprogram` 提交 PR。候选分支只用于发布同步，不得直接开发；所有修复仍从 `dev` 创建 `fix/*`，合入 `dev` 后重新生成候选分支。
 
 `release/*` 只承担发布候选和部署，不承担日常开发。跨端共享后端变更必须先在 `dev` 完成联调，再分别合入需要该能力的发布分支；不得在两个发布分支各自修改出不同版本的共享后端。
 
