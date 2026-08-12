@@ -132,6 +132,14 @@
 	import {
 		authApi
 	} from '@/api/api.js'
+	import {
+		clearAuthSession,
+		getAuthToken,
+		getAuthUserInfo,
+		getRoleLabel,
+		maskPhone,
+		saveAuthUserInfo
+	} from '@/utils/auth-session.js'
 
 	const userInfo = ref({})
 	const version = ref('1.0.0')
@@ -148,8 +156,12 @@
 		try {
 			const res = await authApi.getUserInfo()
 			if (res.code === 200) {
-				userInfo.value = res.data || {}
-				uni.setStorageSync('userInfo', userInfo.value)
+				if (!saveAuthUserInfo(res.data)) {
+					clearAuthSession()
+					uni.reLaunch({ url: '/pages/login/login' })
+					return
+				}
+				userInfo.value = res.data
 			}
 		} catch (err) {
 			// request.js 已统一处理错误提示
@@ -164,21 +176,12 @@
 
 	const roleLabel = computed(() => {
 		const role = (userInfo.value && userInfo.value.role) || ''
-		const labels = {
-			admin: '管理员',
-			installer: '服务工程师',
-			customer: '认证用户',
-			dealer: '经销商'
-		}
-		return labels[role] || '认证用户'
+		return getRoleLabel(role)
 	})
 
 	// 手机号脱敏
 	const formatPhone = (phone) => {
-		if (!phone) return ''
-		const s = String(phone)
-		if (s.length >= 11) return s.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2')
-		return s
+		return maskPhone(phone)
 	}
 
 	// 计算本地缓存占用
@@ -194,12 +197,17 @@
 
 	// 加载本地存储的用户信息
 	const loadUserInfo = () => {
-		userInfo.value = uni.getStorageSync('userInfo') || {}
+		userInfo.value = getAuthUserInfo()
 		computeCacheSize()
 	}
 
 	// 页面再次显示时刷新（退出登录后返回会重新读取）
 	onShow(() => {
+		if (!getAuthToken()) {
+			userInfo.value = {}
+			uni.reLaunch({ url: '/pages/login/login' })
+			return
+		}
 		loadUserInfo()
 		fetchUserInfo()
 	})

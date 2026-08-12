@@ -9,6 +9,7 @@ const baseUrl = (configuredApiBaseUrl || 'http://localhost:8080/api/v1').replace
 // false：走真实后端登录与接口。
 // Mock 必须显式开启，避免测试 token 被误带入真实联调或生产包。
 const configuredMockLogin = import.meta.env.VITE_USE_MOCK_LOGIN || process.env.VUE_APP_USE_MOCK_LOGIN
-export const USE_MOCK_LOGIN = configuredMockLogin === 'true'
+const isDevelopment = import.meta.env.DEV || process.env.NODE_ENV === 'development'
+export const USE_MOCK_LOGIN = isDevelopment && configuredMockLogin === 'true'
 
 export default baseUrl

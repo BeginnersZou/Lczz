@@ -139,7 +139,7 @@
 		<view class="section-card" v-if="isReadonly">
 			<view class="section-header">
 				<view class="section-title-wrap">
-					<text class="section-title">{{ userRole === 'master' ? '用户评价' : '我的评价' }}</text>
+					<text class="section-title">{{ userRole === 'installer' ? '用户评价' : '我的评价' }}</text>
 				</view>
 			</view>
 
@@ -257,7 +257,8 @@
 	consumablesApi,
 	authApi,
 	evaluationApi
-} from '@/api/api.js'
+	} from '@/api/api.js'
+	import { getAuthToken } from '@/utils/auth-session.js'
 
 	// ===== 动态计算弹出框高度 =====
 	const sysInfo = uni.getSystemInfoSync()
@@ -282,7 +283,8 @@
 		image: ''
 	})
 
-	const isReadonly = ref(false)
+	// 施工编辑入口仅对安装师傅开放；直接 URL 的越权仍必须由后端拒绝。
+	const isReadonly = computed(() => userRole.value !== 'installer' || orderInfo.value.status === '已完成')
 const userRole = ref('')
 const evaluation = ref(null)
 const evaluationLoading = ref(false)
@@ -618,6 +620,10 @@ const previewEvaluateImage = (index) => {
 	}
 
 	onLoad(async (options) => {
+	if (!getAuthToken()) {
+		uni.reLaunch({ url: '/pages/login/login' })
+		return
+	}
 	const id = options && options.id
 	if (!id) {
 		uni.showToast({
@@ -642,7 +648,6 @@ const previewEvaluateImage = (index) => {
 		orderInfo.value = data
 		// 已完成订单为只读，回填完工信息（tools 字段与耗材统一用 title）
 		if (data.status === '已完成') {
-			isReadonly.value = true
 			completeText.value = data.completeText || ''
 			toolList.value = (data.tools || []).map(t => ({
 				id: t.id,

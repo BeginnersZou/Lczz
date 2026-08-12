@@ -1,3 +1,5 @@
+import { USE_MOCK_LOGIN } from '../config.js'
+
 /**
  * Mock 数据层（纯数据 + 辅助函数）
  * ─ 所有数据字段已与页面模板直接对齐，页面拿到 res.data 即可直接渲染，无需 mapXxx 转换
@@ -173,9 +175,11 @@ export const mockDynamics = [
 
 // ====================== 当前登录用户信息（供 user / settings） ======================
 export const mockUserInfo = {
+	id: -1,
 	nickname: '体验用户',
 	phone: '138****8888',
-	role: 'user',
+	role: 'customer',
+	roles: ['customer'],
 	avatar: ''
 }
 
@@ -224,11 +228,11 @@ export const mockDashboard = {
 // ====================== 辅助函数 ======================
 
 /**
- * 判断当前是否处于 mock 模式（token 以 mock_ 开头）
+ * Mock 仅允许在开发构建显式开启，旧 mock token 在生产构建中不能激活模拟接口。
  */
 export function isMockMode() {
 	const t = uni.getStorageSync('token') || ''
-	return t.startsWith('mock_')
+	return USE_MOCK_LOGIN && t.startsWith('mock_')
 }
 
 /**

@@ -9,7 +9,7 @@
  *
  * Mock 模式：isMockMode() 为 true 时（虚拟登录后），每个接口直接返回 mockSuccess(mockData)，
  *           数据字段已与页面模板对齐，页面无需任何 mapXxx 转换。
- * 真实后端为默认模式；仅通过 VITE_USE_MOCK_LOGIN=true 显式启用离线预览。
+ * 真实后端为默认模式；仅开发构建可通过 VITE_USE_MOCK_LOGIN=true 显式启用离线预览。
  *           （只需保证后端返回的 data 字段名与 mock.js 一致即可）。
  *
  * 使用示例：
@@ -38,20 +38,16 @@ export const authApi = {
 	loginWithWechat: (data) => http.post('/auth/wechat/login', data),
 	// 手机号授权绑定
 	bindPhone: (data) => http.post('/auth/wechat/bind-phone', data),
-	// 账号密码登录（与后台管理端通用）
-	login: (data) => http.post('/auth/login', data),
 	// 获取当前登录用户信息
-	getUserInfo: async () => {
+	getUserInfo: async (options = {}) => {
 		if (isMockMode()) return mockSuccess(mockUserInfo)
-		return http.get('/auth/info')
+		return http.get('/auth/info', {}, options)
 	},
 	// 退出登录
 	logout: async () => {
 		if (isMockMode()) return mockSuccess(true)
 		return http.post('/auth/logout')
-	},
-	// 修改密码 { oldPassword, newPassword }
-	changePassword: (data) => http.post('/auth/password', data)
+	}
 }
 
 // ====================== 订单相关 ======================

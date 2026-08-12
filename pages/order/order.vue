@@ -80,8 +80,8 @@
 				<text class="info-value highlight">{{ order.visitTime }}</text>
 			</view>
 
-			<!-- 用户角色：已完成订单显示评价按钮 -->
-			<view class="action-row" v-if="userRole === 'user' && order.status === '已完成'" @click.stop>
+			<!-- 普通用户/经销商：已完成订单显示评价入口 -->
+			<view class="action-row" v-if="canEvaluate && order.status === '已完成'" @click.stop>
 				<view class="evaluate-btn" hover-class="hover-press" :hover-stay-time="80"
 					@click="handleEvaluate(order)">
 					<text>{{ evaluatedOrderIds.includes(String(order.id)) ? '查看评价' : '评价' }}</text>
@@ -130,10 +130,15 @@ import {
 	onShareAppMessage
 } from '@dcloudio/uni-app'
 import { orderApi, evaluationApi, authApi } from '@/api/api.js'
+import { getAuthToken } from '@/utils/auth-session.js'
 
 // onShow 确保从详情页返回时刷新列表（完工提交后状态会变化）
 // 同时处理从"我的"页统计项点击跳转时切换到对应 tab
 onShow(() => {
+	if (!getAuthToken()) {
+		uni.reLaunch({ url: '/pages/login/login' })
+		return
+	}
 	if (uni.$pendingOrderTab != null) {
 		currentTab.value = uni.$pendingOrderTab
 		uni.$pendingOrderTab = null
@@ -175,6 +180,7 @@ const total = ref(0)
 const listLoading = ref(false)
 const loadStatus = ref('')
 const userRole = ref('')
+const canEvaluate = computed(() => ['customer', 'dealer'].includes(userRole.value))
 const evaluatedOrderIds = ref([])
 
 // 当前登录用户角色

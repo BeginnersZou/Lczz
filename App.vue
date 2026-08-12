@@ -1,5 +1,23 @@
 
 <script>
+import { authApi } from '@/api/api.js'
+import { clearAuthSession, getAuthToken, saveAuthUserInfo } from '@/utils/auth-session.js'
+
+async function restoreAuthSession() {
+	if (!getAuthToken()) return
+	const res = await authApi.getUserInfo({ loading: false })
+	if (res.code === 200) {
+		if (!saveAuthUserInfo(res.data)) {
+			clearAuthSession()
+			uni.reLaunch({ url: '/pages/login/login' })
+		}
+		return
+	}
+	if (res.code === 401 || res.code === 403) {
+		clearAuthSession()
+	}
+}
+
 export default {
 	onLaunch() {
 		// 获取系统信息，存到全局
@@ -56,6 +74,9 @@ export default {
 		uni.addInterceptor('navigateTo', navInterceptor)
 		uni.addInterceptor('switchTab', navInterceptor)
 		uni.addInterceptor('reLaunch', navInterceptor)
+
+		// 冷启动时用真实接口恢复登录态并刷新角色。
+		restoreAuthSession()
 	},
 	onShow() {},
 	onHide() {}
