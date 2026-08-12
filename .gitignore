@@ -8,6 +8,7 @@ backend/target/
 backend/.mvn/wrapper/maven-wrapper.jar
 .m2-cache/
 .m2-central-cache/
+.m2/
 .maven-settings-local.xml
 .maven-user-home/
 

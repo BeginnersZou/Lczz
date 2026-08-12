@@ -5,6 +5,10 @@ spring:
     password:
   flyway:
     enabled: false
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema-auth-h2.sql
 
 lczz:
   jwt:
