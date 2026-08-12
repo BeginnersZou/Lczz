@@ -71,11 +71,7 @@
             </span>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item command="password">
-                  <el-icon><Lock /></el-icon>
-                  修改密码
-                </el-dropdown-item>
-                <el-dropdown-item command="logout" divided>
+                <el-dropdown-item command="logout">
                   <el-icon><SwitchButton /></el-icon>
                   退出登录
                 </el-dropdown-item>
@@ -92,36 +88,14 @@
         </router-view>
       </el-main>
     </el-container>
-
-    <!-- 修改密码弹窗 -->
-    <el-dialog v-model="passwordDialogVisible" title="修改密码" width="460px" @close="resetPasswordForm">
-      <el-form ref="passwordFormRef" :model="passwordForm" :rules="passwordRules" label-width="90px">
-        <el-form-item label="原密码" prop="oldPassword">
-          <el-input v-model="passwordForm.oldPassword" type="password" show-password placeholder="请输入原密码" />
-        </el-form-item>
-        <el-form-item label="新密码" prop="newPassword">
-          <el-input v-model="passwordForm.newPassword" type="password" show-password placeholder="请输入新密码" />
-        </el-form-item>
-        <el-form-item label="确认密码" prop="confirmPassword">
-          <el-input v-model="passwordForm.confirmPassword" type="password" show-password placeholder="请再次输入新密码" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <div class="dialog-footer">
-          <el-button @click="passwordDialogVisible = false">取消</el-button>
-          <el-button type="primary" :loading="passwordLoading" @click="submitPassword">确认修改</el-button>
-        </div>
-      </template>
-    </el-dialog>
   </el-container>
 </template>
 
 <script setup>
-import { ref, reactive, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
-import { changePasswordApi } from '@/api/auth'
 import menuItems from '@/router/menu'
 import {
   HomeFilled,
@@ -129,8 +103,7 @@ import {
   Expand,
   User,
   ArrowDown,
-  SwitchButton,
-  Lock
+  SwitchButton
 } from '@element-plus/icons-vue'
 
 const route = useRoute()
@@ -186,71 +159,6 @@ const breadcrumbs = computed(() => {
   ]
 })
 
-// ====================== 修改密码 ======================
-const passwordDialogVisible = ref(false)
-const passwordLoading = ref(false)
-const passwordFormRef = ref(null)
-const passwordForm = reactive({
-  oldPassword: '',
-  newPassword: '',
-  confirmPassword: ''
-})
-
-const passwordRules = {
-  oldPassword: [
-    { required: true, message: '请输入原密码', trigger: 'blur' },
-    { min: 6, max: 20, message: '密码长度6~20字符', trigger: 'blur' }
-  ],
-  newPassword: [
-    { required: true, message: '请输入新密码', trigger: 'blur' },
-    { min: 6, max: 20, message: '密码长度6~20字符', trigger: 'blur' }
-  ],
-  confirmPassword: [
-    { required: true, message: '请再次输入新密码', trigger: 'blur' },
-    {
-      validator: (rule, value, callback) => {
-        if (value !== passwordForm.newPassword) {
-          callback(new Error('两次输入的密码不一致'))
-        } else {
-          callback()
-        }
-      },
-      trigger: 'blur'
-    }
-  ]
-}
-
-function resetPasswordForm() {
-  passwordFormRef.value?.resetFields()
-  passwordForm.oldPassword = ''
-  passwordForm.newPassword = ''
-  passwordForm.confirmPassword = ''
-}
-
-async function submitPassword() {
-  try {
-    await passwordFormRef.value.validate()
-  } catch {
-    return
-  }
-  passwordLoading.value = true
-  try {
-    await changePasswordApi({
-      oldPassword: passwordForm.oldPassword,
-      newPassword: passwordForm.newPassword
-    })
-    passwordDialogVisible.value = false
-    ElMessage.success('密码修改成功，请重新登录')
-    // 密码修改成功后退出登录，要求重新登录
-    await userStore.logout()
-    router.push('/login')
-  } catch {
-    // 错误已在响应拦截器提示
-  } finally {
-    passwordLoading.value = false
-  }
-}
-
 async function handleCommand(command) {
   if (command === 'logout') {
     try {
@@ -265,8 +173,6 @@ async function handleCommand(command) {
     await userStore.logout()
     ElMessage.success('已退出登录')
     router.push('/login')
-  } else if (command === 'password') {
-    passwordDialogVisible.value = true
   }
 }
 </script>

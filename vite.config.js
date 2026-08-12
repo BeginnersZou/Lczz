@@ -21,7 +21,7 @@ export default defineConfig(({ mode }) => {
         /**
          * 开发环境代理：浏览器只请求 /api，由 Vite 转发到 Java 后端。
          * 本机/局域网地址写在不入库的 .env.local 中，避免把环境地址写死在源码。
-         * 生产环境由 Nginx 反向代理 /api → 后端，不读取该开发代理配置。
+         * 生产环境由 Nginx 反向代理 /api 到后端，不读取该开发代理配置。
          */
         '/api': {
           target: apiProxyTarget,
