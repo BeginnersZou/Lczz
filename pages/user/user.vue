@@ -130,25 +130,26 @@
 		onShow
 	} from '@dcloudio/uni-app'
 	import {
-		dashboardApi
+		authApi
 	} from '@/api/api.js'
 
 	const userInfo = ref({})
 	const version = ref('1.0.0')
 	const cacheSize = ref('0KB')
 
-	// 工作概览（由 dashboardApi 返回，字段 pending/processing/done 与模板对齐，res.data 直接赋值）
+	// 工作概览接口尚未由后端提供，保留已确认 UI 的零值占位。
 	const stats = ref({
 		pending: 0,
 		processing: 0,
 		done: 0
 	})
 
-	const fetchStats = async () => {
+	const fetchUserInfo = async () => {
 		try {
-			const res = await dashboardApi.getOverview()
+			const res = await authApi.getUserInfo()
 			if (res.code === 200) {
-				stats.value = res.data || stats.value
+				userInfo.value = res.data || {}
+				uni.setStorageSync('userInfo', userInfo.value)
 			}
 		} catch (err) {
 			// request.js 已统一处理错误提示
@@ -163,7 +164,13 @@
 
 	const roleLabel = computed(() => {
 		const role = (userInfo.value && userInfo.value.role) || ''
-		return role === 'master' ? '服务工程师' : '认证用户'
+		const labels = {
+			admin: '管理员',
+			installer: '服务工程师',
+			customer: '认证用户',
+			dealer: '经销商'
+		}
+		return labels[role] || '认证用户'
 	})
 
 	// 手机号脱敏
@@ -194,7 +201,7 @@
 	// 页面再次显示时刷新（退出登录后返回会重新读取）
 	onShow(() => {
 		loadUserInfo()
-		fetchStats()
+		fetchUserInfo()
 	})
 
 	// 进入设置页

@@ -178,10 +178,12 @@ const onGetPhoneNumber = async (e) => {
 // ============ 登录成功统一处理 ============
 // 入参 data 为后端 res.data：{ token, userInfo, needPhone }
 const handleLoginSuccess = (data = {}) => {
-  // 存储 token（request.js 的 getToken 会自动读取该 key 注入请求头）
-  if (data.token) {
-    uni.setStorageSync('token', data.token)
+  if (!data.token || !data.userInfo) {
+    uni.showToast({ title: '登录响应异常，请重试', icon: 'none' })
+    return
   }
+  // 存储 token（request.js 的 getToken 会自动读取该 key 注入请求头）
+  uni.setStorageSync('token', data.token)
   // 存储用户信息
   uni.setStorageSync('userInfo', data.userInfo || {})
   uni.showToast({ title: '登录成功', icon: 'success' })

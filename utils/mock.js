@@ -2,7 +2,7 @@
  * Mock 数据层（纯数据 + 辅助函数）
  * ─ 所有数据字段已与页面模板直接对齐，页面拿到 res.data 即可直接渲染，无需 mapXxx 转换
  * ─ api.js 每个接口在 isMockMode() 时通过 mockSuccess/mockPaging 返回本文件数据
- * ─ 切换真实后端时：把 config.js 的 USE_MOCK_LOGIN 改为 false，页面代码无需任何修改
+ * ─ 真实后端为默认模式；仅通过环境变量显式开启离线预览
  *    （只需保证后端返回的 { code, data, msg } 中 data 字段名与本文件一致即可）
  * ─ 数据量已保证每个分类/状态都能体现分页（耗材每分类8条、订单每状态8条、资讯14条）
  */

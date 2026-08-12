@@ -9,7 +9,7 @@
  *
  * Mock 模式：isMockMode() 为 true 时（虚拟登录后），每个接口直接返回 mockSuccess(mockData)，
  *           数据字段已与页面模板对齐，页面无需任何 mapXxx 转换。
- * 切换真实后端：把 config.js 的 USE_MOCK_LOGIN 改为 false，页面代码无需修改
+ * 真实后端为默认模式；仅通过 VITE_USE_MOCK_LOGIN=true 显式启用离线预览。
  *           （只需保证后端返回的 data 字段名与 mock.js 一致即可）。
  *
  * 使用示例：
