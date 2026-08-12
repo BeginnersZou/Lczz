@@ -17,12 +17,14 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(BusinessException.class)
     ResponseEntity<ApiResponse<Void>> handleBusiness(BusinessException exception, HttpServletRequest request) {
-        return ResponseEntity.badRequest().body(ApiResponse.failure(exception.getCode(), exception.getMessage(), requestId(request)));
+        return ResponseEntity.status(exception.getStatus()).body(ApiResponse.failure(
+                exception.getStatus(), exception.getCode(), exception.getMessage(), requestId(request)));
     }
 
     @ExceptionHandler({MethodArgumentNotValidException.class, ConstraintViolationException.class})
     ResponseEntity<ApiResponse<Void>> handleValidation(Exception exception, HttpServletRequest request) {
-        return ResponseEntity.badRequest().body(ApiResponse.failure("VALIDATION_ERROR", "请求参数不合法", requestId(request)));
+        return ResponseEntity.badRequest().body(ApiResponse.failure(
+                400, "VALIDATION_ERROR", "请求参数不合法", requestId(request)));
     }
 
     @ExceptionHandler(Exception.class)
@@ -30,7 +32,7 @@ public class GlobalExceptionHandler {
         String requestId = requestId(request);
         log.error("Unhandled error, requestId={}", requestId, exception);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(ApiResponse.failure("INTERNAL_ERROR", "系统繁忙，请稍后重试", requestId));
+                .body(ApiResponse.failure(500, "INTERNAL_ERROR", "系统繁忙，请稍后重试", requestId));
     }
 
     private String requestId(HttpServletRequest request) {
