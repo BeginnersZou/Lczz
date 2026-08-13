@@ -20,7 +20,7 @@ $env:DB_PASSWORD="本地数据库密码"
 $env:JWT_SECRET="至少32字节的随机密钥"
 ```
 
-本机现有 `lczz_dev` 由 V1、V2 SQL 直接初始化，首次接入 Flyway 时需仅对该本地库执行一次版本 2 baseline；全新环境禁止 baseline，必须由 Flyway顺序执行 V1/V2。
+本机现有 `lczz_dev` 由 Flyway 管理；全新环境必须顺序执行 V1-V3，已有环境继续按版本增量迁移。
 
 ## 常用命令
 
@@ -50,6 +50,21 @@ $env:JWT_SECRET="至少32字节的随机密钥"
 | PATCH | `/api/v1/consumables/{id}/enabled` | 管理员 | 上架或下架产品 |
 
 产品图片只接收统一文件服务返回的 `coverFileId` 和 `detailFileIds`；文件上传接口由 Issue #13 提供。完整字段和响应模型以 Swagger UI 为准。
+
+## 订单接口
+
+| 方法 | 路径 | 权限 | 说明 |
+| --- | --- | --- | --- |
+| GET | `/api/v1/orders/list` | 已登录用户 | 管理员查全部；客户/经销商查绑定订单；师傅查指派订单 |
+| GET | `/api/v1/orders/detail/{id}` | 已登录用户 | 按当前角色数据范围查询详情 |
+| GET | `/api/v1/orders/masters` | 管理员 | 查询可指派安装师傅 |
+| POST | `/api/v1/orders` | 管理员 | 创建订单并指派一位师傅 |
+| PUT | `/api/v1/orders/{id}` | 管理员 | 编辑未结束订单 |
+| POST | `/api/v1/orders/{id}/assign-master` | 管理员 | 重新指派并保留指派历史 |
+| PATCH | `/api/v1/orders/{id}/status` | 管理员 | 按状态机修改订单状态 |
+| POST | `/api/v1/orders/{id}/cancel` | 管理员 | 作废订单并保留业务历史 |
+
+订单按客户手机号绑定：客户已注册时创建即绑定；未注册时，在微信首次绑定手机号后自动认领同手机号的历史订单。一期每个订单必须且只能有一位有效安装师傅。订单附件上传由后续文件模块提供。
 
 ## 目录边界
 
