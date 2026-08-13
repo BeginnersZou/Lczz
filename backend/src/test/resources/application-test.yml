@@ -13,3 +13,6 @@ spring:
 lczz:
   jwt:
     secret: test-only-secret-that-is-long-enough-for-tests
+  file:
+    access-secret: test-only-file-access-secret-long-enough
+    signed-url-minutes: 5

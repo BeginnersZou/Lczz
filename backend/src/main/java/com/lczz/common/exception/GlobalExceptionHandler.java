@@ -11,6 +11,7 @@ import org.springframework.security.authorization.AuthorizationDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 @RestControllerAdvice
@@ -33,6 +34,13 @@ public class GlobalExceptionHandler {
     ResponseEntity<ApiResponse<Void>> handleNotFound(NoResourceFoundException exception, HttpServletRequest request) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ApiResponse.failure(
                 404, "RESOURCE_NOT_FOUND", "请求的资源不存在", requestId(request)));
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    ResponseEntity<ApiResponse<Void>> handleUploadTooLarge(MaxUploadSizeExceededException exception,
+                                                            HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(ApiResponse.failure(
+                413, "FILE_TOO_LARGE", "上传文件超过大小限制", requestId(request)));
     }
 
     @ExceptionHandler(AuthorizationDeniedException.class)

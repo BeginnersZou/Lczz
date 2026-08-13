@@ -15,8 +15,17 @@ CREATE TABLE product_category (
 
 CREATE TABLE file_asset (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  storage_type VARCHAR(32),
+  object_key VARCHAR(512),
+  original_name VARCHAR(255),
+  mime_type VARCHAR(128),
+  file_size BIGINT,
+  sha256 VARCHAR(64),
   access_url VARCHAR(1000),
+  uploaded_by BIGINT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
   deleted BOOLEAN DEFAULT FALSE NOT NULL
+  ,deleted_at TIMESTAMP
 );
 
 CREATE TABLE product (
