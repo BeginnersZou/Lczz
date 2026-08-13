@@ -72,6 +72,16 @@ const normalizeProgress = (item = {}) => ({
 	})).filter(file => file.url)
 })
 
+const normalizeEvaluation = (item = {}) => ({
+	...item,
+	score: Number(item.score || 0),
+	liked: Boolean(item.liked),
+	content: item.content || '',
+	labels: item.labels || [],
+	images: (item.images || []).filter(Boolean),
+	createTime: item.createTime || item.createdAt || ''
+})
+
 // ====================== 认证相关 ======================
 export const authApi = {
 	// 微信一键登录（传微信 code；已注册用户返回 { token, userInfo }，新用户返回 { needPhone: true }）
@@ -146,6 +156,26 @@ export const orderApi = {
 	}
 }
 
+// ====================== 订单评价相关 ======================
+export const evaluationApi = {
+	getByOrder: async (orderId, options = {}) => {
+		if (isMockMode()) return mockSuccess(null)
+		const res = await http.get(`/orders/evaluation/${orderId}`, {}, options)
+		if (res.code === 200 && res.data) res.data = normalizeEvaluation(res.data)
+		return res
+	},
+	getReviewedIds: async () => {
+		if (isMockMode()) return mockSuccess([])
+		return http.get('/orders/evaluation/ids')
+	},
+	submit: async (data) => {
+		if (isMockMode()) return mockSuccess(normalizeEvaluation({ id: Date.now(), ...data, createTime: new Date().toISOString() }))
+		const res = await http.post('/orders/evaluation', data)
+		if (res.code === 200 && res.data) res.data = normalizeEvaluation(res.data)
+		return res
+	}
+}
+
 // ====================== 耗材相关 ======================
 export const consumablesApi = {
 	// 耗材列表（分页） params: { page, pageSize, keyword, category }
@@ -203,7 +233,7 @@ export const uploadApi = {
 	// 通用图片上传（返回图片 url）
 	uploadImage: (filePath, formData = {}, options = {}) => {
 		if (isMockMode()) {
-			return Promise.resolve(mockSuccess({ url: 'https://picsum.photos/300/300?random=' + Date.now() }))
+			return Promise.resolve(mockSuccess({ id: Date.now(), url: 'https://picsum.photos/300/300?random=' + Date.now() }))
 		}
 		return http.upload({
 			url: '/files/upload',
