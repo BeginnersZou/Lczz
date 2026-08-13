@@ -8,7 +8,7 @@ spring:
   sql:
     init:
       mode: always
-      schema-locations: classpath:schema-auth-h2.sql
+      schema-locations: classpath:schema-auth-h2.sql,classpath:schema-product-h2.sql
 
 lczz:
   jwt:
