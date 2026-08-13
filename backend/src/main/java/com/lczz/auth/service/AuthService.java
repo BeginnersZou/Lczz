@@ -16,6 +16,7 @@ import com.lczz.auth.security.JwtService;
 import com.lczz.auth.wechat.WechatIdentity;
 import com.lczz.auth.wechat.WechatIdentityGateway;
 import com.lczz.common.exception.BusinessException;
+import com.lczz.order.service.OrderCustomerBindingService;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Locale;
@@ -38,11 +39,13 @@ public class AuthService {
     private final LoginChallengeStore challengeStore;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final OrderCustomerBindingService orderCustomerBindingService;
 
     public AuthService(UserMapper userMapper, RoleMapper roleMapper, UserRoleMapper userRoleMapper,
                        WechatIdentityMapper wechatIdentityMapper, UserAccountService userAccountService,
                        WechatIdentityGateway wechatGateway, LoginChallengeStore challengeStore,
-                       PasswordEncoder passwordEncoder, JwtService jwtService) {
+                       PasswordEncoder passwordEncoder, JwtService jwtService,
+                       OrderCustomerBindingService orderCustomerBindingService) {
         this.userMapper = userMapper;
         this.roleMapper = roleMapper;
         this.userRoleMapper = userRoleMapper;
@@ -52,6 +55,7 @@ public class AuthService {
         this.challengeStore = challengeStore;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
+        this.orderCustomerBindingService = orderCustomerBindingService;
     }
 
     @Transactional
@@ -110,6 +114,7 @@ public class AuthService {
         if (created) ensureRole(user.getId(), RoleCode.CUSTOMER);
         attachIdentity(user.getId(), verified);
         ensureCustomerRoleWhenUnassigned(user.getId());
+        orderCustomerBindingService.bindPendingOrders(phone, user.getId());
         touchLogin(user.getId(), ip);
         return loginResult(userAccountService.requireActive(user.getId()));
     }
@@ -131,6 +136,7 @@ public class AuthService {
             user.setPhone(phone);
             userMapper.updateById(user);
         }
+        orderCustomerBindingService.bindPendingOrders(phone, user.getId());
         touchIdentity(identity.getId());
         touchLogin(user.getId(), ip);
         return loginResult(userAccountService.requireActive(user.getId()));
