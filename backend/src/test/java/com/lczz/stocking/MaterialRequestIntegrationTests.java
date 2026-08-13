@@ -77,9 +77,13 @@ class MaterialRequestIntegrationTests {
 
     @Test
     void assignedInstallerSubmitsSnapshotsAndIdenticalRetryIsIdempotent() throws Exception {
+        jdbcTemplate.update("UPDATE work_order SET order_status='PENDING_VISIT' WHERE id=?", orderId);
         JsonNode first = submit(orderId, installerToken, itemsJson("2.500", "1"));
         long requestId = first.path("id").asLong();
         assertThat(first.path("materials").get(0).path("name").asText()).isEqualTo("铜管");
+        assertThat(orderMapper.selectById(orderId).getOrderStatus()).isEqualTo("IN_PROGRESS");
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM work_order_status_history WHERE order_id=? "
+                + "AND to_status='IN_PROGRESS'", Long.class, orderId)).isEqualTo(1L);
         ProductEntity product = productMapper.selectById(product1Id);
         product.setProductName("已改名铜管");
         productMapper.updateById(product);
@@ -87,6 +91,8 @@ class MaterialRequestIntegrationTests {
         JsonNode retry = submit(orderId, installerToken, itemsJson("2.500", "1"));
         assertThat(retry.path("id").asLong()).isEqualTo(requestId);
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM material_request", Long.class)).isEqualTo(1L);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM work_order_status_history WHERE order_id=? "
+                + "AND to_status='IN_PROGRESS'", Long.class, orderId)).isEqualTo(1L);
         mockMvc.perform(get("/api/orders/" + orderId + "/materials")
                         .header("Authorization", "Bearer " + token(customerId, RoleCode.CUSTOMER)))
                 .andExpect(status().isOk())
