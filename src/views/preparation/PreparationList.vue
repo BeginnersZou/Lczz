@@ -58,10 +58,10 @@
         <!-- 订单名称 -->
         <el-table-column prop="productName" label="订单名称" align="left" />
         <!-- 订单编号 -->
-        <el-table-column prop="id" label="订单编号" align="left">
+        <el-table-column prop="orderNo" label="订单编号" align="left">
           <template #default="scope">
-            <span class="table-order-id" role="button" tabindex="0" @click="copyOrderId(scope.row.id)" @keyup.enter="copyOrderId(scope.row.id)">
-              {{ scope.row.id }}
+            <span class="table-order-id" role="button" tabindex="0" @click="copyOrderId(scope.row.orderNo || scope.row.orderId)" @keyup.enter="copyOrderId(scope.row.orderNo || scope.row.orderId)">
+              {{ scope.row.orderNo || scope.row.orderId }}
               <el-icon size="14" class="copy-icon">
                 <DocumentCopy />
               </el-icon>
@@ -114,7 +114,7 @@
         </div>
         <div class="dialog-info-row">
           <span class="info-label">订单编号：</span>
-          <span class="info-value">{{ currentRow.id }}</span>
+          <span class="info-value">{{ currentRow.orderNo || currentRow.orderId }}</span>
         </div>
         <div class="dialog-info-row">
           <span class="info-label">当前状态：</span>
@@ -274,7 +274,7 @@ async function handleBatchExport() {
     const url = window.URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `备货清单_${new Date().toLocaleDateString('zh-CN').replace(/\//g, '')}.xlsx`
+    link.download = `备货清单_${new Date().toLocaleDateString('zh-CN').replace(/\//g, '')}.csv`
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)

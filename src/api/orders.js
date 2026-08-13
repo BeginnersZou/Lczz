@@ -1,4 +1,34 @@
 import request from '@/utils/request'
+import { bindFileApi, getFileId, uploadFileApi } from './files'
+import { createCsvBlob } from '@/utils/export'
+
+function normalizeOrder(item = {}) {
+  const masters = item.selectedMasterList || item.masterList || []
+  return {
+    ...item,
+    taskType: item.taskType || item.productName || '',
+    status: item.status || item.statusLabel || item.statusCode || '',
+    assignMaster: masters.map(master => master.masterName).filter(Boolean).join('、'),
+    createTime: item.createTime || item.createdAt || '',
+    visitTime: item.visitTime || item.orderStartTime || '',
+    fileList: (item.fileList || item.images || []).map(file => ({
+      ...file,
+      id: getFileId(file),
+      url: typeof file === 'string' ? file : (file.url || '')
+    }))
+  }
+}
+
+async function getAllOrders(params = {}) {
+  const first = await getOrderListApi({ ...params, page: 1, pageSize: 100 })
+  const rows = [...(first.list || [])]
+  const pages = Math.ceil(Number(first.total || 0) / 100)
+  for (let page = 2; page <= pages; page++) {
+    const result = await getOrderListApi({ ...params, page, pageSize: 100 })
+    rows.push(...(result.list || []))
+  }
+  return rows
+}
 
 /**
  * 订单管理模块 API
@@ -28,7 +58,7 @@ export function getOrderListApi(params) {
     url: '/orders/list',
     method: 'get',
     params
-  })
+  }).then(result => ({ ...result, list: (result?.list || []).map(normalizeOrder) }))
 }
 
 /**
@@ -40,7 +70,7 @@ export function getOrderDetailApi(id) {
   return request({
     url: `/orders/detail/${id}`,
     method: 'get'
-  })
+  }).then(normalizeOrder)
 }
 
 /**
@@ -117,10 +147,15 @@ export function getMasterListApi(params) {
  * @returns {Promise<{url: string}>}
  */
 export function uploadOrderImageApi(formData) {
-  return request({
-    url: '/orders/upload',
-    method: 'post',
-    data: formData
+  return uploadFileApi(formData)
+}
+
+export function bindOrderFileApi(fileId, orderId, sortOrder) {
+  return bindFileApi(fileId, {
+    businessType: 'ORDER',
+    businessId: Number(orderId),
+    usageType: 'ATTACHMENT',
+    sortOrder
   })
 }
 
@@ -146,11 +181,16 @@ export function cancelOrderApi(id, data) {
  * @param {string} [params.status]
  * @returns {Promise<Blob>}
  */
-export function exportOrdersApi(params) {
-  return request({
-    url: '/orders/export',
-    method: 'get',
-    params,
-    responseType: 'blob'
-  })
+export async function exportOrdersApi(params) {
+  const rows = await getAllOrders(params)
+  return createCsvBlob([
+    { label: '订单编号', value: row => row.orderNo },
+    { label: '任务类型', value: row => row.taskType },
+    { label: '客户姓名', value: row => row.customerName },
+    { label: '客户手机号', value: row => row.customerPhone },
+    { label: '地址', value: row => row.address },
+    { label: '安装师傅', value: row => row.assignMaster },
+    { label: '状态', value: row => row.status },
+    { label: '创建时间', value: row => row.createTime }
+  ], rows)
 }

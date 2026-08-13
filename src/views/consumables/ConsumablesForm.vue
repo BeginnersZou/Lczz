@@ -148,6 +148,7 @@ import {
 import { useRouter, useRoute } from 'vue-router'
 import {
   getConsumablesDetailApi,
+  getConsumableCategoriesApi,
   addConsumablesApi,
   updateConsumablesApi,
   uploadConsumablesImageApi
@@ -176,7 +177,7 @@ let detailUid = 1
 const unitOptions = ['米', '瓶', '个', '把', '套', '卷', '台', '件']
 
 // 二级耗材分类
-const categoryOptions = [
+const fallbackCategoryOptions = [
   {
     value: '安装辅料',
     label: '安装辅料',
@@ -218,15 +219,22 @@ const categoryOptions = [
     ]
   }
 ]
+const categoryOptions = ref(fallbackCategoryOptions)
+const categoryIdByName = new Map()
 
 // 表单数据
 const form = reactive({
   name: '',
   category: [],
+  categoryId: null,
   spec: '',
   unit: '',
   stock: 0,
+  price: 0,
+  enabled: true,
+  sortOrder: 0,
   image: '',
+  coverFileId: null,
   remark: '',
   detailImages: [] // 耗材详情图片，最多9张，{uid, file, previewUrl}
 })
@@ -252,12 +260,37 @@ watch(form, () => {
 useUnsavedChanges(formIsDirty, '耗材内容尚未保存，确定要放弃并离开吗？')
 
 onMounted(() => {
+  loadCategories().then(() => {
+    if (route.params.id) loadEditData()
+  })
   if (route.params.id) {
     isEdit.value = true
     consumablesId.value = route.params.id
-    loadEditData()
   }
 })
+
+async function loadCategories() {
+  try {
+    const categories = await getConsumableCategoriesApi()
+    const parents = (categories || []).filter(item => item.level === 1)
+    const children = (categories || []).filter(item => item.level === 2)
+    const options = parents.map(parent => ({
+      value: parent.name,
+      label: parent.name,
+      children: children.filter(child => child.parentId === parent.id).map(child => {
+        categoryIdByName.set(child.name, child.id)
+        return { value: child.name, label: child.name }
+      })
+    })).filter(parent => parent.children.length)
+    if (options.length) categoryOptions.value = options
+    if (form.category.length) {
+      const selectedId = categoryIdByName.get(form.category[form.category.length - 1])
+      if (selectedId) form.categoryId = selectedId
+    }
+  } catch {
+    // 保留静态原型作为加载失败时的展示；提交仍要求后端有效分类。
+  }
+}
 
 /**
  * 编辑回显：从后端拉取耗材详情
@@ -270,18 +303,26 @@ async function loadEditData() {
     Object.assign(form, {
       name: data.name || '',
       category: Array.isArray(data.category) ? [...data.category] : [],
+      categoryId: data.categoryId || null,
       spec: data.spec || '',
       unit: data.unit || '',
       stock: data.stock != null ? data.stock : 0,
+      price: data.price != null ? data.price : 0,
+      enabled: data.enabled !== false,
+      sortOrder: data.sortOrder || 0,
       image: data.image || '',
+      coverFileId: data.coverFileId || null,
       remark: data.remark || '',
       // 远程 url 直接作为 previewUrl，file 为 null
       detailImages: (data.detailImages || []).map(item => ({
         uid: detailUid++,
+        id: item.id || null,
         file: null,
         previewUrl: typeof item === 'string' ? item : (item.url || '')
       }))
     })
+    const selectedId = categoryIdByName.get(form.category[form.category.length - 1])
+    if (selectedId) form.categoryId = selectedId
     formIsDirty.value = false
   } catch (err) {
     loadError.value = '耗材详情加载失败，请重试后再编辑。'
@@ -329,6 +370,7 @@ async function handleUpload(event) {
     // 用返回 url 替换 blob 并释放临时 blob
     if (form.image === blobUrl) {
       form.image = res.url
+      form.coverFileId = res.id
     }
     URL.revokeObjectURL(blobUrl)
   } catch (err) {
@@ -347,6 +389,7 @@ function removeImage() {
     URL.revokeObjectURL(form.image)
   }
   form.image = ''
+  form.coverFileId = null
   formIsDirty.value = true
 }
 
@@ -406,6 +449,7 @@ async function handleDetailUpload(event) {
       const idx = form.detailImages.findIndex(i => i.uid === uid)
       if (idx !== -1) {
         form.detailImages[idx].previewUrl = res.url
+        form.detailImages[idx].id = res.id
         form.detailImages[idx].file = null
         form.detailImages[idx].uploading = false
       }
@@ -451,16 +495,27 @@ async function handleSubmit() {
     }
     submitLoading.value = true
     try {
+      const categoryId = categoryIdByName.get(form.category[form.category.length - 1]) || form.categoryId
+      if (!categoryId) {
+        ElMessage.warning('请选择后端已启用的耗材分类')
+        return
+      }
       const submitData = {
         name: form.name,
         category: form.category,
         spec: form.spec,
         unit: form.unit,
         stock: form.stock,
+        price: form.price,
         image: form.image,
+        coverFileId: form.coverFileId,
         remark: form.remark,
         // detailImages 转为 url 数组
-        detailImages: form.detailImages.map(item => ({ url: item.previewUrl }))
+        detailImages: form.detailImages.map(item => ({ id: item.id, url: item.previewUrl })),
+        detailFileIds: form.detailImages.map(item => item.id).filter(Boolean),
+        categoryId,
+        enabled: form.enabled,
+        sortOrder: form.sortOrder
       }
       if (isEdit.value) {
         await updateConsumablesApi(consumablesId.value, submitData)
