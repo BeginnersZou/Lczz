@@ -57,6 +57,17 @@ CREATE TABLE work_order_progress (
   UNIQUE(completion_order_id)
 );
 
+CREATE TABLE work_order_review (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  order_id BIGINT UNIQUE NOT NULL,
+  reviewer_user_id BIGINT NOT NULL,
+  score INT,
+  liked BOOLEAN DEFAULT FALSE NOT NULL,
+  content VARCHAR(2000),
+  labels_json VARCHAR(2000),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
 CREATE TABLE material_request (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
   request_no VARCHAR(32) UNIQUE NOT NULL,
