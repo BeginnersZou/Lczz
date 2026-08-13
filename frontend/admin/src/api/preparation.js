@@ -1,4 +1,5 @@
 import request from '@/utils/request'
+import { createCsvBlob } from '@/utils/export'
 
 /**
  * 订单备货模块 API
@@ -73,11 +74,19 @@ export function finishPreparationApi(id) {
  * @param {string} [params.status]
  * @returns {Promise<Blob>}
  */
-export function exportPreparationApi(params) {
-  return request({
-    url: '/preparation/export',
-    method: 'get',
-    params,
-    responseType: 'blob'
-  })
+export async function exportPreparationApi(params) {
+  const first = await getPreparationListApi({ ...params, page: 1, pageSize: 100 })
+  const rows = [...(first.list || [])]
+  const pages = Math.ceil(Number(first.total || 0) / 100)
+  for (let page = 2; page <= pages; page++) {
+    const result = await getPreparationListApi({ ...params, page, pageSize: 100 })
+    rows.push(...(result.list || []))
+  }
+  return createCsvBlob([
+    { label: '申请编号', value: row => row.requestNo },
+    { label: '订单编号', value: row => row.orderNo },
+    { label: '订单名称', value: row => row.productName },
+    { label: '状态', value: row => row.statusLabel || row.status },
+    { label: '申请时间', value: row => row.createTime }
+  ], rows)
 }

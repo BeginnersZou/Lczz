@@ -29,11 +29,11 @@
             </template>
           </el-input>
           <el-select v-model="searchStatus" placeholder="全部状态" clearable class="status-select" @change="handleSearch">
-            <el-option label="待处理" value="pending" />
-            <el-option label="已派单" value="assigned" />
-            <el-option label="进行中" value="processing" />
-            <el-option label="已完成" value="completed" />
-            <el-option label="已作废" value="cancelled" />
+            <el-option label="待上门" value="PENDING_VISIT" />
+            <el-option label="处理中" value="IN_PROGRESS" />
+            <el-option label="待评价" value="PENDING_REVIEW" />
+            <el-option label="已评价" value="REVIEWED" />
+            <el-option label="已作废" value="CANCELLED" />
           </el-select>
           <el-button type="primary" @click="handleSearch">
             <el-icon>
@@ -71,10 +71,10 @@
           </template>
         </el-table-column>
         <!-- 订单编号 支持点击复制 -->
-        <el-table-column prop="id" label="订单编号" align="left">
+        <el-table-column prop="orderNo" label="订单编号" align="left">
           <template #default="scope">
-            <span class="table-order-id" role="button" tabindex="0" @click="copyOrderId(scope.row.id)" @keyup.enter="copyOrderId(scope.row.id)">
-              {{ scope.row.id }}
+            <span class="table-order-id" role="button" tabindex="0" @click="copyOrderId(scope.row.orderNo || scope.row.id)" @keyup.enter="copyOrderId(scope.row.orderNo || scope.row.id)">
+              {{ scope.row.orderNo || scope.row.id }}
               <el-icon size="14" class="copy-icon">
                 <DocumentCopy />
               </el-icon>
@@ -127,7 +127,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import {
   Plus, Search, Refresh, Download, DocumentCopy
 } from '@element-plus/icons-vue'
@@ -220,7 +220,7 @@ async function handleBatchExport() {
     const url = window.URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `订单列表_${new Date().toLocaleDateString('zh-CN').replace(/\//g, '')}.xlsx`
+    link.download = `订单列表_${new Date().toLocaleDateString('zh-CN').replace(/\//g, '')}.csv`
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
@@ -330,17 +330,17 @@ function formatPhone(phone) {
 }
 
 function getStatusText(status) {
-  const map = { pending: '待处理', assigned: '已派单', processing: '进行中', completed: '已完成', cancelled: '已作废', canceled: '已作废' }
+  const map = { pending: '待上门', assigned: '待上门', processing: '处理中', completed: '已完成', cancelled: '已作废', canceled: '已作废', PENDING_VISIT: '待上门', IN_PROGRESS: '处理中', PENDING_REVIEW: '已完成', REVIEWED: '已完成', CANCELLED: '已作废' }
   return map[status] || status || '待处理'
 }
 
 function getStatusType(status) {
-  const map = { pending: 'warning', assigned: 'primary', processing: 'primary', completed: 'success', cancelled: 'info', canceled: 'info' }
+  const map = { pending: 'warning', assigned: 'warning', processing: 'primary', completed: 'success', cancelled: 'info', canceled: 'info', '待上门': 'warning', '处理中': 'primary', '已完成': 'success', '已作废': 'info', PENDING_VISIT: 'warning', IN_PROGRESS: 'primary', PENDING_REVIEW: 'success', REVIEWED: 'success', CANCELLED: 'info' }
   return map[status] || 'warning'
 }
 
 function isCancelled(status) {
-  return status === 'cancelled' || status === 'canceled' || status === '已作废'
+  return status === 'cancelled' || status === 'canceled' || status === '已作废' || status === 'CANCELLED'
 }
 // 页面初始化自动请求
 onMounted(loadList)

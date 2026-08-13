@@ -124,8 +124,8 @@
 						<text class="product-title">{{ item.title }}</text>
 						<text class="product-spec">{{ item.spec || item.desc }}</text>
 						<view class="product-meta">
-							<text class="product-price"><text class="price-unit">¥</text>{{ item.price }}</text>
-							<text class="product-sales">已售 {{ item.sales }}</text>
+							<text class="product-price">产品展示</text>
+							<text class="product-sales">{{ item.stock > 0 ? '可咨询' : '库存待确认' }}</text>
 						</view>
 					</view>
 				</view>

@@ -40,17 +40,18 @@
 			</view>
 		</view>
 
-		<!-- ═══ 工具清单 ═══ -->
-		<view class="section-card">
+		<!-- ═══ 安装师傅耗材申请 ═══ -->
+		<view class="section-card" v-if="isInstaller">
 			<view class="section-header">
 				<view class="section-title-wrap">
-					<text class="required" v-if="!isReadonly">*</text>
-					<text class="section-title">工具清单</text>
+					<text class="required" v-if="!materialReadonly">*</text>
+					<text class="section-title">耗材清单</text>
 				</view>
-				<view class="add-btn" @click="openToolPopup" v-if="!isReadonly">
+				<view class="add-btn" @click="openToolPopup" v-if="!materialReadonly">
 					<up-icon name="plus" size="14" color="#fff"></up-icon>
 					<text>添加</text>
 				</view>
+				<text v-else-if="materialRequest" class="tool-qty-text">{{ materialRequest.statusLabel || materialRequest.status }}</text>
 			</view>
 
 			<view class="tool-list" v-if="toolList.length > 0">
@@ -59,11 +60,11 @@
 					<view class="tool-content">
 						<text class="tool-name">{{ tool.title }}</text>
 						<view class="tool-meta">
-							<text class="tool-spec-text">规格：{{ tool.spec }}</text>
+							<text class="tool-spec-text">规格：{{ tool.spec || '-' }}　单位：{{ tool.unit || '-' }}</text>
 						</view>
 						<view class="tool-meta">
 							<text class="tool-qty-text">数量：</text>
-							<view class="qty-control" v-if="!isReadonly">
+							<view class="qty-control" v-if="!materialReadonly">
 								<view class="qty-btn" @click="changeQty(index, -1)"><text>-</text></view>
 								<text class="qty-num">{{ tool.qty }}</text>
 								<view class="qty-btn" @click="changeQty(index, 1)"><text>+</text></view>
@@ -71,7 +72,7 @@
 							<text class="tool-qty-value" v-else>{{ tool.qty }}</text>
 						</view>
 					</view>
-					<view class="tool-delete" @click="deleteTool(index)" v-if="!isReadonly">
+					<view class="tool-delete" @click="deleteTool(index)" v-if="!materialReadonly">
 						<up-icon name="trash" size="18" color="#ff4d4f"></up-icon>
 					</view>
 				</view>
@@ -79,105 +80,112 @@
 
 			<view class="tool-empty" v-else>
 				<up-icon name="file-text" size="50" color="#ddd"></up-icon>
-				<text class="tool-empty-text" v-if="!isReadonly">点击"添加"选择工具</text>
-				<text class="tool-empty-text" v-else>暂无工具记录</text>
+				<text class="tool-empty-text" v-if="!materialReadonly">点击“添加”选择耗材</text>
+				<text class="tool-empty-text" v-else>暂无耗材记录</text>
 			</view>
 		</view>
 
-		<!-- ═══ 完成情况 ═══ -->
-		<view class="section-card">
+		<!-- ═══ 耗材申请备注 ═══ -->
+		<view class="section-card" v-if="isInstaller">
 			<view class="section-header">
 				<view class="section-title-wrap">
-					<text class="required" v-if="!isReadonly">*</text>
-					<text class="section-title">完成情况</text>
+					<text class="section-title">申请备注</text>
 				</view>
 			</view>
-			<view class="textarea-wrap" v-if="!isReadonly">
-				<textarea class="complete-textarea" v-model="completeText" placeholder="请填写安装完成情况..."
+			<view class="textarea-wrap" v-if="!materialReadonly">
+				<textarea class="complete-textarea" v-model="materialRemark" placeholder="选填：请填写耗材申请说明"
 					placeholder-class="placeholder-style" maxlength="500"></textarea>
-				<text class="text-count">{{ completeText.length }}/500</text>
+				<text class="text-count">{{ materialRemark.length }}/500</text>
 			</view>
 			<view class="complete-readonly" v-else>
-				<text class="complete-text">{{ completeText || '暂无完成情况记录' }}</text>
+				<text class="complete-text">{{ materialRemark || '暂无申请备注' }}</text>
 			</view>
 		</view>
 
-		<!-- ═══ 安装图片 ═══ -->
+		<!-- ═══ 施工时间线：客户与师傅均可查看 ═══ -->
 		<view class="section-card">
 			<view class="section-header">
 				<view class="section-title-wrap">
-					<text class="section-title">{{ isReadonly ? '安装图片' : '上传安装图片' }}</text>
-					<text class="upload-tip" v-if="!isReadonly">（最多9张）</text>
+					<text class="section-title">施工进度</text>
 				</view>
 			</view>
+			<view class="progress-list" v-if="progressRecords.length">
+				<view class="progress-item" v-for="record in progressRecords" :key="record.id">
+					<view class="progress-dot" :class="{ completion: record.type === 'COMPLETION' }"></view>
+					<view class="progress-content">
+						<view class="progress-heading">
+							<text class="progress-type">{{ record.typeLabel }}</text>
+							<text class="progress-time">{{ record.submittedAt }}</text>
+						</view>
+						<text class="progress-description">{{ record.description }}</text>
+						<view class="image-grid" v-if="record.images.length">
+							<view class="image-item" v-for="(img, imageIndex) in record.images" :key="img.id">
+								<image class="preview-img" :src="img.url" mode="aspectFill"
+									@click="previewRecordImages(record.images, imageIndex)"></image>
+							</view>
+						</view>
+					</view>
+				</view>
+			</view>
+			<view class="tool-empty" v-else>
+				<up-icon name="photo" size="50" color="#ddd"></up-icon>
+				<text class="tool-empty-text">暂无施工进度</text>
+			</view>
+		</view>
 
-			<view class="image-grid" v-if="imageList.length > 0">
-				<view class="image-item" v-for="(img, index) in imageList" :key="index">
-					<image class="preview-img" :src="img" mode="aspectFill" @click="previewImage(index)"></image>
-					<view class="image-delete" @click.stop="deleteImage(index)" v-if="!isReadonly">
+		<!-- ═══ 指派师傅提交施工进度或完工 ═══ -->
+		<view class="section-card" v-if="canOperateProgress">
+			<view class="section-header">
+				<view class="section-title-wrap"><text class="section-title">施工操作</text></view>
+			</view>
+			<view class="progress-tabs">
+				<view class="progress-tab" :class="{ active: progressType === 'PROGRESS' }" @click="progressType = 'PROGRESS'">提交进度</view>
+				<view class="progress-tab" :class="{ active: progressType === 'COMPLETION' }" @click="progressType = 'COMPLETION'">提交完工</view>
+			</view>
+			<view class="textarea-wrap">
+				<textarea class="complete-textarea" v-model="progressDescription"
+					:placeholder="progressType === 'COMPLETION' ? '必填：填写完工说明' : '必填：填写本次施工进度'"
+					placeholder-class="placeholder-style" maxlength="2000"></textarea>
+				<text class="text-count">{{ progressDescription.length }}/2000</text>
+			</view>
+			<view class="upload-heading">
+				<text>{{ progressType === 'COMPLETION' ? '完工图片（至少1张）' : '施工图片（选填）' }}</text>
+				<text class="upload-tip">最多9张</text>
+			</view>
+			<view class="image-grid">
+				<view class="image-item" v-for="(img, index) in progressImages" :key="img.id">
+					<image class="preview-img" :src="img.url" mode="aspectFill" @click="previewProgressImages(index)"></image>
+					<view class="image-delete" @click.stop="deleteProgressImage(index)">
 						<up-icon name="close" size="12" color="#fff"></up-icon>
 					</view>
 				</view>
-				<view class="image-add" v-if="!isReadonly && imageList.length < 9" @click="chooseImage">
+				<view class="image-add" v-if="progressImages.length < 9" @click="chooseProgressImages">
 					<up-icon name="plus" size="32" color="#ccc"></up-icon>
 					<text class="add-text">上传图片</text>
 				</view>
 			</view>
-
-			<view class="image-add" v-else-if="!isReadonly" @click="chooseImage">
-				<up-icon name="plus" size="32" color="#ccc"></up-icon>
-				<text class="add-text">上传图片</text>
-			</view>
-
-			<view class="tool-empty" v-else>
-				<up-icon name="photo" size="50" color="#ddd"></up-icon>
-				<text class="tool-empty-text">暂无安装图片</text>
-			</view>
-		</view>
-
-		<!-- ═══ 用户评价 ═══ -->
-		<view class="section-card" v-if="isReadonly">
-			<view class="section-header">
-				<view class="section-title-wrap">
-					<text class="section-title">{{ userRole === 'installer' ? '用户评价' : '我的评价' }}</text>
-				</view>
-			</view>
-
-			<view class="evaluation-content" v-if="evaluation">
-				<view class="star-display">
-					<up-icon v-for="i in 5" :key="i" :name="i <= evaluation.score ? 'star-fill' : 'star'"
-						size="32" :color="i <= evaluation.score ? '#ff9800' : '#ddd'"></up-icon>
-					<text class="star-label">{{ evaluation.labels && evaluation.labels[0] }}</text>
-				</view>
-				<text class="evaluate-text">{{ evaluation.content }}</text>
-				<view class="evaluate-images" v-if="evaluation.images && evaluation.images.length > 0">
-					<image class="evaluate-img" v-for="(img, idx) in evaluation.images" :key="idx" :src="img"
-						mode="aspectFill" @click="previewEvaluateImage(idx)"></image>
-				</view>
-			</view>
-
-			<view class="tool-empty" v-else>
-				<up-icon name="chat" size="50" color="#ddd"></up-icon>
-				<text class="tool-empty-text">评价内容为空</text>
+			<text class="upload-progress" v-if="uploadProgress">{{ uploadProgress }}</text>
+			<view class="inline-submit" :class="{ disabled: !canSubmitProgress || submittingProgress }" @click="handleProgressSubmit">
+				<text>{{ submittingProgress ? '提交中...' : (progressType === 'COMPLETION' ? '确认完工' : '提交进度') }}</text>
 			</view>
 		</view>
 
 		<view class="bottom-space"></view>
 
 		<!-- ═══ 底部提交按钮 ═══ -->
-		<view class="submit-bar" v-if="!isReadonly">
+		<view class="submit-bar" v-if="isInstaller && !materialReadonly">
 			<view class="submit-btn" :class="{ disabled: !canSubmit }" @click="handleSubmit">
-				<text>完成提交</text>
+				<text>提交耗材申请</text>
 			</view>
 		</view>
 
-		<!-- ═══ 工具选择弹出框 ═══ -->
+		<!-- ═══ 耗材选择弹出框 ═══ -->
 		<up-popup :show="showToolPopup" mode="bottom" round="20" :closeOnClickOverlay="true" @close="closeToolPopup"
 			:customStyle="{ width: '100%' }">
 			<view class="tool-popup" :style="{ height: popupHeight + 'px' }">
 				<!-- 头部 -->
 				<view class="popup-header">
-					<text class="popup-title">选择工具</text>
+					<text class="popup-title">选择耗材</text>
 					<view class="popup-close" @click="closeToolPopup">
 						<up-icon name="close" size="20" color="#999"></up-icon>
 					</view>
@@ -185,7 +193,7 @@
 
 				<!-- 搜索框 -->
 				<view class="popup-search">
-					<up-search v-model="searchKeyword" placeholder="搜索工具名称" :showAction="false" bgColor="#f5f5f5"
+					<up-search v-model="searchKeyword" placeholder="搜索耗材名称" :showAction="false" bgColor="#f5f5f5"
 						shape="round" height="40">
 					</up-search>
 					<view class="search-btn">搜索</view>
@@ -227,7 +235,7 @@
 					</view>
 					<view class="popup-empty" v-if="filteredTools.length === 0">
 						<up-icon name="empty-list" size="60" color="#9aa8b6"></up-icon>
-						<text class="popup-empty-text">暂无相关工具</text>
+						<text class="popup-empty-text">暂无相关耗材</text>
 					</view>
 					<view style="height: 20rpx;"></view>
 				</scroll-view>
@@ -250,13 +258,13 @@
 		computed
 	} from 'vue'
 	import {
+		onBackPress,
 		onLoad
 	} from '@dcloudio/uni-app'
 	import {
 	orderApi,
 	consumablesApi,
-	authApi,
-	evaluationApi
+	authApi
 	} from '@/api/api.js'
 	import { getAuthToken } from '@/utils/auth-session.js'
 
@@ -283,11 +291,11 @@
 		image: ''
 	})
 
-	// 施工编辑入口仅对安装师傅开放；直接 URL 的越权仍必须由后端拒绝。
-	const isReadonly = computed(() => userRole.value !== 'installer' || orderInfo.value.status === '已完成')
-const userRole = ref('')
-const evaluation = ref(null)
-const evaluationLoading = ref(false)
+	const materialRequest = ref(null)
+	// 耗材申请仅允许指派师傅提交一次；重复提交由服务端幂等/冲突规则兜底。
+	const userRole = ref('')
+	const isInstaller = computed(() => userRole.value === 'installer')
+	const materialReadonly = computed(() => !isInstaller.value || !['待上门', '处理中'].includes(orderInfo.value.status) || Boolean(materialRequest.value))
 
 const statusClass = computed(() => {
 		const s = orderInfo.value.status
@@ -316,104 +324,142 @@ const statusClass = computed(() => {
 		})
 	}
 
-	// ===== 完成情况 =====
-	const completeText = ref('')
+	const materialRemark = ref('')
+	const progressRecords = ref([])
+	const progressType = ref('PROGRESS')
+	const progressDescription = ref('')
+	const progressImages = ref([])
+	const uploadProgress = ref('')
+	const submittingProgress = ref(false)
+	const allowLeave = ref(false)
+	const canOperateProgress = computed(() => isInstaller.value && ['待上门', '处理中'].includes(orderInfo.value.status))
+	const hasMaterialDraft = computed(() => !materialReadonly.value && (toolList.value.length > 0 || Boolean(materialRemark.value.trim())))
+	const canSubmitProgress = computed(() => {
+		if (!progressDescription.value.trim()) return false
+		return progressType.value !== 'COMPLETION' || progressImages.value.length > 0
+	})
 
-	// ===== 图片上传 =====
-	const imageList = ref([])
+	const previewRecordImages = (images, index) => {
+		const urls = images.map(image => image.url)
+		uni.previewImage({ current: urls[index], urls })
+	}
 
-	const chooseImage = () => {
-		const remaining = 9 - imageList.value.length
-		if (remaining <= 0) {
-			uni.showToast({
-				title: '最多上传9张图片',
-				icon: 'none'
-			});
-			return
-		}
+	const previewProgressImages = (index) => {
+		const urls = progressImages.value.map(image => image.url)
+		uni.previewImage({ current: urls[index], urls })
+	}
+
+	const deleteProgressImage = (index) => {
+		progressImages.value.splice(index, 1)
+	}
+
+	const chooseProgressImages = () => {
+		const remaining = 9 - progressImages.value.length
+		if (remaining <= 0) return
 		uni.chooseImage({
 			count: remaining,
 			sizeType: ['compressed'],
 			sourceType: ['album', 'camera'],
 			success: async (res) => {
-				const tempFilePaths = res.tempFilePaths || []
-				if (tempFilePaths.length === 0) {
-					uni.showToast({ title: '未选择图片', icon: 'none' })
-					return
-				}
-				uni.showLoading({
-					title: '上传中...',
-					mask: true
-				})
-				let failCount = 0
-				try {
-					// 逐张上传（loading 由本处统一控制，upload 传 loading:false 避免双重 loading 冲突）
-					for (const path of tempFilePaths) {
-						try {
-							const upRes = await orderApi.uploadImage(path, {}, { loading: false })
-							if (upRes.code === 200 && upRes.data && upRes.data.url) {
-								imageList.value.push(upRes.data.url)
-							} else {
-								failCount++
-							}
-						} catch (e) {
-							failCount++
+				const paths = res.tempFilePaths || []
+				let failed = 0
+				for (let index = 0; index < paths.length; index++) {
+					uploadProgress.value = `正在上传 ${index + 1}/${paths.length}`
+					const uploadRes = await orderApi.uploadImage(paths[index], {}, {
+						loading: false,
+						onProgress: event => {
+							uploadProgress.value = `正在上传 ${index + 1}/${paths.length}（${event.progress}%）`
 						}
+					})
+					const file = uploadRes.code === 200 ? uploadRes.data : null
+					if (file && file.id && file.url) {
+						progressImages.value.push({ id: Number(file.id), url: file.url })
+					} else {
+						failed++
 					}
-					if (failCount > 0) {
-						uni.showToast({ title: `${failCount}张上传失败，请重试`, icon: 'none' })
-					}
-				} finally {
-					uni.hideLoading()
 				}
+				uploadProgress.value = ''
+				if (failed) uni.showToast({ title: `${failed}张上传失败，可重新选择`, icon: 'none' })
 			},
 			fail: (err) => {
-				const errMsg = (err && err.errMsg) || ''
-				console.error('chooseImage fail:', err)
-				// 用户取消不提示
-				if (errMsg.indexOf('cancel') !== -1) return
-				// 隐私协议未同意等具体错误给出明确提示
-				if (errMsg.indexOf('privacy') !== -1 || errMsg.indexOf('authorize') !== -1) {
-					uni.showToast({ title: '请同意隐私协议并授权相册/相机权限', icon: 'none', duration: 2000 })
-				} else {
-					uni.showToast({ title: `图片选择失败：${errMsg || '请重试'}`, icon: 'none', duration: 2000 })
+				if (!String(err?.errMsg || '').includes('cancel')) {
+					uni.showToast({ title: '图片选择失败，请重试', icon: 'none' })
 				}
 			}
 		})
 	}
 
-	const deleteImage = (index) => {
+	const refreshProgress = async () => {
+		const res = await orderApi.getProgress(orderId.value, { loading: false })
+		if (res.code === 200) progressRecords.value = res.data || []
+	}
+
+	const handleProgressSubmit = () => {
+		if (progressType.value === 'COMPLETION' && hasMaterialDraft.value) {
+			uni.showToast({ title: '请先提交或清空耗材申请', icon: 'none' })
+			return
+		}
+		if (!canSubmitProgress.value || submittingProgress.value) {
+			uni.showToast({
+				title: progressType.value === 'COMPLETION' && !progressImages.value.length ? '完工至少上传一张图片' : '请填写施工说明',
+				icon: 'none'
+			})
+			return
+		}
 		uni.showModal({
-			title: '提示',
-			content: '确定删除这张图片吗？',
-			success: (res) => {
-				if (res.confirm) imageList.value.splice(index, 1)
+			title: progressType.value === 'COMPLETION' ? '确认提交完工' : '确认提交进度',
+			content: progressType.value === 'COMPLETION' ? '提交后订单将进入待评价，且不能重复完工。' : '提交后客户可在订单详情查看本条进度。',
+			success: async ({ confirm }) => {
+				if (!confirm) return
+				submittingProgress.value = true
+				try {
+					const payload = {
+						description: progressDescription.value.trim(),
+						fileIds: progressImages.value.map(image => image.id)
+					}
+					const res = progressType.value === 'COMPLETION'
+						? await orderApi.complete(orderId.value, payload)
+						: await orderApi.submitProgress(orderId.value, payload)
+					if (res.code !== 200) return
+					progressDescription.value = ''
+					progressImages.value = []
+					await refreshProgress()
+					const orderRes = await orderApi.getDetail(orderId.value)
+					if (orderRes.code === 200) orderInfo.value = orderRes.data || {}
+					uni.showToast({ title: '提交成功', icon: 'success' })
+				} finally {
+					submittingProgress.value = false
+				}
 			}
 		})
 	}
 
-	const previewImage = (index) => {
-	uni.previewImage({
-		current: imageList.value[index],
-		urls: imageList.value
+	const hasUnsavedChanges = computed(() => {
+		return hasMaterialDraft.value ||
+			Boolean(progressDescription.value.trim()) || progressImages.value.length > 0
 	})
-}
 
-const previewEvaluateImage = (index) => {
-	if (!evaluation.value || !evaluation.value.images) return
-	uni.previewImage({
-		current: evaluation.value.images[index],
-		urls: evaluation.value.images
+	onBackPress(() => {
+		if (allowLeave.value || !hasUnsavedChanges.value || submitting.value || submittingProgress.value) return false
+		uni.showModal({
+			title: '离开当前页面？',
+			content: '尚未提交的耗材、施工说明或图片将不会保存。',
+			success: ({ confirm }) => {
+				if (!confirm) return
+				allowLeave.value = true
+				uni.navigateBack()
+			}
+		})
+		return true
 	})
-}
 
-	// ===== 工具选择弹出框 =====
+	// ===== 耗材选择弹出框 =====
 	const showToolPopup = ref(false)
 	const searchKeyword = ref('')
 	const currentCategory = ref(0)
 	const categories = ref(['全部'])
 
-	// 工具列表（由后端耗材接口拉取）
+	// 耗材列表（由后端耗材接口拉取）
 	const popupTools = ref([])
 	const popupLoading = ref(false)
 
@@ -527,7 +573,7 @@ const previewEvaluateImage = (index) => {
 	const confirmTools = () => {
 		if (selectedCount.value === 0) {
 			uni.showToast({
-				title: '请至少选择一个工具',
+				title: '请至少选择一个耗材',
 				icon: 'none'
 			});
 			return
@@ -537,19 +583,20 @@ const previewEvaluateImage = (index) => {
 			id: item.id,
 			title: item.title,
 			spec: item.spec,
+			unit: item.unit,
 			price: item.price,
 			image: item.image,
 			qty: item.qty
 		}))
 		showToolPopup.value = false
 		uni.showToast({
-			title: '已更新工具清单',
+			title: '已更新耗材清单',
 			icon: 'success'
 		})
 	}
 
 	// ===== 提交 =====
-	const canSubmit = computed(() => toolList.value.length > 0 && completeText.value.trim().length > 0)
+	const canSubmit = computed(() => toolList.value.length > 0)
 	const submitting = ref(false)
 
 	const handleSubmit = () => {
@@ -562,8 +609,7 @@ const previewEvaluateImage = (index) => {
 		}
 		if (!canSubmit.value) {
 			const tips = []
-			if (toolList.value.length === 0) tips.push('工具清单')
-			if (completeText.value.trim().length === 0) tips.push('完成情况')
+			if (toolList.value.length === 0) tips.push('耗材清单')
 			uni.showToast({
 				title: `请填写${tips.join('、')}`,
 				icon: 'none'
@@ -572,7 +618,7 @@ const previewEvaluateImage = (index) => {
 		}
 		uni.showModal({
 			title: '确认提交',
-			content: '提交后订单状态将变更为"已完成"，请确认信息无误。',
+			content: '提交后后台可查看备货清单，请确认耗材和数量无误。',
 			success: async (res) => {
 				if (!res.confirm) return
 				if (submitting.value) return
@@ -582,27 +628,22 @@ const previewEvaluateImage = (index) => {
 					mask: true
 				})
 				try {
-					await orderApi.update(orderId.value, {
-						status: 'done',
-						completeText: completeText.value,
-						tools: toolList.value.map(t => ({
-							id: t.id,
-							title: t.title,
-							spec: t.spec,
-							qty: t.qty
-						})),
-						images: imageList.value
+					const submitRes = await orderApi.submitMaterials(orderId.value, {
+						items: toolList.value.map(t => ({ productId: t.id, quantity: t.qty })),
+						remark: materialRemark.value.trim()
 					})
-					uni.hideLoading()
+					if (submitRes.code !== 200) return
+					materialRequest.value = submitRes.data || { statusLabel: '待备货' }
+					const orderRes = await orderApi.getDetail(orderId.value)
+					if (orderRes.code === 200) orderInfo.value = orderRes.data || {}
 					uni.showToast({
-						title: '提交成功',
+						title: '耗材申请已提交',
 						icon: 'success'
 					})
-					setTimeout(() => uni.navigateBack(), 1500)
 				} catch (err) {
-					uni.hideLoading()
 					// request.js 已统一处理错误提示
 				} finally {
+					uni.hideLoading()
 					submitting.value = false
 				}
 			}
@@ -634,10 +675,11 @@ const previewEvaluateImage = (index) => {
 	}
 	orderId.value = id
 	try {
-		// 并行获取订单详情、当前用户角色、评价
-		const [orderRes, userRes] = await Promise.all([
+		// 并行获取订单详情与当前用户角色
+		const [orderRes, userRes, progressRes] = await Promise.all([
 			orderApi.getDetail(id),
-			authApi.getUserInfo()
+			authApi.getUserInfo(),
+			orderApi.getProgress(id, { loading: false })
 		])
 		if (userRes.code === 200 && userRes.data) {
 			userRole.value = userRes.data.role || ''
@@ -646,39 +688,27 @@ const previewEvaluateImage = (index) => {
 		// 订单字段已与模板对齐，res.data 直接赋值
 		const data = orderRes.data || {}
 		orderInfo.value = data
-		// 已完成订单为只读，回填完工信息（tools 字段与耗材统一用 title）
-		if (data.status === '已完成') {
-			completeText.value = data.completeText || ''
-			toolList.value = (data.tools || []).map(t => ({
-				id: t.id,
-				title: t.title || '',
-				spec: t.spec || '',
-				qty: t.qty || 1,
-				image: t.image || '',
-				price: t.price || 0
-			}))
-			imageList.value = data.images || []
-			// 加载评价
-			loadEvaluation(id)
+		if (progressRes.code === 200) progressRecords.value = progressRes.data || []
+		if (userRole.value === 'installer') {
+			const materialsRes = await orderApi.getMaterials(id, { loading: false, silent: true })
+			if (materialsRes.code === 200 && materialsRes.data) {
+				materialRequest.value = materialsRes.data
+				materialRemark.value = materialsRes.data.remark || ''
+				toolList.value = (materialsRes.data.materials || []).map(item => ({
+					id: item.productId,
+					title: item.name || '',
+					spec: item.spec || '',
+					unit: item.unit || '',
+					qty: Number(item.count || 1),
+					price: Number(item.displayPrice || 0)
+				}))
+			}
 		}
 	} catch (err) {
 		// request.js 已统一处理错误提示
 	}
 })
 
-const loadEvaluation = async (id) => {
-	evaluationLoading.value = true
-	try {
-		const res = await evaluationApi.getByOrderId(id)
-		if (res.code === 200) {
-			evaluation.value = res.data || null
-		}
-	} catch (err) {
-		// request.js 已统一处理错误提示
-	} finally {
-		evaluationLoading.value = false
-	}
-}
 </script>
 
 <style scoped lang="scss">
@@ -1057,6 +1087,128 @@ const loadEvaluation = async (id) => {
 		font-size: 28rpx;
 		color: $text-main;
 		line-height: 1.6;
+	}
+
+	.progress-list {
+		display: flex;
+		flex-direction: column;
+	}
+
+	.progress-item {
+		position: relative;
+		display: flex;
+		padding: 0 0 28rpx 32rpx;
+		border-left: 2rpx solid #dbeafe;
+		margin-left: 8rpx;
+
+		&:last-child {
+			padding-bottom: 0;
+		}
+	}
+
+	.progress-dot {
+		position: absolute;
+		left: -9rpx;
+		top: 2rpx;
+		width: 16rpx;
+		height: 16rpx;
+		border-radius: 50%;
+		background: $primary;
+		border: 4rpx solid #e8f2ff;
+
+		&.completion {
+			background: #16a34a;
+			border-color: #dcfce7;
+		}
+	}
+
+	.progress-content {
+		width: 100%;
+	}
+
+	.progress-heading {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		margin-bottom: 12rpx;
+	}
+
+	.progress-type {
+		font-size: 27rpx;
+		font-weight: 600;
+		color: $text-main;
+	}
+
+	.progress-time {
+		font-size: 22rpx;
+		color: $text-light;
+	}
+
+	.progress-description {
+		display: block;
+		font-size: 26rpx;
+		line-height: 1.6;
+		color: $text-sub;
+		margin-bottom: 16rpx;
+	}
+
+	.progress-tabs {
+		display: flex;
+		padding: 6rpx;
+		background: #f1f5f9;
+		border-radius: 12rpx;
+		margin-bottom: 20rpx;
+	}
+
+	.progress-tab {
+		flex: 1;
+		padding: 16rpx 0;
+		border-radius: 10rpx;
+		text-align: center;
+		font-size: 26rpx;
+		color: $text-sub;
+
+		&.active {
+			background: #fff;
+			color: $primary;
+			font-weight: 600;
+			box-shadow: 0 2rpx 8rpx rgba(15, 23, 42, 0.08);
+		}
+	}
+
+	.upload-heading {
+		display: flex;
+		align-items: center;
+		margin: 24rpx 0 16rpx;
+		font-size: 26rpx;
+		color: $text-main;
+	}
+
+	.upload-progress {
+		display: block;
+		font-size: 24rpx;
+		color: $primary;
+		margin-top: 14rpx;
+	}
+
+	.inline-submit {
+		height: 80rpx;
+		border-radius: 40rpx;
+		background: linear-gradient(135deg, #3b8eea, #0b63ce);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		margin-top: 24rpx;
+
+		text {
+			font-size: 28rpx;
+			font-weight: 600;
+			color: #fff;
+		}
+
+		&.disabled {
+			opacity: 0.5;
+		}
 	}
 
 	/* ═══ 图片上传 ═══ */

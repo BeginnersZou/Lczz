@@ -3,8 +3,9 @@
 const viteEnv = import.meta.env || {}
 const nodeEnv = typeof process !== 'undefined' && process.env ? process.env : {}
 const configuredApiBaseUrl = viteEnv.VITE_API_BASE_URL || nodeEnv.VUE_APP_API_BASE_URL
-// 当前仅用于本地联调；正式域名确定后通过环境变量覆盖，不在代码中硬编码。
-const baseUrl = (configuredApiBaseUrl || 'http://localhost:8080/api/v1').replace(/\/+$/, '')
+// 当前仅用于本地联调；真机需把 127.0.0.1 替换为后端电脑局域网 IP。
+// 正式域名确定后通过环境变量覆盖，不在代码中提前写线上域名。
+const baseUrl = (configuredApiBaseUrl || 'http://127.0.0.1:8080/api/v1').replace(/\/+$/, '')
 
 // ═══ 虚拟登录开关 ═══
 // true：后端不可用时，微信登录失败自动走虚拟登录（mock token），
