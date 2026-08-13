@@ -64,7 +64,7 @@
         </el-form-item>
 
         <!-- 指派师傅区域 -->
-        <el-form-item label="指派师傅">
+        <el-form-item label="指派师傅" required>
           <div class="master-select-wrap">
             <el-button plain @click="openMasterDialog">添加</el-button>
           </div>
@@ -131,7 +131,7 @@
     <el-dialog v-model="masterDialogVisible" title="指派师傅" width="70%" top="20vh">
       <div class="master-toolbar">
         <el-input v-model="masterSearch" clearable placeholder="搜索师傅姓名或手机号" :prefix-icon="Search" @input="handleMasterSearch" />
-        <span>已选择 {{ tempSelectMaster.length }} 位师傅</span>
+        <span>每个订单仅允许选择 1 位师傅</span>
       </div>
       <el-table v-loading="masterLoading" :data="pagedMasterList" :row-key="getMasterKey" border stripe ref="masterTableRef" @selection-change="handleMasterSelection" empty-text="暂无可指派师傅">
         <el-table-column type="selection" width="55" align="center" />
@@ -186,7 +186,7 @@ import { useRouter, useRoute } from 'vue-router'
 import cityData from './city.js'
 import {
   getOrderDetailApi, addOrderApi, updateOrderApi,
-  uploadOrderImageApi, getMasterListApi, cancelOrderApi
+  uploadOrderImageApi, bindOrderFileApi, getMasterListApi, cancelOrderApi
 } from '@/api/orders'
 import { useUnsavedChanges } from '@/composables/useUnsavedChanges'
 
@@ -234,7 +234,8 @@ const form = reactive({
   fileList: [],
   dealer: '',
   contact: '',
-  dealerAddress: ''
+  dealerAddress: '',
+  adminRemark: ''
 })
 
 const rules = {
@@ -305,9 +306,11 @@ async function loadEditData() {
       const url = typeof item === 'string' ? item : (item.url || item.previewUrl)
       return {
         uid: fileUid++,
+        id: typeof item === 'string' ? null : item.id,
         file: null,
         previewUrl: url,
         url,
+        bound: true,
         uploading: false
       }
     }).filter(f => f.url)
@@ -326,7 +329,8 @@ async function loadEditData() {
       fileList,
       dealer: res.dealer || '',
       contact: res.contact || '',
-      dealerAddress: res.dealerAddress || ''
+      dealerAddress: res.dealerAddress || '',
+      adminRemark: res.adminRemark || ''
     })
     selectedMasterList.value = res.selectedMasterList || res.masterList || []
     formIsDirty.value = false
@@ -384,27 +388,28 @@ function restoreMasterSelection() {
 function handleMasterSelection(selection) {
   // 回显期间不处理，避免 clearSelection 把临时选择清空
   if (isRestoring.value) return
-  const pageKeys = new Set(pagedMasterList.value.map(getMasterKey))
-  const keep = tempSelectMaster.value.filter(item => !pageKeys.has(getMasterKey(item)))
-  tempSelectMaster.value = [...keep, ...selection]
+  if (selection.length > 1) {
+    const selected = selection[selection.length - 1]
+    tempSelectMaster.value = [selected]
+    ElMessage.warning('一个订单只能指派一位师傅')
+    nextTick(() => {
+      isRestoring.value = true
+      masterTableRef.value?.clearSelection()
+      masterTableRef.value?.toggleRowSelection(selected, true)
+      isRestoring.value = false
+    })
+    return
+  }
+  tempSelectMaster.value = selection.slice(0, 1)
 }
 
 // 确认选择：临时选择覆盖已选（去重保序），关闭弹窗；编辑态立即调指派接口持久化
 async function confirmSelectMaster() {
-  // 以 id 去重，保留勾选顺序；允许清空（不再强制至少一位）
-  const result = []
-  const keySet = new Set()
-  tempSelectMaster.value.forEach(m => {
-    const key = getMasterKey(m)
-    if (!keySet.has(key)) {
-      keySet.add(key)
-      result.push(m)
-    }
-  })
+  const result = tempSelectMaster.value.slice(0, 1)
   selectedMasterList.value = result
   masterDialogVisible.value = false
   formIsDirty.value = true
-  ElMessage.success(result.length > 0 ? `已选择 ${result.length} 位师傅，提交订单后生效` : '已清空指派师傅')
+  ElMessage.success(result.length > 0 ? '已选择安装师傅，提交订单后生效' : '已清空指派师傅')
 }
 
 // 弹窗翻页后重新回显已选勾选
@@ -478,6 +483,7 @@ async function handleFileUpload(event) {
       file,
       previewUrl,
       url: '',
+      bound: false,
       uploading: true
     })
     form.fileList.push(item)
@@ -488,6 +494,7 @@ async function handleFileUpload(event) {
       const res = await uploadOrderImageApi(formData)
       // 上传成功：用真实 url 替换预览，释放临时 blob
       URL.revokeObjectURL(item.previewUrl)
+      item.id = res.id
       item.url = res.url
       item.previewUrl = res.url
       item.file = null
@@ -528,6 +535,10 @@ async function handleSubmit() {
   } catch {
     return
   }
+  if (selectedMasterList.value.length !== 1) {
+    ElMessage.warning('请选择一位安装师傅')
+    return
+  }
   submitLoading.value = true
   try {
     const submitData = {
@@ -539,20 +550,20 @@ async function handleSubmit() {
       addressDetail: form.addressDetail,
       orderStartTime: form.orderStartTime,
       orderEndTime: form.orderEndTime,
-      // fileList 直接用已上传的真实 url 数组
-      fileList: form.fileList.map(f => f.url).filter(Boolean),
       masterIds: selectedMasterList.value.map(m => m.id).filter(id => id != null),
-      dealer: form.dealer,
-      contact: form.contact,
-      dealerAddress: form.dealerAddress
+      adminRemark: form.adminRemark || ''
     }
+    let savedOrder
     if (isEdit.value) {
-      await updateOrderApi(orderId.value, submitData)
+      savedOrder = await updateOrderApi(orderId.value, submitData)
       ElMessage.success('更新成功')
     } else {
-      await addOrderApi(submitData)
+      savedOrder = await addOrderApi(submitData)
       ElMessage.success('新增成功')
     }
+    const savedOrderId = savedOrder?.id || orderId.value
+    const unboundFiles = form.fileList.filter(file => file.id && !file.bound)
+    await Promise.all(unboundFiles.map((file, index) => bindOrderFileApi(file.id, savedOrderId, index)))
     formIsDirty.value = false
     returnToOrderList()
   } catch {

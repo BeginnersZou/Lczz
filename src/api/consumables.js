@@ -1,4 +1,52 @@
 import request from '@/utils/request'
+import { uploadFileApi, getFileId } from './files'
+import { createCsvBlob } from '@/utils/export'
+
+function normalizeProduct(item = {}) {
+  return {
+    ...item,
+    productCode: item.productCode || item.code || '',
+    categoryId: item.categoryId == null ? null : Number(item.categoryId),
+    category: Array.isArray(item.category) ? item.category : [],
+    image: item.image || '',
+    coverFileId: item.coverFileId || getFileId(item.image),
+    detailImages: (item.detailImages || []).map(file => ({
+      ...file,
+      id: getFileId(file),
+      url: typeof file === 'string' ? file : (file.url || '')
+    })),
+    createTime: item.createTime || item.createdAt || '',
+    enabled: item.enabled !== false
+  }
+}
+
+function toProductPayload(data = {}) {
+  return {
+    productCode: data.productCode || data.code || undefined,
+    name: data.name,
+    categoryId: data.categoryId == null ? null : Number(data.categoryId),
+    spec: data.spec || '',
+    unit: data.unit,
+    stock: Number(data.stock || 0),
+    price: Number(data.price || 0),
+    remark: data.remark || '',
+    coverFileId: data.coverFileId || getFileId(data.image),
+    detailFileIds: (data.detailFileIds || data.detailImages || []).map(getFileId).filter(Boolean),
+    enabled: data.enabled !== false,
+    sortOrder: Number(data.sortOrder || 0)
+  }
+}
+
+async function getAllProducts(params = {}) {
+  const first = await getConsumablesListApi({ ...params, page: 1, pageSize: 100 })
+  const rows = [...(first.list || [])]
+  const pages = Math.ceil(Number(first.total || 0) / 100)
+  for (let page = 2; page <= pages; page++) {
+    const result = await getConsumablesListApi({ ...params, page, pageSize: 100 })
+    rows.push(...(result.list || []))
+  }
+  return rows
+}
 
 /**
  * 耗材管理模块 API
@@ -26,7 +74,7 @@ export function getConsumablesListApi(params) {
     url: '/consumables/list',
     method: 'get',
     params
-  })
+  }).then(result => ({ ...result, list: (result?.list || []).map(normalizeProduct) }))
 }
 
 /**
@@ -38,7 +86,11 @@ export function getConsumablesDetailApi(id) {
   return request({
     url: `/consumables/detail/${id}`,
     method: 'get'
-  })
+  }).then(normalizeProduct)
+}
+
+export function getConsumableCategoriesApi() {
+  return request({ url: '/consumables/categories', method: 'get' })
 }
 
 /**
@@ -58,7 +110,7 @@ export function addConsumablesApi(data) {
   return request({
     url: '/consumables',
     method: 'post',
-    data
+    data: toProductPayload(data)
   })
 }
 
@@ -72,7 +124,15 @@ export function updateConsumablesApi(id, data) {
   return request({
     url: `/consumables/${id}`,
     method: 'put',
-    data
+    data: toProductPayload(data)
+  })
+}
+
+export function setConsumableEnabledApi(id, enabled) {
+  return request({
+    url: `/consumables/${id}/enabled`,
+    method: 'patch',
+    data: { enabled }
   })
 }
 
@@ -94,11 +154,7 @@ export function deleteConsumablesApi(id) {
  * @returns {Promise<{url: string}>}
  */
 export function uploadConsumablesImageApi(formData) {
-  return request({
-    url: '/consumables/upload',
-    method: 'post',
-    data: formData
-  })
+  return uploadFileApi(formData)
 }
 
 /**
@@ -108,11 +164,15 @@ export function uploadConsumablesImageApi(formData) {
  * @param {string} [params.category]
  * @returns {Promise<Blob>}
  */
-export function exportConsumablesApi(params) {
-  return request({
-    url: '/consumables/export',
-    method: 'get',
-    params,
-    responseType: 'blob'
-  })
+export async function exportConsumablesApi(params) {
+  const rows = await getAllProducts(params)
+  return createCsvBlob([
+    { label: '产品编码', value: row => row.productCode },
+    { label: '名称', value: row => row.name },
+    { label: '分类', value: row => row.category.join('/') },
+    { label: '规格', value: row => row.spec },
+    { label: '单位', value: row => row.unit },
+    { label: '展示库存', value: row => row.stock },
+    { label: '状态', value: row => row.enabled ? '已上架' : '已下架' }
+  ], rows)
 }

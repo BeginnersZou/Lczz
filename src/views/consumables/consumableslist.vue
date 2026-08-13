@@ -98,9 +98,12 @@
         <!-- 创建时间 -->
         <el-table-column prop="createTime" label="创建时间" align="left" />
         <!-- 操作 -->
-        <el-table-column label="操作" align="center" width="220">
+        <el-table-column label="操作" align="center" width="280">
           <template #default="scope">
             <el-button text type="primary" @click="handleEdit(scope.row)">修改</el-button>
+            <el-button text :type="scope.row.enabled ? 'warning' : 'success'" @click="toggleEnabled(scope.row)">
+              {{ scope.row.enabled ? '下架' : '上架' }}
+            </el-button>
             <el-button text type="success" @click="openStockDialog(scope.row)">调整库存</el-button>
             <el-button text type="danger" @click="handleDelete(scope.row)">删除</el-button>
           </template>
@@ -151,7 +154,7 @@ import {
   Plus, Search, Refresh, Download
 } from '@element-plus/icons-vue'
 import { useRouter, useRoute } from 'vue-router'
-import { getConsumablesListApi, deleteConsumablesApi, exportConsumablesApi, updateConsumablesApi } from '@/api/consumables'
+import { getConsumablesListApi, getConsumablesDetailApi, deleteConsumablesApi, exportConsumablesApi, updateConsumablesApi, setConsumableEnabledApi } from '@/api/consumables'
 
 const router = useRouter()
 const route = useRoute()
@@ -237,7 +240,7 @@ async function handleBatchExport() {
     const url = window.URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `耗材列表_${new Date().toLocaleDateString('zh-CN').replace(/\//g, '')}.xlsx`
+    link.download = `耗材列表_${new Date().toLocaleDateString('zh-CN').replace(/\//g, '')}.csv`
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
@@ -263,6 +266,12 @@ function handleAdd() {
  */
 function handleEdit(row) {
   router.push({ name: 'ConsumablesEdit', params: { id: row.id } })
+}
+
+async function toggleEnabled(row) {
+  await setConsumableEnabledApi(row.id, !row.enabled)
+  ElMessage.success(row.enabled ? '已下架' : '已上架')
+  await loadList()
 }
 
 /**
@@ -360,7 +369,9 @@ async function confirmStockChange() {
   }
   stockLoading.value = true
   try {
-    await updateConsumablesApi(row.id, { ...row, stock: nextStock, stockChangeReason: stockForm.reason.trim() })
+    // 列表响应不包含详情图片；先读取完整详情，避免调整库存时误清空图片关系。
+    const detail = await getConsumablesDetailApi(row.id)
+    await updateConsumablesApi(row.id, { ...detail, stock: nextStock })
     ElMessage.success('库存调整成功')
     stockDialogVisible.value = false
     await loadList()
