@@ -52,7 +52,8 @@ const request = (options = {}) => {
     data = {},       // 请求参数
     header = {},     // 额外请求头（可覆盖默认）
     loading = true,  // 是否显示 loading
-    timeout = 10000  // 超时时间（毫秒）
+    timeout = 10000, // 超时时间（毫秒）
+    silent = false   // 预期性探测失败时不弹 Toast
   } = options
 
   if (loading) showLoading()
@@ -109,18 +110,18 @@ const request = (options = {}) => {
           return
         }
         if (body.code === 403) {
-          uni.showToast({ title: body.msg || '无权执行此操作', icon: 'none' })
+          if (!silent) uni.showToast({ title: body.msg || '无权执行此操作', icon: 'none' })
           resolve(body)
           return
         }
         // 其他业务错误：统一 toast 后端返回的 msg
-        uni.showToast({ title: body.msg || '请求失败', icon: 'none' })
+        if (!silent) uni.showToast({ title: body.msg || '请求失败', icon: 'none' })
         resolve(body)
       },
       fail: (err) => {
         const isTimeout = String(err.errMsg || '').includes('timeout')
         const msg = isTimeout ? '请求超时，请重试' : '网络异常，请检查网络'
-        uni.showToast({ title: msg, icon: 'none' })
+        if (!silent) uni.showToast({ title: msg, icon: 'none' })
         resolve({ code: -1, data: null, msg })
       },
       complete: () => {
@@ -139,13 +140,14 @@ const upload = (options = {}) => {
     name = 'file',             // 后端接收的文件字段名
     formData = {},             // 附加参数
     header = {},
-    loading = true
+    loading = true,
+    onProgress
   } = options
 
   if (loading) showLoading()
 
   return new Promise((resolve) => {
-    uni.uploadFile({
+    const uploadTask = uni.uploadFile({
       url: baseUrl + url,
       filePath,
       name,
@@ -202,6 +204,9 @@ const upload = (options = {}) => {
         if (loading) hideLoading()
       }
     })
+    if (typeof onProgress === 'function' && uploadTask && uploadTask.onProgressUpdate) {
+      uploadTask.onProgressUpdate(onProgress)
+    }
   })
 }
 
