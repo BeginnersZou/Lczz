@@ -44,3 +44,36 @@ CREATE TABLE work_order_status_history (
   operator_user_id BIGINT NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
+
+CREATE TABLE material_request (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  request_no VARCHAR(32) UNIQUE NOT NULL,
+  order_id BIGINT NOT NULL,
+  installer_user_id BIGINT NOT NULL,
+  request_status VARCHAR(32) DEFAULT 'PENDING' NOT NULL,
+  remark VARCHAR(500),
+  submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+  completed_by BIGINT, completed_at TIMESTAMP,
+  voided_by BIGINT, voided_at TIMESTAMP, void_reason VARCHAR(500),
+  version INT DEFAULT 0 NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+CREATE TABLE material_request_item (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  request_id BIGINT NOT NULL,
+  product_id BIGINT NOT NULL,
+  product_code_snapshot VARCHAR(64) NOT NULL,
+  product_name_snapshot VARCHAR(255) NOT NULL,
+  model_spec_snapshot VARCHAR(255),
+  unit_snapshot VARCHAR(32) NOT NULL,
+  display_price_snapshot DECIMAL(10,2),
+  requested_quantity DECIMAL(12,3) NOT NULL,
+  prepared_quantity DECIMAL(12,3) DEFAULT 0 NOT NULL,
+  item_status VARCHAR(32) DEFAULT 'PENDING' NOT NULL,
+  version INT DEFAULT 0 NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+  UNIQUE(request_id, product_id)
+);
