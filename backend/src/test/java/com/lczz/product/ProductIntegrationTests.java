@@ -64,8 +64,9 @@ class ProductIntegrationTests {
                 .andExpect(jsonPath("$.data.code").value("CU-001"))
                 .andExpect(jsonPath("$.data.category[0]").value("安装辅料"))
                 .andExpect(jsonPath("$.data.category[1]").value("铜管"))
-                .andExpect(jsonPath("$.data.image").value("/files/cover.jpg"))
-                .andExpect(jsonPath("$.data.detailImages[0].url").value("/files/detail.jpg"))
+                .andExpect(jsonPath("$.data.image").value(org.hamcrest.Matchers.startsWith("/api/files/access/")))
+                .andExpect(jsonPath("$.data.detailImages[0].url")
+                        .value(org.hamcrest.Matchers.startsWith("/api/files/access/")))
                 .andReturn().getResponse().getContentAsString();
         long productId = objectMapper.readTree(response).at("/data/id").asLong();
 

@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.lczz.auth.domain.AuthenticatedUser;
 import com.lczz.auth.domain.RoleCode;
 import com.lczz.common.exception.BusinessException;
+import com.lczz.file.service.FileService;
 import com.lczz.product.persistence.BusinessFileRelationEntity;
 import com.lczz.product.persistence.BusinessFileRelationMapper;
 import com.lczz.product.persistence.FileAssetEntity;
@@ -39,13 +40,16 @@ public class ProductService {
     private final ProductCategoryMapper categoryMapper;
     private final FileAssetMapper fileMapper;
     private final BusinessFileRelationMapper relationMapper;
+    private final FileService fileService;
 
     public ProductService(ProductMapper productMapper, ProductCategoryMapper categoryMapper,
-                          FileAssetMapper fileMapper, BusinessFileRelationMapper relationMapper) {
+                          FileAssetMapper fileMapper, BusinessFileRelationMapper relationMapper,
+                          FileService fileService) {
         this.productMapper = productMapper;
         this.categoryMapper = categoryMapper;
         this.fileMapper = fileMapper;
         this.relationMapper = relationMapper;
+        this.fileService = fileService;
     }
 
     public ProductPage list(AuthenticatedUser actor, int page, int pageSize, String keyword,
@@ -70,7 +74,7 @@ public class ProductService {
             query.in(ProductEntity::getCategoryId, categoryIds);
         }
         Page<ProductEntity> result = productMapper.selectPage(new Page<>(page, pageSize), query);
-        return new ProductPage(toViews(result.getRecords(), false), result.getTotal(), page, pageSize);
+        return new ProductPage(toViews(actor, result.getRecords(), false), result.getTotal(), page, pageSize);
     }
 
     public ProductView detail(AuthenticatedUser actor, long id) {
@@ -78,7 +82,7 @@ public class ProductService {
         if (!isAdmin(actor) && !Boolean.TRUE.equals(product.getEnabled())) {
             throw notFound("PRODUCT_NOT_FOUND", "产品不存在");
         }
-        return toViews(List.of(product), true).getFirst();
+        return toViews(actor, List.of(product), true).getFirst();
     }
 
     public List<CategoryView> categories(AuthenticatedUser actor) {
@@ -177,7 +181,7 @@ public class ProductService {
         productMapper.deleteById(id);
     }
 
-    private List<ProductView> toViews(List<ProductEntity> products, boolean includeDetails) {
+    private List<ProductView> toViews(AuthenticatedUser actor, List<ProductEntity> products, boolean includeDetails) {
         if (products.isEmpty()) return List.of();
         Map<Long, ProductCategoryEntity> categories = categoryMapper.selectBatchIds(products.stream()
                         .map(ProductEntity::getCategoryId).collect(Collectors.toSet())).stream()
@@ -191,7 +195,7 @@ public class ProductService {
                 .filter(Objects::nonNull).collect(Collectors.toSet());
         Map<Long, FileAssetEntity> files = loadFiles(coverIds);
         Map<Long, List<FileView>> detailFiles = includeDetails
-                ? loadDetailFiles(products.stream().map(ProductEntity::getId).toList()) : Map.of();
+                ? loadDetailFiles(actor, products.stream().map(ProductEntity::getId).toList()) : Map.of();
         return products.stream().map(product -> {
             ProductCategoryEntity child = categories.get(product.getCategoryId());
             ProductCategoryEntity parent = child == null ? null : categories.get(child.getParentId());
@@ -202,13 +206,13 @@ public class ProductService {
             return new ProductView(product.getId(), product.getProductCode(), product.getProductName(),
                     product.getCategoryId(), child == null ? null : child.getCategoryCode(), categoryPath,
                     product.getModelSpec(), product.getUnit(), product.getDisplayStock(), product.getDisplayPrice(),
-                    cover == null ? null : cover.getAccessUrl(), product.getDescription(),
+                    cover == null ? null : fileService.issueAccess(actor, cover.getId()).url(), product.getDescription(),
                     detailFiles.getOrDefault(product.getId(), List.of()), Boolean.TRUE.equals(product.getEnabled()),
                     product.getSortOrder(), product.getCreatedAt(), product.getUpdatedAt());
         }).toList();
     }
 
-    private Map<Long, List<FileView>> loadDetailFiles(List<Long> productIds) {
+    private Map<Long, List<FileView>> loadDetailFiles(AuthenticatedUser actor, List<Long> productIds) {
         List<BusinessFileRelationEntity> relations = relationMapper.selectList(
                 new LambdaQueryWrapper<BusinessFileRelationEntity>()
                         .eq(BusinessFileRelationEntity::getBusinessType, BUSINESS_TYPE)
@@ -221,7 +225,7 @@ public class ProductService {
         for (BusinessFileRelationEntity relation : relations) {
             FileAssetEntity file = files.get(relation.getFileId());
             if (file != null) result.computeIfAbsent(relation.getBusinessId(), ignored -> new ArrayList<>())
-                    .add(new FileView(file.getId(), file.getAccessUrl()));
+                    .add(new FileView(file.getId(), fileService.issueAccess(actor, file.getId()).url()));
         }
         return result;
     }
