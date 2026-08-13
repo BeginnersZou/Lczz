@@ -80,13 +80,6 @@
 				<text class="info-value highlight">{{ order.visitTime }}</text>
 			</view>
 
-			<!-- 普通用户/经销商：已完成订单显示评价入口 -->
-			<view class="action-row" v-if="canEvaluate && order.status === '已完成'" @click.stop>
-				<view class="evaluate-btn" hover-class="hover-press" :hover-stay-time="80"
-					@click="handleEvaluate(order)">
-					<text>{{ evaluatedOrderIds.includes(String(order.id)) ? '查看评价' : '评价' }}</text>
-				</view>
-			</view>
 		</view>
 
 				<!-- 空状态 -->
@@ -129,7 +122,7 @@ import {
 	onPullDownRefresh,
 	onShareAppMessage
 } from '@dcloudio/uni-app'
-import { orderApi, evaluationApi, authApi } from '@/api/api.js'
+import { orderApi, authApi } from '@/api/api.js'
 import { getAuthToken } from '@/utils/auth-session.js'
 
 // onShow 确保从详情页返回时刷新列表（完工提交后状态会变化）
@@ -180,8 +173,6 @@ const total = ref(0)
 const listLoading = ref(false)
 const loadStatus = ref('')
 const userRole = ref('')
-const canEvaluate = computed(() => ['customer', 'dealer'].includes(userRole.value))
-const evaluatedOrderIds = ref([])
 
 // 当前登录用户角色
 const loadUserRole = async () => {
@@ -222,13 +213,7 @@ const fetchOrders = async (isRefresh = false) => {
 			const tab = tabs[currentTab.value]
 			const params = { page: page.value, pageSize }
 			if (tab.type !== 'all') params.status = tab.type
-			const idsPromise = isRefresh
-				? evaluationApi.getEvaluatedOrderIds()
-				: Promise.resolve({ data: evaluatedOrderIds.value })
-			const [orderRes, idsRes] = await Promise.all([
-				orderApi.getList(params),
-				idsPromise
-			])
+			const orderRes = await orderApi.getList(params)
 			if (orderRes.code !== 200) {
 				loadStatus.value = ''
 				return
@@ -238,7 +223,6 @@ const fetchOrders = async (isRefresh = false) => {
 			allOrders.value = isRefresh ? list : [...allOrders.value, ...list]
 			page.value++
 			loadStatus.value = allOrders.value.length >= total.value ? 'noMore' : ''
-			evaluatedOrderIds.value = (idsRes.data || []).map(String)
 		} catch (err) {
 		// request.js 已统一处理错误提示
 		loadStatus.value = ''
@@ -284,19 +268,6 @@ const goDetail = (order) => {
 	uni.navigateTo({
 		url: `/packageA/order-detail/order-detail?id=${order.id}`
 	})
-}
-
-// 评价按钮：未评价去评价页，已评价去详情页查看
-const handleEvaluate = (order) => {
-	if (evaluatedOrderIds.value.includes(String(order.id))) {
-		uni.navigateTo({
-			url: `/packageA/order-detail/order-detail?id=${order.id}`
-		})
-	} else {
-		uni.navigateTo({
-			url: `/packageA/order-evaluate/order-evaluate?id=${order.id}`
-		})
-	}
 }
 
 const goHome = () => uni.switchTab({ url: '/pages/index/index' })

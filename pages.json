@@ -85,15 +85,6 @@
 					}
 				},
 				{
-					"path": "order-evaluate/order-evaluate",
-					"style": {
-						"navigationBarTitleText": "订单评价",
-						"navigationBarTextStyle": "black",
-						"backgroundColorTop": "#f4f7fb",
-						"backgroundColorBottom": "#f4f7fb"
-					}
-				},
-				{
 					"path": "agreement/user",
 					"style": {
 						"navigationBarTitleText": "用户服务协议",

@@ -24,24 +24,67 @@ import {
 	mockDynamics,
 	mockUserInfo,
 	mockDashboard,
-	mockEvaluations,
-	getEvaluationByOrderId,
 	isMockMode,
 	mockSuccess,
 	mockPaging
 } from '../utils/mock.js'
 
+const normalizeRole = (user = {}) => ({
+	...user,
+	role: String(user.role || '').toLowerCase(),
+	roles: (user.roles || []).map(role => String(role).toLowerCase())
+})
+
+const normalizeAuthResponse = (res) => {
+	if (res && res.code === 200 && res.data) {
+		if (res.data.userInfo) res.data.userInfo = normalizeRole(res.data.userInfo)
+		if (res.data.login && !res.data.token) Object.assign(res.data, res.data.login)
+	}
+	return res
+}
+
+const normalizeProduct = (item = {}) => ({
+	...item,
+	title: item.title || item.name || '',
+	desc: item.desc || item.remark || '',
+	model: item.model || item.code || '',
+	category: Array.isArray(item.category) ? item.category[item.category.length - 1] : (item.category || ''),
+	tags: item.tags || [],
+	detailImages: (item.detailImages || []).map(file => typeof file === 'string' ? file : file.url).filter(Boolean)
+})
+
+const normalizeOrder = (item = {}) => ({
+	...item,
+	visitTime: item.visitTime || item.orderStartTime || '',
+	quantity: item.quantity || 1,
+	status: item.status || item.statusLabel || item.statusCode || '',
+	name: item.name || item.customerName || '',
+	phone: item.phone || item.customerPhone || ''
+})
+
+const normalizeProgress = (item = {}) => ({
+	...item,
+	typeLabel: item.type === 'COMPLETION' ? '完工记录' : '施工进度',
+	images: (item.images || []).map(file => ({
+		...file,
+		id: Number(file.id),
+		url: file.url || ''
+	})).filter(file => file.url)
+})
+
 // ====================== 认证相关 ======================
 export const authApi = {
 	// 微信一键登录（传微信 code；已注册用户返回 { token, userInfo }，新用户返回 { needPhone: true }）
 	// 注：mock 模式下 login.vue 走 virtualLogin，不会调用此接口，故不加 mock 分支
-	loginWithWechat: (data) => http.post('/auth/wechat/login', data),
+	loginWithWechat: (data) => http.post('/auth/wechat/login', data).then(normalizeAuthResponse),
 	// 手机号授权绑定
-	bindPhone: (data) => http.post('/auth/wechat/bind-phone', data),
+	bindPhone: (data) => http.post('/auth/wechat/bind-phone', data).then(normalizeAuthResponse),
 	// 获取当前登录用户信息
 	getUserInfo: async (options = {}) => {
 		if (isMockMode()) return mockSuccess(mockUserInfo)
-		return http.get('/auth/info', {}, options)
+		const res = await http.get('/auth/info', {}, options)
+		if (res.code === 200) res.data = normalizeRole(res.data)
+		return res
 	},
 	// 退出登录
 	logout: async () => {
@@ -55,7 +98,9 @@ export const orderApi = {
 	// 订单列表（分页） params: { page, pageSize, status, keyword, startDate, endDate }
 	getList: async (params) => {
 		if (isMockMode()) return mockSuccess(mockPaging(mockOrders, params))
-		return http.get('/orders/list', params)
+		const res = await http.get('/orders/list', params)
+		if (res.code === 200 && res.data) res.data.list = (res.data.list || []).map(normalizeOrder)
+		return res
 	},
 	// 订单详情
 	getDetail: async (id) => {
@@ -63,7 +108,9 @@ export const orderApi = {
 			const o = mockOrders.find(item => String(item.id) === String(id)) || mockOrders[0]
 			return mockSuccess(o)
 		}
-		return http.get(`/orders/detail/${id}`)
+		const res = await http.get(`/orders/detail/${id}`)
+		if (res.code === 200) res.data = normalizeOrder(res.data)
+		return res
 	},
 	// 编辑订单（更新订单状态、完工信息等）
 	update: async (id, data) => {
@@ -74,6 +121,16 @@ export const orderApi = {
 	cancel: (id) => http.post(`/orders/${id}/cancel`),
 	// 可指派师傅列表
 	getMasters: (params) => http.get('/orders/masters', params),
+	getMaterials: (id, options = {}) => http.get(`/orders/${id}/materials`, {}, options),
+	submitMaterials: (id, data) => http.post(`/orders/${id}/materials`, data),
+	getProgress: async (id, options = {}) => {
+		if (isMockMode()) return mockSuccess([])
+		const res = await http.get(`/orders/${id}/progress`, {}, options)
+		if (res.code === 200) res.data = (res.data || []).map(normalizeProgress)
+		return res
+	},
+	submitProgress: (id, data) => http.post(`/orders/${id}/progress`, data),
+	complete: (id, data) => http.post(`/orders/${id}/completion`, data),
 	// 上传订单附件 / 安装图片（返回 { url }）
 	uploadImage: (filePath, formData = {}, options = {}) => {
 		if (isMockMode()) {
@@ -94,7 +151,9 @@ export const consumablesApi = {
 	// 耗材列表（分页） params: { page, pageSize, keyword, category }
 	getList: async (params) => {
 		if (isMockMode()) return mockSuccess(mockPaging(mockConsumables, params))
-		return http.get('/consumables/list', params)
+		const res = await http.get('/consumables/list', params)
+		if (res.code === 200 && res.data) res.data.list = (res.data.list || []).map(normalizeProduct)
+		return res
 	},
 	// 耗材详情
 	getDetail: async (id) => {
@@ -102,7 +161,9 @@ export const consumablesApi = {
 			const c = mockConsumables.find(item => String(item.id) === String(id)) || mockConsumables[0]
 			return mockSuccess(c)
 		}
-		return http.get(`/consumables/detail/${id}`)
+		const res = await http.get(`/consumables/detail/${id}`)
+		if (res.code === 200) res.data = normalizeProduct(res.data)
+		return res
 	}
 }
 
@@ -137,42 +198,6 @@ export const dashboardApi = {
 	}
 }
 
-// ====================== 订单评价 ======================
-export const evaluationApi = {
-	// 根据订单 ID 获取评价（返回评价对象或 null）
-	getByOrderId: async (orderId) => {
-		if (isMockMode()) return mockSuccess(getEvaluationByOrderId(orderId) || null)
-		return http.get(`/orders/evaluation/${orderId}`)
-	},
-	// 获取已评价订单 ID 列表（供订单列表快速标记"已评价"）
-	getEvaluatedOrderIds: async () => {
-		if (isMockMode()) return mockSuccess(mockEvaluations.map(item => String(item.orderId)))
-		return http.get('/orders/evaluation/ids')
-	},
-	// 提交评价 { orderId, score, content, images }
-	submit: async (data) => {
-		if (isMockMode()) {
-			// 更新本地 mock 数据，提交后立即能在订单详情看到
-			const index = mockEvaluations.findIndex(item => String(item.orderId) === String(data.orderId))
-			const record = {
-				orderId: data.orderId,
-				score: data.score,
-				content: data.content,
-				images: data.images || [],
-				createTime: '2026-08-04 12:00',
-				labels: [data.label || '']
-			}
-			if (index >= 0) {
-				mockEvaluations.splice(index, 1, record)
-			} else {
-				mockEvaluations.push(record)
-			}
-			return mockSuccess({ success: true })
-		}
-		return http.post('/orders/evaluation', data)
-	}
-}
-
 // ====================== 通用图片上传 ======================
 export const uploadApi = {
 	// 通用图片上传（返回图片 url）
@@ -181,7 +206,7 @@ export const uploadApi = {
 			return Promise.resolve(mockSuccess({ url: 'https://picsum.photos/300/300?random=' + Date.now() }))
 		}
 		return http.upload({
-			url: '/upload/image',
+			url: '/files/upload',
 			filePath,
 			name: 'file',
 			formData,
