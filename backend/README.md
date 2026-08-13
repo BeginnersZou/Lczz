@@ -35,6 +35,22 @@ $env:JWT_SECRET="至少32字节的随机密钥"
 - Swagger UI：`http://localhost:8080/swagger-ui.html`
 - OpenAPI JSON：`http://localhost:8080/v3/api-docs`
 
+## 产品与耗材接口
+
+产品一期仅用于展示和安装师傅选择耗材，不提供购买、购物车、支付或库存自动扣减。
+
+| 方法 | 路径 | 权限 | 说明 |
+| --- | --- | --- | --- |
+| GET | `/api/v1/consumables/list` | 已登录用户 | 分页查询；非管理员只返回已启用产品 |
+| GET | `/api/v1/consumables/detail/{id}` | 已登录用户 | 产品详情；非管理员不能读取已下架产品 |
+| GET | `/api/v1/consumables/categories` | 已登录用户 | 查询两级分类 |
+| POST/PUT/DELETE | `/api/v1/consumables/categories/**` | 管理员 | 分类维护 |
+| POST | `/api/v1/consumables` | 管理员 | 创建产品 |
+| PUT/DELETE | `/api/v1/consumables/{id}` | 管理员 | 更新或逻辑删除产品 |
+| PATCH | `/api/v1/consumables/{id}/enabled` | 管理员 | 上架或下架产品 |
+
+产品图片只接收统一文件服务返回的 `coverFileId` 和 `detailFileIds`；文件上传接口由 Issue #13 提供。完整字段和响应模型以 Swagger UI 为准。
+
 ## 目录边界
 
 - `common`：统一响应、异常、Web 基础设施
