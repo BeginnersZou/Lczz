@@ -45,6 +45,18 @@ CREATE TABLE work_order_status_history (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
+CREATE TABLE work_order_progress (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  order_id BIGINT NOT NULL,
+  installer_user_id BIGINT NOT NULL,
+  progress_type VARCHAR(32) DEFAULT 'PROGRESS' NOT NULL,
+  completion_order_id BIGINT AS (CASE WHEN progress_type = 'COMPLETION' THEN order_id ELSE NULL END),
+  description VARCHAR(2000) NOT NULL,
+  submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+  UNIQUE(completion_order_id)
+);
+
 CREATE TABLE material_request (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
   request_no VARCHAR(32) UNIQUE NOT NULL,

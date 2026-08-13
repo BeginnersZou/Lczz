@@ -7,6 +7,8 @@ import com.lczz.auth.domain.RoleCode;
 import com.lczz.common.exception.BusinessException;
 import com.lczz.order.persistence.WorkOrderEntity;
 import com.lczz.order.persistence.WorkOrderMapper;
+import com.lczz.order.persistence.WorkOrderStatusHistoryEntity;
+import com.lczz.order.persistence.WorkOrderStatusHistoryMapper;
 import com.lczz.product.persistence.ProductEntity;
 import com.lczz.product.persistence.ProductMapper;
 import com.lczz.stocking.persistence.MaterialRequestEntity;
@@ -38,14 +40,17 @@ public class MaterialRequestService {
     private final MaterialRequestMapper requestMapper;
     private final MaterialRequestItemMapper itemMapper;
     private final WorkOrderMapper orderMapper;
+    private final WorkOrderStatusHistoryMapper historyMapper;
     private final ProductMapper productMapper;
 
     public MaterialRequestService(MaterialRequestMapper requestMapper, MaterialRequestItemMapper itemMapper,
-                                  WorkOrderMapper orderMapper, ProductMapper productMapper) {
+                                  WorkOrderMapper orderMapper, ProductMapper productMapper,
+                                  WorkOrderStatusHistoryMapper historyMapper) {
         this.requestMapper = requestMapper;
         this.itemMapper = itemMapper;
         this.orderMapper = orderMapper;
         this.productMapper = productMapper;
+        this.historyMapper = historyMapper;
     }
 
     public RequestPage list(int page, int pageSize, String keyword, String status) {
@@ -96,11 +101,8 @@ public class MaterialRequestService {
 
     @Transactional
     public RequestView submit(AuthenticatedUser actor, long orderId, SubmitCommand command) {
-        WorkOrderEntity order = orderMapper.selectOne(new LambdaQueryWrapper<WorkOrderEntity>()
-                .eq(WorkOrderEntity::getId, orderId)
-                .eq(WorkOrderEntity::getInstallerUserId, actor.userId())
-                .eq(WorkOrderEntity::getDeleted, false));
-        if (order == null) {
+        WorkOrderEntity order = orderMapper.selectForUpdate(orderId);
+        if (order == null || !java.util.Objects.equals(order.getInstallerUserId(), actor.userId())) {
             throw new BusinessException(404, "ORDER_NOT_ASSIGNED", "订单不存在或未指派给当前安装师傅");
         }
         if (!Set.of("PENDING_VISIT", "IN_PROGRESS").contains(order.getOrderStatus())) {
@@ -108,7 +110,10 @@ public class MaterialRequestService {
         }
         LinkedHashMap<Long, BigDecimal> requested = normalizeItems(command.items());
         MaterialRequestEntity existing = findActive(orderId);
-        if (existing != null) return existingOrConflict(existing, actor.userId(), requested);
+        if (existing != null) {
+            transitionToInProgress(order, actor.userId());
+            return existingOrConflict(existing, actor.userId(), requested);
+        }
 
         List<ProductEntity> products = productMapper.selectByIds(requested.keySet());
         Map<Long, ProductEntity> productMap = products.stream()
@@ -133,7 +138,24 @@ public class MaterialRequestService {
             throw exception;
         }
         requested.forEach((productId, quantity) -> insertSnapshot(request.getId(), productMap.get(productId), quantity));
+        transitionToInProgress(order, actor.userId());
         return toViews(List.of(requestMapper.selectById(request.getId()))).getFirst();
+    }
+
+    private void transitionToInProgress(WorkOrderEntity order, long actorId) {
+        if (!"PENDING_VISIT".equals(order.getOrderStatus())) return;
+        order.setOrderStatus("IN_PROGRESS");
+        order.setUpdatedBy(actorId);
+        order.setVersion(order.getVersion() + 1);
+        orderMapper.updateById(order);
+        WorkOrderStatusHistoryEntity history = new WorkOrderStatusHistoryEntity();
+        history.setOrderId(order.getId());
+        history.setFromStatus("PENDING_VISIT");
+        history.setToStatus("IN_PROGRESS");
+        history.setChangeReason("安装师傅首次提交耗材申请");
+        history.setOperatorUserId(actorId);
+        history.setCreatedAt(LocalDateTime.now(ZoneOffset.UTC));
+        historyMapper.insert(history);
     }
 
     @Transactional
