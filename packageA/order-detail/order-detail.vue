@@ -133,6 +133,39 @@
 			</view>
 		</view>
 
+		<!-- ═══ 客户评价 ═══ -->
+		<view class="section-card">
+			<view class="section-header">
+				<view class="section-title-wrap"><text class="section-title">客户评价</text></view>
+				<view class="review-action" v-if="canReview" @click="goEvaluate"><text>去评价</text></view>
+			</view>
+			<view class="review-content" v-if="evaluation">
+				<view class="review-score">
+					<up-icon v-for="index in 5" :key="index" :name="index <= evaluation.score ? 'star-fill' : 'star'"
+						size="20" :color="index <= evaluation.score ? '#f59e0b' : '#cbd5e1'"></up-icon>
+					<text>{{ evaluation.score }}.0</text>
+					<text class="review-time">{{ evaluation.createTime }}</text>
+				</view>
+				<view class="review-labels" v-if="evaluation.labels.length">
+					<text v-for="label in evaluation.labels" :key="label">{{ label }}</text>
+				</view>
+				<text class="review-text">{{ evaluation.content }}</text>
+				<view class="image-grid" v-if="evaluation.images.length">
+					<view class="image-item" v-for="(image, index) in evaluation.images" :key="image">
+						<image class="preview-img" :src="image" mode="aspectFill" @click="previewEvaluationImages(index)"></image>
+					</view>
+				</view>
+			</view>
+			<view class="tool-empty review-empty" v-else-if="canReview">
+				<up-icon name="edit-pen" size="42" color="#94a3b8"></up-icon>
+				<text class="tool-empty-text">服务已完成，期待您的评价</text>
+			</view>
+			<view class="tool-empty review-empty" v-else>
+				<up-icon name="chat" size="42" color="#cbd5e1"></up-icon>
+				<text class="tool-empty-text">暂无评价</text>
+			</view>
+		</view>
+
 		<!-- ═══ 指派师傅提交施工进度或完工 ═══ -->
 		<view class="section-card" v-if="canOperateProgress">
 			<view class="section-header">
@@ -259,12 +292,14 @@
 	} from 'vue'
 	import {
 		onBackPress,
-		onLoad
+		onLoad,
+		onShow
 	} from '@dcloudio/uni-app'
 	import {
 	orderApi,
 	consumablesApi,
-	authApi
+	authApi,
+	evaluationApi
 	} from '@/api/api.js'
 	import { getAuthToken } from '@/utils/auth-session.js'
 
@@ -294,7 +329,9 @@
 	const materialRequest = ref(null)
 	// 耗材申请仅允许指派师傅提交一次；重复提交由服务端幂等/冲突规则兜底。
 	const userRole = ref('')
+	const evaluation = ref(null)
 	const isInstaller = computed(() => userRole.value === 'installer')
+	const canReview = computed(() => ['customer', 'dealer'].includes(userRole.value) && orderInfo.value.statusCode === 'PENDING_REVIEW' && !evaluation.value)
 	const materialReadonly = computed(() => !isInstaller.value || !['待上门', '处理中'].includes(orderInfo.value.status) || Boolean(materialRequest.value))
 
 const statusClass = computed(() => {
@@ -343,6 +380,26 @@ const statusClass = computed(() => {
 		const urls = images.map(image => image.url)
 		uni.previewImage({ current: urls[index], urls })
 	}
+
+	const previewEvaluationImages = (index) => {
+		uni.previewImage({ current: evaluation.value.images[index], urls: evaluation.value.images })
+	}
+
+	const goEvaluate = () => {
+		uni.navigateTo({ url: `/packageA/order-evaluate/order-evaluate?id=${orderId.value}` })
+	}
+
+	const refreshOrderEvaluation = async () => {
+		if (!orderId.value) return
+		const [orderRes, evaluationRes] = await Promise.all([
+			orderApi.getDetail(orderId.value),
+			evaluationApi.getByOrder(orderId.value, { loading: false })
+		])
+		if (orderRes.code === 200) orderInfo.value = orderRes.data || {}
+		if (evaluationRes.code === 200) evaluation.value = evaluationRes.data || null
+	}
+
+	onShow(() => refreshOrderEvaluation())
 
 	const previewProgressImages = (index) => {
 		const urls = progressImages.value.map(image => image.url)
@@ -676,10 +733,11 @@ const statusClass = computed(() => {
 	orderId.value = id
 	try {
 		// 并行获取订单详情与当前用户角色
-		const [orderRes, userRes, progressRes] = await Promise.all([
+		const [orderRes, userRes, progressRes, evaluationRes] = await Promise.all([
 			orderApi.getDetail(id),
 			authApi.getUserInfo(),
-			orderApi.getProgress(id, { loading: false })
+			orderApi.getProgress(id, { loading: false }),
+			evaluationApi.getByOrder(id, { loading: false })
 		])
 		if (userRes.code === 200 && userRes.data) {
 			userRole.value = userRes.data.role || ''
@@ -689,6 +747,7 @@ const statusClass = computed(() => {
 		const data = orderRes.data || {}
 		orderInfo.value = data
 		if (progressRes.code === 200) progressRecords.value = progressRes.data || []
+		if (evaluationRes.code === 200) evaluation.value = evaluationRes.data || null
 		if (userRole.value === 'installer') {
 			const materialsRes = await orderApi.getMaterials(id, { loading: false, silent: true })
 			if (materialsRes.code === 200 && materialsRes.data) {
@@ -1209,6 +1268,58 @@ const statusClass = computed(() => {
 		&.disabled {
 			opacity: 0.5;
 		}
+	}
+
+	.review-action {
+		padding: 8rpx 22rpx;
+		border: 2rpx solid $primary;
+		border-radius: 28rpx;
+		font-size: 24rpx;
+		color: $primary;
+	}
+
+	.review-score {
+		display: flex;
+		align-items: center;
+		gap: 6rpx;
+		font-size: 25rpx;
+		font-weight: 600;
+		color: #d97706;
+		margin-bottom: 18rpx;
+	}
+
+	.review-time {
+		margin-left: auto;
+		font-size: 22rpx;
+		font-weight: 400;
+		color: $text-light;
+	}
+
+	.review-labels {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 12rpx;
+		margin-bottom: 16rpx;
+
+		text {
+			padding: 7rpx 16rpx;
+			border-radius: 22rpx;
+			background: #eef6ff;
+			font-size: 23rpx;
+			color: $primary;
+		}
+	}
+
+	.review-text {
+		display: block;
+		font-size: 27rpx;
+		line-height: 1.7;
+		color: $text-main;
+		margin-bottom: 18rpx;
+	}
+
+	.review-empty {
+		padding: 38rpx 0 44rpx;
 	}
 
 	/* ═══ 图片上传 ═══ */
