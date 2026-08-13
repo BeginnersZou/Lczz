@@ -75,9 +75,18 @@
 						<text class="info-label">地址</text>
 						<text class="info-value">{{ order.address }}</text>
 					</view>
-					<view class="info-row">
+			<view class="info-row">
 				<text class="info-label">上门时间</text>
 				<text class="info-value highlight">{{ order.visitTime }}</text>
+			</view>
+			<view class="action-row" v-if="canReview(order) || isReviewed(order)">
+				<view class="evaluate-btn" v-if="canReview(order)" @click.stop="goEvaluate(order)">
+					<text>去评价</text>
+				</view>
+				<view class="reviewed-label" v-else>
+					<up-icon name="checkmark-circle" size="16" color="#16a34a"></up-icon>
+					<text>已评价</text>
+				</view>
 			</view>
 
 		</view>
@@ -268,6 +277,13 @@ const goDetail = (order) => {
 	uni.navigateTo({
 		url: `/packageA/order-detail/order-detail?id=${order.id}`
 	})
+}
+
+const isReviewer = computed(() => ['customer', 'dealer'].includes(userRole.value))
+const canReview = (order) => isReviewer.value && order.statusCode === 'PENDING_REVIEW'
+const isReviewed = (order) => order.statusCode === 'REVIEWED'
+const goEvaluate = (order) => {
+	uni.navigateTo({ url: `/packageA/order-evaluate/order-evaluate?id=${order.id}` })
 }
 
 const goHome = () => uni.switchTab({ url: '/pages/index/index' })
@@ -510,6 +526,14 @@ $text-light: #94a3b8;
 	&:active {
 		background: rgba(60, 156, 255, 0.08);
 	}
+}
+
+.reviewed-label {
+	display: flex;
+	align-items: center;
+	gap: 8rpx;
+	font-size: 25rpx;
+	color: #16a34a;
 }
 
 /* ═══ 骨架屏 ═══ */
