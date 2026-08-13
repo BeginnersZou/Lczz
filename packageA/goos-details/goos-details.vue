@@ -26,17 +26,7 @@
 
 		<!-- ═══ 商品信息卡片 ═══ -->
 		<view class="info-card">
-			<view class="info-header">
-				<view class="price-area">
-					<text class="price-symbol">¥</text>
-					<text class="price-num">{{ goods.price }}</text>
-					<text class="price-old" v-if="goods.oldPrice">¥{{ goods.oldPrice }}</text>
-				</view>
-				<view class="sales-badge">
-					<text class="sales-num">{{ goods.sales }}</text>
-					<text class="sales-label">人购买</text>
-				</view>
-			</view>
+			<view class="info-header"><view class="display-only-badge">产品展示 · 暂不支持线上购买</view></view>
 
 			<text class="info-title">{{ goods.title }}</text>
 			<view class="info-tags">
@@ -46,15 +36,14 @@
 		</view>
 
 		<!-- ═══ 规格选择 ═══ -->
-		<view class="spec-card" @click="showSpec = true">
+		<view class="spec-card">
 			<view class="spec-row">
-				<text class="spec-label">已选</text>
-				<text class="spec-value">{{ selectedSpec }}</text>
-				<up-icon name="arrow-right" size="14" color="#c0c4cc"></up-icon>
+				<text class="spec-label">规格</text>
+				<text class="spec-value">{{ goods.spec || '以实物标识为准' }}</text>
 			</view>
 			<view class="spec-row">
-				<text class="spec-label">送至</text>
-				<text class="spec-value">{{ address }}</text>
+				<text class="spec-label">库存</text>
+				<text class="spec-value">展示库存仅供参考</text>
 				<text class="spec-stock" :class="{ inStock: goods.stock > 0 }">
 					{{ goods.stock > 0 ? '有货' : '缺货' }}
 				</text>
@@ -67,14 +56,8 @@
 				<up-icon name="checkmark-circle" size="16" color="#07c160"></up-icon>
 				<text class="service-text">正品保证</text>
 			</view>
-			<view class="service-item">
-				<up-icon name="checkmark-circle" size="16" color="#07c160"></up-icon>
-				<text class="service-text">极速发货</text>
-			</view>
-			<view class="service-item">
-				<up-icon name="checkmark-circle" size="16" color="#07c160"></up-icon>
-				<text class="service-text">7天无理由</text>
-			</view>
+			<view class="service-item"><up-icon name="checkmark-circle" size="16" color="#07c160"></up-icon><text class="service-text">规格透明</text></view>
+			<view class="service-item"><up-icon name="checkmark-circle" size="16" color="#07c160"></up-icon><text class="service-text">电话咨询</text></view>
 			<view class="service-item">
 				<up-icon name="checkmark-circle" size="16" color="#07c160"></up-icon>
 				<text class="service-text">上门安装</text>
@@ -92,7 +75,7 @@
 				lazy-load></image>
 			<view class="detail-specs" v-if="displayDetailImages.length === 0">
 				<view class="detail-spec-row"><text>产品型号</text><text>{{ goods.model || '以实物标识为准' }}</text></view>
-				<view class="detail-spec-row"><text>产品规格</text><text>{{ goods.spec || selectedSpec }}</text></view>
+				<view class="detail-spec-row"><text>产品规格</text><text>{{ goods.spec || '以实物标识为准' }}</text></view>
 				<view class="detail-spec-row"><text>产品分类</text><text>{{ goods.category || '空调配件' }}</text></view>
 				<view class="detail-note"><up-icon name="info-circle" size="16" color="#0b63ce"></up-icon><text>{{ goods.desc }}</text></view>
 			</view>
@@ -117,42 +100,8 @@
 					<text class="bar-icon-text">客服</text>
 				</view>
 			</view>
-			<view class="bar-actions">
-				<view class="action-btn cart" hover-class="hover-mask" :hover-stay-time="80" @click="handleAddCart">加入购物车</view>
-				<view class="action-btn buy" hover-class="hover-mask" :hover-stay-time="80" @click="handleBuy">立即购买</view>
-			</view>
+			<view class="bar-actions"><view class="action-btn buy" hover-class="hover-mask" :hover-stay-time="80" @click="handleService">电话咨询</view></view>
 		</view>
-
-		<!-- ═══ 规格选择弹窗 ═══ -->
-		<up-popup :show="showSpec" mode="bottom" round="20" @close="showSpec = false">
-			<view class="spec-popup">
-				<view class="spec-popup-header">
-					<image v-if="!isMockImage(goods.image)" class="spec-popup-img" :src="goods.image" mode="aspectFill"></image>
-					<view v-else class="spec-popup-img spec-popup-visual"><up-icon :name="productIcon(goods.type)" size="28" color="#ffffff"></up-icon></view>
-					<view class="spec-popup-info">
-						<text class="spec-popup-price">¥{{ goods.price }}</text>
-						<text class="spec-popup-selected">已选：{{ selectedSpec }}</text>
-					</view>
-					<up-icon name="close" size="20" color="#999" @click="showSpec = false"></up-icon>
-				</view>
-				<view class="spec-group" v-for="(group, gi) in specList" :key="gi">
-					<text class="spec-group-title">{{ group.name }}</text>
-					<view class="spec-options">
-						<view class="spec-option" v-for="(opt, oi) in group.options" :key="oi"
-							:class="{ active: group.selected === oi }" @click="selectSpec(gi, oi)">{{ opt }}</view>
-					</view>
-				</view>
-				<view class="spec-quantity">
-					<text class="spec-group-title">数量</text>
-					<view class="qty-control">
-						<view class="qty-btn" @click="changeQty(-1)">-</view>
-						<text class="qty-num">{{ quantity }}</text>
-						<view class="qty-btn" @click="changeQty(1)">+</view>
-					</view>
-				</view>
-				<view class="spec-confirm" @click="confirmSpec">确定</view>
-			</view>
-		</up-popup>
 
 		<!-- ═══ 分享弹窗 ═══ -->
 		<up-popup :show="showShare" mode="bottom" round="20" @close="showShare = false">
@@ -216,48 +165,12 @@ const displayDetailImages = computed(() => detailImages.value.filter(img => !isM
 
 const isFavor = ref(false)
 const showShare = ref(false)
-const showSpec = ref(false)
-const address = ref('武汉市东西湖区')
 
 const isMockImage = (url) => !url || String(url).includes('picsum.photos')
 const productIcon = (type) => ({
 	copper: 'integral', bracket: 'grid-fill', cable: 'share-fill', refrigerant: 'hourglass-half-fill', aux: 'bag-fill'
 }[type] || 'bag-fill')
 
-// 规格选择
-const specList = ref([{
-	name: '管径',
-	options: ['15.2cm', '12.5cm', '10cm'],
-	selected: 0
-},
-{
-	name: '长度',
-	options: ['3米', '5米', '8米'],
-	selected: 0
-},
-])
-const quantity = ref(1)
-
-const selectedSpec = computed(() => {
-	return specList.value.map(g => g.options[g.selected]).join(' / ')
-})
-
-const selectSpec = (gi, oi) => {
-	specList.value[gi].selected = oi
-}
-
-const changeQty = (delta) => {
-	const val = quantity.value + delta
-	if (val >= 1) quantity.value = val
-}
-
-const confirmSpec = () => {
-	showSpec.value = false
-	uni.showToast({
-		title: `已选：${selectedSpec.value} ×${quantity.value}`,
-		icon: 'none'
-	})
-}
 
 onLoad(async (options) => {
 	const id = options?.id
@@ -329,13 +242,6 @@ const shareTo = (type) => {
 	})
 }
 
-const handleAddCart = () => {
-	showSpec.value = true
-}
-
-const handleBuy = () => {
-	showSpec.value = true
-}
 </script>
 
 <style scoped lang="scss">
