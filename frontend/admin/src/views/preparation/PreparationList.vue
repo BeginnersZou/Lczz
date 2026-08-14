@@ -48,7 +48,7 @@
         <span>{{ loadError }}</span>
         <el-button type="primary" link @click="loadList">重新加载</el-button>
       </div>
-      <el-table v-else v-loading="tableLoading" :data="pagedList" border stripe style="width: 100%" empty-text="暂无备货订单">
+      <el-table v-else v-loading="tableLoading" :data="pagedList" border stripe table-layout="fixed" style="width: 100%" empty-text="暂无备货订单">
         <!-- 序号 -->
         <el-table-column label="序号" align="center" width="70">
           <template #default="scope">
@@ -56,11 +56,11 @@
           </template>
         </el-table-column>
         <!-- 订单名称 -->
-        <el-table-column prop="productName" label="订单名称" align="left" />
+        <el-table-column prop="productName" label="订单名称" align="left" min-width="180" show-overflow-tooltip />
         <!-- 订单编号 -->
-        <el-table-column prop="orderNo" label="订单编号" align="left">
+        <el-table-column prop="orderNo" label="订单编号" align="left" min-width="190">
           <template #default="scope">
-            <span class="table-order-id" role="button" tabindex="0" @click="copyOrderId(scope.row.orderNo || scope.row.orderId)" @keyup.enter="copyOrderId(scope.row.orderNo || scope.row.orderId)">
+            <span class="table-order-id code-cell" role="button" tabindex="0" @click="copyOrderId(scope.row.orderNo || scope.row.orderId)" @keyup.enter="copyOrderId(scope.row.orderNo || scope.row.orderId)">
               {{ scope.row.orderNo || scope.row.orderId }}
               <el-icon size="14" class="copy-icon">
                 <DocumentCopy />
@@ -88,9 +88,11 @@
           </template>
         </el-table-column>
         <!-- 创建时间 -->
-        <el-table-column prop="createTime" label="创建时间" align="left" />
+        <el-table-column prop="createTime" label="创建时间" align="left" width="168">
+          <template #default="scope"><span class="datetime-cell">{{ formatDateTime(scope.row.createTime || scope.row.createdAt) }}</span></template>
+        </el-table-column>
         <!-- 操作 -->
-        <el-table-column label="操作" align="center" width="170">
+        <el-table-column label="操作" align="center" width="144" fixed="right">
           <template #default="scope">
             <el-button text type="primary" @click="handlePrepare(scope.row)">{{ scope.row.status === '已备货' ? '查看' : '备货' }}</el-button>
             <el-button text type="success" v-if="scope.row.status !== '已备货'"
@@ -158,6 +160,7 @@ import {
   exportPreparationApi
 } from '@/api/preparation'
 import { useRouter, useRoute } from 'vue-router'
+import { formatDateTime } from '@/utils/format'
 
 const router = useRouter()
 const route = useRoute()

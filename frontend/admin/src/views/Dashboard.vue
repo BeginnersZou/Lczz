@@ -3,12 +3,12 @@
     <div class="page-header">
       <div class="header-left">
         <h2 class="page-title">工作台</h2>
-        <span class="page-desc">聚合订单、库存与审核待办，快速掌握今日业务状态</span>
+        <span class="page-desc">聚合订单与库存待办，快速掌握今日业务状态</span>
       </div>
     </div>
     <el-card class="data-card">
       <template #header>
-        <span class="card-title">平台数据</span>
+        <span class="card-title">业务概览</span>
         <div class="tabs">
           <el-button v-for="tab in tabs" :key="tab.value" dashed plain
             :type="activeTab === tab.value ? 'primary' : 'default'" @click="activeTab = tab.value" size="small">
@@ -23,7 +23,7 @@
         <div v-for="item in statCards" :key="item.key" class="stat-item actionable" role="button" tabindex="0"
           @click="goToStat(item)" @keyup.enter="goToStat(item)">
           <div class="stat-top"><span class="stat-name">{{ item.label }}</span><el-icon><ArrowRight /></el-icon></div>
-          <p class="stat-num">{{ stats[item.key] }}</p>
+          <p class="stat-num">{{ formatNumber(stats[item.key]) }}</p>
           <p class="stat-hint">{{ item.hint }}</p>
         </div>
       </div>
@@ -32,7 +32,7 @@
     <div class="dashboard-bottom">
       <el-card class="chart-card">
         <template #header>
-          <span class="card-title">活跃度</span>
+          <span class="card-title">订单趋势</span>
         </template>
         <div ref="chartRef" class="chart-container"></div>
       </el-card>
@@ -92,6 +92,7 @@ import { CanvasRenderer } from 'echarts/renderers'
 import { StarFilled, ArrowRight } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
 import { getOverviewApi, getOrderTrendApi, getOrderStatusApi } from '@/api/dashboard'
+import { formatNumber } from '@/utils/format'
 
 echarts.use([LineChart, PieChart, TooltipComponent, GridComponent, CanvasRenderer])
 const router = useRouter()
@@ -128,17 +129,15 @@ const stats = reactive({
   pendingAssign: 0,
   processingOrders: 0,
   completedOrders: 0,
-  lowStock: 0,
-  pendingAudit: 0
+  lowStock: 0
 })
 
 const statCards = computed(() => [
   { key: 'todayOrders', label: '今日订单', hint: '查看今日新增', route: { name: 'Orders' } },
-  { key: 'pendingAssign', label: '待派单', hint: '需要尽快处理', route: { name: 'Orders', query: { status: 'pending' } } },
-  { key: 'processingOrders', label: '进行中', hint: '跟进施工进度', route: { name: 'Orders', query: { status: 'processing' } } },
-  { key: 'completedOrders', label: '已完成', hint: '查看完成情况', route: { name: 'Orders', query: { status: 'completed' } } },
-  { key: 'lowStock', label: '库存预警', hint: '处理缺货耗材', route: { name: 'Consumables', query: { stockStatus: 'low' } } },
-  { key: 'pendingAudit', label: '待审核用户', hint: '进入审核队列', route: { name: 'UserAudit', query: { status: 'pending' } } }
+  { key: 'pendingAssign', label: '待派单', hint: '需要尽快处理', route: { name: 'Orders', query: { status: 'PENDING_VISIT' } } },
+  { key: 'processingOrders', label: '进行中', hint: '跟进施工进度', route: { name: 'Orders', query: { status: 'IN_PROGRESS' } } },
+  { key: 'completedOrders', label: '已完成', hint: '查看完成情况', route: { name: 'Orders', query: { status: 'PENDING_REVIEW' } } },
+  { key: 'lowStock', label: '库存预警', hint: '处理缺货耗材', route: { name: 'Consumables', query: { stockStatus: 'low' } } }
 ])
 
 // 活跃度图表数据（xAxis + series values）
@@ -166,8 +165,7 @@ async function loadOverview() {
       pendingAssign: data.pendingAssign ?? data.pendingOrderTotal ?? 0,
       processingOrders: data.processingOrders ?? data.processingTotal ?? 0,
       completedOrders: data.completedOrders ?? data.completedTotal ?? 0,
-      lowStock: data.lowStock ?? data.lowStockTotal ?? 0,
-      pendingAudit: data.pendingAudit ?? data.pendingAuditTotal ?? 0
+      lowStock: data.lowStock ?? data.lowStockTotal ?? 0
     })
     // 反馈评分（若后端返回）
     if (data.rating != null) ratingValue.value = data.rating
@@ -283,7 +281,7 @@ function updateChart() {
         const item = params[0]
         return `<div style="padding: 8px;">
           <div style="font-weight: 600; margin-bottom: 4px;">${item.name}</div>
-          <div style="color: #3b82f6;">活跃度: <strong>${item.value}</strong></div>
+          <div style="color: #3b82f6;">订单量：<strong>${item.value}</strong></div>
         </div>`
       }
     },
