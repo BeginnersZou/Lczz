@@ -70,7 +70,7 @@
                 <el-icon size="16">
                   <Clock />
                 </el-icon>
-                {{ item.publishTime }}
+                {{ formatDateTime(item.publishTime || item.createdAt) }}
               </span>
               <span class="info-item">
                 <el-icon size="16">
@@ -145,6 +145,7 @@ import {
 } from '@element-plus/icons-vue'
 import { useRouter, useRoute } from 'vue-router'
 import { getDynamicListApi, deleteDynamicApi } from '@/api/dynamic'
+import { formatDateTime } from '@/utils/format'
 
 const router = useRouter()
 const route = useRoute()
@@ -192,14 +193,16 @@ async function loadList() {
       page: currentPage.value,
       pageSize: pageSize.value,
       keyword: searchKeyword.value
-    })
+    }, { silent: true })
     dynamicList.value = res.list || []
     filteredList.value = dynamicList.value
     total.value = res.total || 0
-  } catch {
+  } catch (error) {
     filteredList.value = []
     total.value = 0
-    loadError.value = '内容数据加载失败，请检查网络后重试。'
+    loadError.value = error?.response?.status === 404
+      ? '后端尚未开放内容管理接口，当前页面暂时无法读取真实内容数据。'
+      : '内容数据加载失败，请检查网络后重试。'
   } finally {
     tableLoading.value = false
   }

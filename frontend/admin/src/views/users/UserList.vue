@@ -20,9 +20,9 @@
     <!-- 搜索卡片 单行不换行 -->
     <el-card class="search-card" shadow="light">
       <div class="search-bar">
-        <el-form :model="searchForm" style="display: flex; align-items: center;">
-          <el-form-item label="昵称">
-            <el-input v-model="searchForm.nickname" placeholder="请输入用户昵称检索" clearable class="search-input"
+        <el-form :model="searchForm">
+          <el-form-item label="关键词">
+            <el-input v-model="searchForm.nickname" placeholder="输入昵称、姓名或手机号检索" clearable class="search-input"
               @keyup.enter="handleSearch">
               <template #prefix>
                 <el-icon>
@@ -31,14 +31,21 @@
               </template>
             </el-input>
           </el-form-item>
-          <el-form-item label="身份" style="margin-left: 12px;">
+          <el-form-item label="身份">
             <el-select v-model="searchForm.role" placeholder="全部身份" clearable class="role-select" @change="handleSearch">
               <el-option label="管理员" value="admin" />
               <el-option label="安装师傅" value="installer" />
               <el-option label="普通用户" value="customer" />
+              <el-option label="经销商" value="dealer" />
             </el-select>
           </el-form-item>
-          <el-form-item class="search-btn-group" style="margin-left: 12px;">
+          <el-form-item label="状态">
+            <el-select v-model="searchForm.blacklist" placeholder="全部状态" clearable class="role-select" @change="handleSearch">
+              <el-option label="正常" value="1" />
+              <el-option label="黑名单" value="2" />
+            </el-select>
+          </el-form-item>
+          <el-form-item class="search-btn-group">
             <el-button type="primary" :icon="Search" @click="handleSearch">
               搜索
             </el-button>
@@ -56,7 +63,7 @@
         <span>{{ loadError }}</span>
         <el-button type="primary" link @click="loadList">重新加载</el-button>
       </div>
-      <el-table v-else v-loading="loading" :data="tableData" border stripe>
+      <el-table v-else v-loading="loading" :data="tableData" border stripe table-layout="fixed">
         <el-table-column prop="nickname" label="昵称" min-width="160" />
         <el-table-column prop="gender" label="性别" width="80" />
         <el-table-column prop="phone" label="手机号" width="160">
@@ -71,8 +78,10 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="registerTime" label="注册时间" width="200" />
-        <el-table-column label="操作" width="320" fixed="right">
+        <el-table-column prop="registerTime" label="注册时间" width="168">
+          <template #default="{ row }"><span class="datetime-cell">{{ formatDateTime(row.registerTime || row.createdAt) }}</span></template>
+        </el-table-column>
+        <el-table-column label="操作" width="252" fixed="right" align="center">
           <template #default="{ row }">
             <el-button text type="primary" @click="openDialog('view', row)">详情</el-button>
             <el-button text type="primary" @click="openDialog('edit', row)">修改</el-button>
@@ -114,6 +123,7 @@
             <el-option label="管理员" value="admin" />
             <el-option label="安装师傅" value="installer" />
             <el-option label="普通用户" value="customer" />
+            <el-option label="经销商" value="dealer" />
           </el-select>
         </el-form-item>
         <el-form-item label="地区" prop="area">
@@ -150,6 +160,7 @@ import { Search, Refresh, Bell } from '@element-plus/icons-vue'
 import { useRouter, useRoute } from 'vue-router'
 import { getUserListApi, toggleBlacklistApi, updateUserApi } from '@/api/users'
 import { getAuditListApi } from '@/api/audit'
+import { formatDateTime, formatPhone } from '@/utils/format'
 
 const router = useRouter()
 const route = useRoute()
@@ -157,7 +168,8 @@ const route = useRoute()
 // 搜索表单
 const searchForm = reactive({
   nickname: typeof route.query.keyword === 'string' ? route.query.keyword : '',
-  role: typeof route.query.role === 'string' ? route.query.role : ''
+  role: typeof route.query.role === 'string' ? route.query.role : '',
+  blacklist: typeof route.query.blacklist === 'string' ? route.query.blacklist : ''
 })
 
 // 分页配置
@@ -213,13 +225,16 @@ async function loadList() {
     const kw = searchForm.nickname.trim()
     if (kw) params.keyword = kw
     if (searchForm.role) params.role = searchForm.role
-    const res = await getUserListApi(params)
+    if (searchForm.blacklist) params.blacklist = Number(searchForm.blacklist)
+    const res = await getUserListApi(params, { silent: true })
     tableData.value = res?.list || []
     total.value = res?.total || 0
   } catch (e) {
     tableData.value = []
     total.value = 0
-    loadError.value = '用户数据加载失败，请检查网络后重试。'
+    loadError.value = e?.response?.status === 404
+      ? '后端尚未开放用户管理接口，当前页面暂时无法读取真实用户数据。'
+      : '用户数据加载失败，请检查网络后重试。'
   } finally {
     loading.value = false
   }
@@ -227,18 +242,13 @@ async function loadList() {
 
 // 角色标签颜色
 const getRoleTagType = (role) => {
-  const map = { admin: 'danger', installer: 'warning', customer: 'success' }
-  return map[role] || 'info'
+  const map = { admin: 'danger', installer: 'warning', customer: 'success', dealer: 'primary' }
+  return map[String(role || '').toLowerCase()] || 'info'
 }
 // 角色文字转换
 const getRoleText = (role) => {
-  const map = { admin: '管理员', installer: '安装师傅', customer: '普通用户' }
-  return map[role] || role
-}
-// 手机号脱敏
-const formatPhone = (phone) => {
-  if (!phone) return ''
-  return phone.slice(0, 3) + '****' + phone.slice(-4)
+  const map = { admin: '管理员', installer: '安装师傅', customer: '普通用户', dealer: '经销商' }
+  return map[String(role || '').toLowerCase()] || role || '-'
 }
 
 // 搜索
@@ -250,6 +260,7 @@ const handleSearch = () => {
 const handleReset = () => {
   searchForm.nickname = ''
   searchForm.role = ''
+  searchForm.blacklist = ''
   currentPage.value = 1
   loadList()
 }
@@ -322,6 +333,7 @@ function syncRouteState() {
   router.replace({ query: {
     ...(searchForm.nickname.trim() ? { keyword: searchForm.nickname.trim() } : {}),
     ...(searchForm.role ? { role: searchForm.role } : {}),
+    ...(searchForm.blacklist ? { blacklist: searchForm.blacklist } : {}),
     ...(currentPage.value > 1 ? { page: currentPage.value } : {}),
     ...(pageSize.value !== 10 ? { pageSize: pageSize.value } : {})
   } })

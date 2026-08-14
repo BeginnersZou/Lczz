@@ -51,7 +51,7 @@
           </div>
           <div class="info-item">
             <span class="info-label">提交时间</span>
-            <span class="info-value">{{ detail.submitTime || '-' }}</span>
+            <span class="info-value datetime-cell">{{ formatDateTime(detail.submitTime || detail.createdAt) }}</span>
           </div>
           <div class="info-item" v-if="detail.rejectReason">
             <span class="info-label">驳回原因</span>
@@ -101,7 +101,7 @@
           <el-tag :type="getStatusType(detail.status)" size="large" effect="light">
             {{ getStatusText(detail.status) }}
           </el-tag>
-          <span class="audit-time" v-if="detail.auditTime">审核时间：{{ detail.auditTime }}</span>
+          <span class="audit-time" v-if="detail.auditTime">审核时间：{{ formatDateTime(detail.auditTime) }}</span>
         </div>
         <div class="footer-btns">
           <el-button dashed plain type="default" :icon="ArrowLeft" @click="handleBack">
@@ -157,6 +157,7 @@ import { ElMessage } from 'element-plus'
 import { ArrowLeft, Check, Close, User, Picture, ZoomIn } from '@element-plus/icons-vue'
 import { useRouter, useRoute } from 'vue-router'
 import { getAuditDetailApi, approveAuditApi, rejectAuditApi } from '@/api/audit'
+import { formatDateTime, formatPhone } from '@/utils/format'
 
 const router = useRouter()
 const route = useRoute()
@@ -252,11 +253,6 @@ const handlePreview = (url) => {
   // el-image preview 通过 click 触发，此方法仅作兜底
 }
 
-const formatPhone = (phone) => {
-  if (!phone) return '-'
-  return phone.length === 11 ? `${phone.slice(0, 3)}****${phone.slice(-4)}` : phone
-}
-
 const maskIdCard = (value) => {
   if (!value || value.length < 8) return value || '-'
   return `${value.slice(0, 4)}**********${value.slice(-4)}`
@@ -289,7 +285,7 @@ const confirmApprove = async () => {
   try {
     await approveAuditApi(detail.value.id)
     detail.value.status = 'approved'
-    detail.value.auditTime = new Date().toLocaleString('zh-CN', { hour12: false })
+    detail.value.auditTime = new Date().toISOString()
     approveDialogVisible.value = false
     ElMessage.success('审核已通过')
     router.replace({ name: 'UserAudit', query: { status: 'pending' } })
@@ -310,7 +306,7 @@ const confirmReject = async () => {
     auditLoading.value = true
     await rejectAuditApi(detail.value.id, { reason: rejectForm.reason })
     detail.value.status = 'rejected'
-    detail.value.auditTime = new Date().toLocaleString('zh-CN', { hour12: false })
+    detail.value.auditTime = new Date().toISOString()
     detail.value.rejectReason = rejectForm.reason
     rejectDialogVisible.value = false
     ElMessage.success('审核已驳回')

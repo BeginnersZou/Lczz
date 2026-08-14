@@ -28,11 +28,9 @@
               </el-icon>
             </template>
           </el-input>
-          <el-select v-model="searchCategory" placeholder="全部分类" clearable class="category-select" @change="handleSearch">
-            <el-option label="安装辅料" value="安装辅料" />
-            <el-option label="制冷剂" value="制冷剂" />
-            <el-option label="工具" value="工具" />
-            <el-option label="空调设备" value="空调设备" />
+          <el-select v-model="searchCategory" :placeholder="categoryLoading ? '分类加载中…' : '全部分类'" clearable
+            :disabled="categoryLoading || categoryFilterOptions.length === 0" class="category-select" @change="handleSearch">
+            <el-option v-for="item in categoryFilterOptions" :key="item.value" :label="item.label" :value="item.value" />
           </el-select>
           <el-select v-model="stockStatus" placeholder="库存状态" clearable class="category-select" @change="handleSearch">
             <el-option label="库存充足" value="normal" />
@@ -59,7 +57,7 @@
         <span>{{ loadError }}</span>
         <el-button type="primary" link @click="loadList">重新加载</el-button>
       </div>
-      <el-table v-else v-loading="tableLoading" :data="pagedList" border stripe style="width: 100%"
+      <el-table v-else v-loading="tableLoading" :data="pagedList" border stripe table-layout="fixed" style="width: 100%"
         empty-text="暂无耗材，点击上方按钮发布第一条耗材">
         <!-- 序号 -->
         <el-table-column label="序号" align="center" width="70">
@@ -75,9 +73,9 @@
           </template>
         </el-table-column>
         <!-- 耗材名称 -->
-        <el-table-column prop="name" label="耗材名称" align="left" />
+        <el-table-column prop="name" label="耗材名称" align="left" min-width="160" show-overflow-tooltip />
         <!-- 耗材分类（二级） -->
-        <el-table-column label="耗材分类" align="left">
+        <el-table-column label="耗材分类" align="left" min-width="190">
           <template #default="scope">
             <el-tag size="small" effect="light" type="info">{{ getCategory(scope.row, 0) }}</el-tag>
             <span class="category-arrow">/</span>
@@ -85,20 +83,22 @@
           </template>
         </el-table-column>
         <!-- 规格 -->
-        <el-table-column prop="spec" label="规格" align="left" />
+        <el-table-column prop="spec" label="规格" align="left" min-width="150" show-overflow-tooltip />
         <!-- 单位 -->
         <el-table-column prop="unit" label="单位" align="center" width="80" />
         <!-- 库存 -->
         <el-table-column prop="stock" label="库存" align="center" width="90">
           <template #default="scope">
             <span :class="['stock-num', isLowStock(scope.row) ? 'low' : '']">{{ scope.row.stock }}</span>
-            <div class="secondary-cell">安全库存 {{ scope.row.safetyStock ?? 100 }}</div>
+            <div v-if="scope.row.safetyStock != null" class="secondary-cell">安全库存 {{ scope.row.safetyStock }}</div>
           </template>
         </el-table-column>
         <!-- 创建时间 -->
-        <el-table-column prop="createTime" label="创建时间" align="left" />
+        <el-table-column prop="createTime" label="创建时间" align="left" width="168">
+          <template #default="scope"><span class="datetime-cell">{{ formatDateTime(scope.row.createTime) }}</span></template>
+        </el-table-column>
         <!-- 操作 -->
-        <el-table-column label="操作" align="center" width="280">
+        <el-table-column label="操作" align="center" width="248" fixed="right">
           <template #default="scope">
             <el-button text type="primary" @click="handleEdit(scope.row)">修改</el-button>
             <el-button text :type="scope.row.enabled ? 'warning' : 'success'" @click="toggleEnabled(scope.row)">
@@ -154,7 +154,8 @@ import {
   Plus, Search, Refresh, Download
 } from '@element-plus/icons-vue'
 import { useRouter, useRoute } from 'vue-router'
-import { getConsumablesListApi, getConsumablesDetailApi, deleteConsumablesApi, exportConsumablesApi, updateConsumablesApi, setConsumableEnabledApi } from '@/api/consumables'
+import { getConsumablesListApi, getConsumablesDetailApi, getConsumableCategoriesApi, deleteConsumablesApi, exportConsumablesApi, updateConsumablesApi, setConsumableEnabledApi } from '@/api/consumables'
+import { formatDateTime } from '@/utils/format'
 
 const router = useRouter()
 const route = useRoute()
@@ -163,6 +164,8 @@ const route = useRoute()
 const searchKeyword = ref(typeof route.query.keyword === 'string' ? route.query.keyword : '')
 const searchCategory = ref(typeof route.query.category === 'string' ? route.query.category : '')
 const stockStatus = ref(typeof route.query.stockStatus === 'string' ? route.query.stockStatus : '')
+const categoryFilterOptions = ref([])
+const categoryLoading = ref(false)
 // 分页基础数据
 const currentPage = ref(Number(route.query.page) || 1)
 const pageSize = ref(Number(route.query.pageSize) || 10)
@@ -339,7 +342,24 @@ function getCategory(row, index) {
 }
 
 function isLowStock(row) {
-  return Number(row.stock || 0) <= Number(row.safetyStock ?? 100)
+  const stock = Number(row.stock || 0)
+  const safetyStock = Number(row.safetyStock)
+  return Number.isFinite(safetyStock) && row.safetyStock != null ? stock <= safetyStock : stock <= 0
+}
+
+async function loadCategoryFilters() {
+  categoryLoading.value = true
+  try {
+    const rows = await getConsumableCategoriesApi()
+    categoryFilterOptions.value = (rows || [])
+      .filter(item => item.level === 1 || item.parentId == null)
+      .map(item => ({ label: item.name, value: item.name }))
+      .filter((item, index, list) => item.value && list.findIndex(other => other.value === item.value) === index)
+  } catch {
+    categoryFilterOptions.value = []
+  } finally {
+    categoryLoading.value = false
+  }
 }
 
 function openStockDialog(row) {
@@ -382,6 +402,7 @@ async function confirmStockChange() {
 
 // 页面初始化
 onMounted(() => {
+  loadCategoryFilters()
   loadList()
 })
 </script>

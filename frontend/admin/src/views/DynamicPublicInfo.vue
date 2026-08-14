@@ -54,7 +54,8 @@
             <!-- 底部操作按钮 -->
             <div class="form-footer">
                 <el-button dashed plain type="default" :icon="ArrowLeft" @click="goBack">取消</el-button>
-                <el-button dashed plain type="primary" @click="submitForm" :icon="Check">确认</el-button>
+                <el-button dashed plain type="primary" @click="submitForm" :icon="Check"
+                    :loading="submitLoading">{{ isEdit ? '保存修改' : '发布动态' }}</el-button>
             </div>
         </el-form>
     </div>

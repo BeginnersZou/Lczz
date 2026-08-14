@@ -55,7 +55,7 @@
         <span>{{ loadError }}</span>
         <el-button type="primary" link @click="loadList">重新加载</el-button>
       </div>
-      <el-table v-else v-loading="tableLoading" :data="orders" border stripe style="width: 100%"
+      <el-table v-else v-loading="tableLoading" :data="orders" border stripe table-layout="fixed" style="width: 100%"
         empty-text="暂无订单，点击上方按钮新增第一条订单">
         <!-- 序号 -->
         <el-table-column label="序号" align="center" width="70">
@@ -64,16 +64,16 @@
           </template>
         </el-table-column>
         <!-- 订单名称 -->
-        <el-table-column label="任务信息" align="left" min-width="170">
+        <el-table-column label="任务信息" align="left" min-width="200">
           <template #default="scope">
             <div class="primary-cell">{{ scope.row.productName || scope.row.taskType || '-' }}</div>
             <div class="secondary-cell">{{ scope.row.description || '暂无描述' }}</div>
           </template>
         </el-table-column>
         <!-- 订单编号 支持点击复制 -->
-        <el-table-column prop="orderNo" label="订单编号" align="left">
+        <el-table-column prop="orderNo" label="订单编号" align="left" min-width="190">
           <template #default="scope">
-            <span class="table-order-id" role="button" tabindex="0" @click="copyOrderId(scope.row.orderNo || scope.row.id)" @keyup.enter="copyOrderId(scope.row.orderNo || scope.row.id)">
+            <span class="table-order-id code-cell" role="button" tabindex="0" @click="copyOrderId(scope.row.orderNo || scope.row.id)" @keyup.enter="copyOrderId(scope.row.orderNo || scope.row.id)">
               {{ scope.row.orderNo || scope.row.id }}
               <el-icon size="14" class="copy-icon">
                 <DocumentCopy />
@@ -82,13 +82,13 @@
           </template>
         </el-table-column>
         <!-- 指派师傅 -->
-        <el-table-column label="客户" align="left" min-width="140">
+        <el-table-column label="客户" align="left" min-width="150">
           <template #default="scope">
             <div class="primary-cell">{{ scope.row.customerName || '-' }}</div>
             <div class="secondary-cell">{{ formatPhone(scope.row.customerPhone) }}</div>
           </template>
         </el-table-column>
-        <el-table-column prop="assignMaster" label="指派师傅" align="left" min-width="110">
+        <el-table-column prop="assignMaster" label="指派师傅" align="left" min-width="140" show-overflow-tooltip>
           <template #default="scope">{{ scope.row.assignMaster || scope.row.masterName || '待指派' }}</template>
         </el-table-column>
         <el-table-column label="状态" align="center" width="100">
@@ -97,9 +97,13 @@
           </template>
         </el-table-column>
         <!-- 创建时间 -->
-        <el-table-column prop="createTime" label="创建时间" align="left" />
+        <el-table-column prop="createTime" label="创建时间" align="left" width="168">
+          <template #default="scope">
+            <span class="datetime-cell">{{ formatDateTime(scope.row.createTime) }}</span>
+          </template>
+        </el-table-column>
         <!-- 操作：修改+删除 -->
-        <el-table-column label="操作" align="center" width="160">
+        <el-table-column label="操作" align="center" width="136" fixed="right">
           <template #default="scope">
             <el-button text type="primary" @click="handleEditOrder(scope.row)">修改</el-button>
             <el-button v-if="!isCancelled(scope.row.status)" text type="danger" @click="handleDeleteOrder(scope.row)">作废</el-button>
@@ -133,6 +137,7 @@ import {
 } from '@element-plus/icons-vue'
 import { useRouter, useRoute } from 'vue-router'
 import { getOrderListApi, cancelOrderApi, exportOrdersApi } from '@/api/orders'
+import { formatDateTime, formatPhone } from '@/utils/format'
 
 const router = useRouter()
 const route = useRoute()
@@ -324,18 +329,13 @@ async function copyOrderId(id) {
   success ? ElMessage.success('订单编号复制成功') : ElMessage.error('复制失败，请手动复制')
 }
 
-function formatPhone(phone) {
-  if (!phone) return ''
-  return phone.length === 11 ? `${phone.slice(0, 3)}****${phone.slice(-4)}` : phone
-}
-
 function getStatusText(status) {
-  const map = { pending: '待上门', assigned: '待上门', processing: '处理中', completed: '已完成', cancelled: '已作废', canceled: '已作废', PENDING_VISIT: '待上门', IN_PROGRESS: '处理中', PENDING_REVIEW: '已完成', REVIEWED: '已完成', CANCELLED: '已作废' }
+  const map = { pending: '待上门', assigned: '待上门', processing: '处理中', completed: '已完成', cancelled: '已作废', canceled: '已作废', PENDING_VISIT: '待上门', IN_PROGRESS: '处理中', PENDING_REVIEW: '待评价', REVIEWED: '已评价', CANCELLED: '已作废' }
   return map[status] || status || '待处理'
 }
 
 function getStatusType(status) {
-  const map = { pending: 'warning', assigned: 'warning', processing: 'primary', completed: 'success', cancelled: 'info', canceled: 'info', '待上门': 'warning', '处理中': 'primary', '已完成': 'success', '已作废': 'info', PENDING_VISIT: 'warning', IN_PROGRESS: 'primary', PENDING_REVIEW: 'success', REVIEWED: 'success', CANCELLED: 'info' }
+  const map = { pending: 'warning', assigned: 'warning', processing: 'primary', completed: 'success', cancelled: 'info', canceled: 'info', '待上门': 'warning', '处理中': 'primary', '已完成': 'success', '待评价': 'warning', '已评价': 'success', '已作废': 'info', PENDING_VISIT: 'warning', IN_PROGRESS: 'primary', PENDING_REVIEW: 'warning', REVIEWED: 'success', CANCELLED: 'info' }
   return map[status] || 'warning'
 }
 
@@ -447,12 +447,11 @@ onMounted(loadList)
 
     // 表格订单号复制样式
     .table-order-id {
-      font-size: 14px;
-      color: #6b7280;
       cursor: pointer;
       display: inline-flex;
       align-items: center;
       gap: 6px;
+      max-width: 100%;
 
       .copy-icon {
         color: #94a3b8;
@@ -465,6 +464,13 @@ onMounted(loadList)
           color: #409eff;
         }
       }
+    }
+
+    .secondary-cell {
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     // 表格全局样式微调

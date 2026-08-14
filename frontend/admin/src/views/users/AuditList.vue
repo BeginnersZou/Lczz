@@ -46,7 +46,7 @@
         <span>{{ loadError }}</span>
         <el-button type="primary" link @click="loadList">重新加载</el-button>
       </div>
-      <el-table v-else v-loading="tableLoading" :data="pagedList" border stripe style="width: 100%" empty-text="暂无符合条件的审核记录">
+      <el-table v-else v-loading="tableLoading" :data="pagedList" border stripe table-layout="fixed" style="width: 100%" empty-text="暂无符合条件的审核记录">
         <el-table-column label="序号" align="center" width="70">
           <template #default="scope">
             {{ (currentPage - 1) * pageSize + scope.$index + 1 }}
@@ -72,7 +72,9 @@
             {{ scope.row.auditType === 'enterprise' ? scope.row.enterpriseName : scope.row.realName }}
           </template>
         </el-table-column>
-        <el-table-column prop="submitTime" label="提交时间" align="left" width="180" />
+        <el-table-column prop="submitTime" label="提交时间" align="left" width="168">
+          <template #default="scope"><span class="datetime-cell">{{ formatDateTime(scope.row.submitTime || scope.row.createdAt) }}</span></template>
+        </el-table-column>
         <el-table-column label="审核状态" align="center" width="110">
           <template #default="scope">
             <el-tag :type="getStatusType(scope.row.status)" size="small" effect="light">
@@ -105,6 +107,7 @@ import { ElMessage } from 'element-plus'
 import { Search, Refresh, ArrowLeft } from '@element-plus/icons-vue'
 import { useRouter, useRoute } from 'vue-router'
 import { getAuditListApi } from '@/api/audit'
+import { formatDateTime, formatPhone } from '@/utils/format'
 
 const router = useRouter()
 const route = useRoute()
@@ -138,13 +141,15 @@ async function loadList() {
     const kw = searchKeyword.value.trim()
     if (kw) params.keyword = kw
     if (searchStatus.value) params.status = searchStatus.value
-    const res = await getAuditListApi(params)
+    const res = await getAuditListApi(params, { silent: true })
     pagedList.value = res?.list || []
     total.value = res?.total || 0
   } catch (e) {
     pagedList.value = []
     total.value = 0
-    loadError.value = '审核记录加载失败，请检查网络后重试。'
+    loadError.value = e?.response?.status === 404
+      ? '后端尚未开放用户审核接口，当前页面暂时无法读取真实审核数据。'
+      : '审核记录加载失败，请检查网络后重试。'
   } finally {
     tableLoading.value = false
   }
@@ -167,11 +172,6 @@ const getStatusType = (status) => {
 const getStatusText = (status) => {
   const map = { pending: '待审核', approved: '已通过', rejected: '已驳回' }
   return map[status] || status
-}
-
-const formatPhone = (phone) => {
-  if (!phone) return ''
-  return phone.slice(0, 3) + '****' + phone.slice(-4)
 }
 
 const handleSearch = () => {

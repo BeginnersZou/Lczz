@@ -21,11 +21,12 @@ import request from '@/utils/request'
  * @param {number} [params.blacklist] - 黑名单状态：0 全部 1 正常 2 黑名单
  * @returns {Promise<{list: Object[], total: number}>}
  */
-export function getUserListApi(params) {
+export function getUserListApi(params, config = {}) {
   return request({
     url: '/users/list',
     method: 'get',
-    params
+    params,
+    ...config
   })
 }
 

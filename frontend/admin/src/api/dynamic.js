@@ -20,11 +20,12 @@ import request from '@/utils/request'
  * @param {string} [params.category] - 分类
  * @returns {Promise<{list: Object[], total: number}>}
  */
-export function getDynamicListApi(params) {
+export function getDynamicListApi(params, config = {}) {
   return request({
     url: '/dynamic/list',
     method: 'get',
-    params
+    params,
+    ...config
   })
 }
 

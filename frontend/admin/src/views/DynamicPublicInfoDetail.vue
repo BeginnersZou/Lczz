@@ -55,8 +55,10 @@
       <div class="form-footer">
         <el-button dashed plain type="default" :icon="ArrowLeft" @click="goBack">返回</el-button>
         <template v-if="!isViewMode">
-          <el-button dashed plain type="info" @click="saveDraft" :icon="Document">保存草稿</el-button>
-          <el-button dashed plain type="primary" @click="submitPublish" :icon="Check">发布</el-button>
+          <el-button dashed plain type="info" @click="saveDraft" :icon="Document"
+            :loading="submitLoading">保存草稿</el-button>
+          <el-button dashed plain type="primary" @click="submitPublish" :icon="Check"
+            :loading="submitLoading">发布</el-button>
         </template>
       </div>
     </el-form>

@@ -21,7 +21,7 @@
           </div>
         </div>
         <div class="title-right">
-          <span class="time-text">发布时间：{{ detail.publishTime }}</span>
+          <span class="time-text">发布时间：{{ formatDateTime(detail.publishTime || detail.createdAt) }}</span>
         </div>
       </div>
 
@@ -35,8 +35,12 @@
                 </el-icon>产品图片</span>
             </template>
             <div class="img-box">
-              <img :src="detail.image" alt="产品图" class="cover-img"
-                @error="$event.target.src = 'https://picsum.photos/id/0/800/800'" />
+              <img v-if="detail.image && !imageLoadError" :src="detail.image" alt="产品图" class="cover-img"
+                @error="imageLoadError = true" />
+              <div v-else class="image-empty">
+                <el-icon :size="44"><Picture /></el-icon>
+                <span>暂无产品图片</span>
+              </div>
             </div>
           </el-card>
 
@@ -123,11 +127,15 @@
       </div>
     </el-card>
 
-    <div v-else class="loading-box">
+    <div v-else-if="pageLoading" class="loading-box">
       <el-icon size="48" color="#409EFF">
         <Loading />
       </el-icon>
       <p>加载中...</p>
+    </div>
+    <div v-else class="error-state">
+      <span>{{ loadError || '产品详情加载失败' }}</span>
+      <el-button type="primary" link @click="loadDetail">重新加载</el-button>
     </div>
   </div>
 </template>
@@ -149,11 +157,14 @@ import {
   Loading
 } from '@element-plus/icons-vue'
 import { getAirConditionerDetailApi, deleteAirConditionerApi } from '@/api/airConditioner'
+import { formatDateTime } from '@/utils/format'
 
 const router = useRouter()
 const route = useRoute()
 const detail = ref(null)
 const pageLoading = ref(false)
+const imageLoadError = ref(false)
+const loadError = ref('')
 
 onMounted(loadDetail)
 
@@ -162,11 +173,14 @@ onMounted(loadDetail)
  */
 async function loadDetail() {
   pageLoading.value = true
+  loadError.value = ''
   try {
     const data = await getAirConditionerDetailApi(route.params.id)
     detail.value = data
+    imageLoadError.value = false
   } catch {
     detail.value = null
+    loadError.value = '产品详情加载失败，请检查网络后重试。'
   } finally {
     pageLoading.value = false
   }
@@ -346,6 +360,19 @@ const deleteItem = () => {
         width: 100%;
         height: 280px;
         object-fit: cover;
+        border-radius: 6px;
+      }
+
+      .image-empty {
+        height: 280px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        color: var(--text-tertiary);
+        background: var(--surface-subtle);
+        border: 1px dashed var(--border-strong);
         border-radius: 6px;
       }
 
