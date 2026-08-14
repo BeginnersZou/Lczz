@@ -7,7 +7,8 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.web.client.RestClient;
 
 @Configuration
-@EnableConfigurationProperties({JwtProperties.class, WechatMiniProperties.class, AdminBootstrapProperties.class})
+@EnableConfigurationProperties({JwtProperties.class, WechatMiniProperties.class, AdminBootstrapProperties.class,
+        DevelopmentAuthProperties.class})
 public class AuthConfiguration {
     @Bean
     Clock clock() {
