@@ -65,6 +65,9 @@ lczz:
     username: ${ADMIN_BOOTSTRAP_USERNAME:}
     password: ${ADMIN_BOOTSTRAP_PASSWORD:}
     nickname: ${ADMIN_BOOTSTRAP_NICKNAME:系统管理员}
+  dev-auth:
+    enabled: ${DEV_AUTH_ENABLED:false}
+    password: ${DEV_AUTH_PASSWORD:}
   file:
     storage-type: ${FILE_STORAGE_TYPE:LOCAL}
     local-root: ${FILE_LOCAL_ROOT:./data/uploads}
