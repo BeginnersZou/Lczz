@@ -1,504 +1,626 @@
 <template>
   <div class="user-page">
-    <!-- 顶部标题操作栏 和订单/动态页面统一 -->
     <div class="page-header">
       <div class="header-left">
         <h2 class="page-title">用户管理</h2>
-        <span class="page-desc">统一管理平台所有微信注册用户，支持检索、查看、修改、黑名单管控</span>
-      </div>
-      <div class="header-right">
-        <el-badge :value="auditCount" :hidden="auditCount === 0">
-          <el-button type="primary" plain aria-label="进入用户审核" @click="handleAudit">
-            <el-icon>
-              <Bell />
-            </el-icon>
-          </el-button>
-        </el-badge>
+        <span class="page-desc">管理后台与小程序用户，支持角色、账号状态及黑名单管控</span>
       </div>
     </div>
 
-    <!-- 搜索卡片 单行不换行 -->
-    <el-card class="search-card" shadow="light">
-      <div class="search-bar">
-        <el-form :model="searchForm" style="display: flex; align-items: center;">
-          <el-form-item label="昵称">
-            <el-input v-model="searchForm.nickname" placeholder="请输入用户昵称检索" clearable class="search-input"
-              @keyup.enter="handleSearch">
-              <template #prefix>
-                <el-icon>
-                  <Search />
-                </el-icon>
-              </template>
-            </el-input>
-          </el-form-item>
-          <el-form-item label="身份" style="margin-left: 12px;">
-            <el-select v-model="searchForm.role" placeholder="全部身份" clearable class="role-select" @change="handleSearch">
-              <el-option label="管理员" value="admin" />
-              <el-option label="安装师傅" value="installer" />
-              <el-option label="普通用户" value="customer" />
-            </el-select>
-          </el-form-item>
-          <el-form-item class="search-btn-group" style="margin-left: 12px;">
-            <el-button type="primary" :icon="Search" @click="handleSearch">
-              搜索
-            </el-button>
-            <el-button text :icon="Refresh" @click="handleReset">
-              重置
-            </el-button>
-          </el-form-item>
-        </el-form>
-      </div>
+    <el-card class="search-card" shadow="never">
+      <el-form :model="searchForm" class="search-form" @submit.prevent>
+        <el-form-item label="关键词">
+          <el-input
+            v-model="searchForm.keyword"
+            class="keyword-input"
+            clearable
+            placeholder="昵称、姓名或手机号"
+            :prefix-icon="Search"
+            @keyup.enter="handleSearch"
+          />
+        </el-form-item>
+        <el-form-item label="角色">
+          <el-select v-model="searchForm.role" class="filter-select" clearable placeholder="全部角色" @change="handleSearch">
+            <el-option v-for="item in roleOptions" :key="item.value" :label="item.label" :value="item.value" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="账号状态">
+          <el-select v-model="searchForm.accountStatus" class="filter-select" clearable placeholder="全部状态" @change="handleSearch">
+            <el-option label="已启用" value="ENABLED" />
+            <el-option label="已停用" value="DISABLED" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="黑名单">
+          <el-select v-model="searchForm.blacklist" class="filter-select" clearable placeholder="全部" @change="handleSearch">
+            <el-option label="正常用户" :value="false" />
+            <el-option label="黑名单用户" :value="true" />
+          </el-select>
+        </el-form-item>
+        <el-form-item class="search-actions">
+          <el-button type="primary" :icon="Search" @click="handleSearch">搜索</el-button>
+          <el-button :icon="Refresh" @click="handleReset">重置</el-button>
+        </el-form-item>
+      </el-form>
     </el-card>
 
-    <!-- 用户表格 -->
-    <el-card class="table-card" shadow="light">
-      <div v-if="loadError" class="error-state">
-        <span>{{ loadError }}</span>
-        <el-button type="primary" link @click="loadList">重新加载</el-button>
-      </div>
-      <el-table v-else v-loading="loading" :data="tableData" border stripe>
-        <el-table-column prop="nickname" label="昵称" min-width="160" />
-        <el-table-column prop="gender" label="性别" width="80" />
-        <el-table-column prop="phone" label="手机号" width="160">
+    <el-card class="table-card" shadow="never">
+      <el-alert v-if="loadError" class="load-alert" :title="loadError" type="error" show-icon :closable="false">
+        <template #default>
+          <el-button type="primary" link @click="loadList">重新加载</el-button>
+        </template>
+      </el-alert>
+
+      <el-table v-else v-loading="loading" :data="tableData" border stripe table-layout="fixed">
+        <el-table-column label="用户" min-width="176">
           <template #default="{ row }">
-            {{ formatPhone(row.phone) }}
+            <div class="user-cell">
+              <span class="primary-text">{{ row.nickname || row.username || '-' }}</span>
+              <span class="secondary-text">{{ row.realName || row.username || '未填写真实姓名' }}</span>
+            </div>
           </template>
         </el-table-column>
-        <el-table-column prop="role" label="身份" width="120">
+        <el-table-column label="手机号" width="140">
+          <template #default="{ row }">{{ formatPhone(row.phone) }}</template>
+        </el-table-column>
+        <el-table-column label="性别" width="80" align="center">
+          <template #default="{ row }">{{ getGenderText(row.gender) }}</template>
+        </el-table-column>
+        <el-table-column label="角色" width="112" align="center">
           <template #default="{ row }">
-            <el-tag :type="getRoleTagType(row.role)" size="small" effect="light">
-              {{ getRoleText(row.role) }}
+            <el-tag :type="getRoleTagType(row.role)" size="small" effect="light">{{ getRoleText(row.role) }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="账号状态" width="104" align="center">
+          <template #default="{ row }">
+            <el-tag :type="row.accountStatus === 'ENABLED' ? 'success' : 'info'" size="small" effect="light">
+              {{ getAccountStatusText(row.accountStatus) }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="registerTime" label="注册时间" width="200" />
-        <el-table-column label="操作" width="320" fixed="right">
+        <el-table-column label="黑名单" width="96" align="center">
           <template #default="{ row }">
-            <el-button text type="primary" @click="openDialog('view', row)">详情</el-button>
-            <el-button text type="primary" @click="openDialog('edit', row)">修改</el-button>
-            <el-button text :type="row.blacklist ? 'danger' : 'warning'" @click="openBlacklistDialog(row)">
+            <el-tag :type="row.blacklist ? 'danger' : 'success'" size="small" effect="plain">
+              {{ row.blacklist ? '已拉黑' : '正常' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="最近登录" width="168">
+          <template #default="{ row }"><span class="datetime-cell">{{ formatDateTime(row.lastLoginAt) }}</span></template>
+        </el-table-column>
+        <el-table-column label="注册时间" width="168">
+          <template #default="{ row }"><span class="datetime-cell">{{ formatDateTime(row.createdAt || row.registerTime) }}</span></template>
+        </el-table-column>
+        <el-table-column label="操作" width="330" fixed="right" align="center">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="openDialog('view', row)">详情</el-button>
+            <el-button link type="primary" @click="openDialog('edit', row)">编辑</el-button>
+            <el-button
+              link
+              :type="row.accountStatus === 'ENABLED' ? 'warning' : 'success'"
+              :loading="statusLoadingId === row.id"
+              @click="handleStatusChange(row)"
+            >
+              {{ row.accountStatus === 'ENABLED' ? '停用' : '启用' }}
+            </el-button>
+            <el-button link :type="row.blacklist ? 'primary' : 'danger'" @click="openBlacklistDialog(row)">
               {{ row.blacklist ? '移出黑名单' : '加入黑名单' }}
             </el-button>
           </template>
         </el-table-column>
+        <template #empty>
+          <el-empty description="没有符合条件的用户" :image-size="92" />
+        </template>
       </el-table>
 
-      <!-- 分页区域 全站统一居右 -->
-      <div class="pagination-wrap" v-if="tableData.length">
-        <el-pagination v-model:current-page="currentPage" v-model:page-size="pageSize" :total="total" :background="true"
-          layout="total, sizes, prev, pager, next" :page-sizes="[10, 20, 50]" @size-change="handleSizeChange" @current-change="handleCurrentChange" />
+      <div v-if="!loadError && total > 0" class="pagination-wrap">
+        <el-pagination
+          v-model:current-page="currentPage"
+          v-model:page-size="pageSize"
+          :total="total"
+          background
+          layout="total, sizes, prev, pager, next"
+          :page-sizes="[10, 20, 50]"
+          @size-change="handleSizeChange"
+          @current-change="loadList"
+        />
       </div>
     </el-card>
 
-    <!-- 用户详情/编辑共用弹窗 匹配UI表单 -->
-    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="680" @close="resetForm">
-      <el-descriptions v-if="dialogType === 'view'" :column="2" border>
-        <el-descriptions-item label="昵称">{{ form.nickname || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="性别">{{ form.gender || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="身份">{{ getRoleText(form.role) }}</el-descriptions-item>
-        <el-descriptions-item label="地区">{{ form.area || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="身份证" :span="2">{{ maskIdCard(form.idCard) }}</el-descriptions-item>
-      </el-descriptions>
-      <el-form v-else ref="userFormRef" :model="form" :rules="formRules" label-width="100px">
-        <el-form-item label="昵称" prop="nickname">
-          <el-input v-model="form.nickname" :disabled="dialogType === 'view'" placeholder="请输入昵称" />
-        </el-form-item>
-        <el-form-item label="性别" prop="gender">
-          <el-select v-model="form.gender" :disabled="dialogType === 'view'" placeholder="请选择性别">
-            <el-option label="男" value="男" />
-            <el-option label="女" value="女" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="身份" prop="role">
-          <el-select v-model="form.role" :disabled="dialogType === 'view'" placeholder="请选择身份">
-            <el-option label="管理员" value="admin" />
-            <el-option label="安装师傅" value="installer" />
-            <el-option label="普通用户" value="customer" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="地区" prop="area">
-          <el-input v-model="form.area" :disabled="dialogType === 'view'" placeholder="请输入地区" />
-        </el-form-item>
-        <el-form-item label="身份证" prop="idCard">
-          <el-input v-model="form.idCard" :disabled="dialogType === 'view'" placeholder="请输入身份证号" />
-        </el-form-item>
-      </el-form>
-      <!-- 弹窗底部按钮 -->
+    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="720px" destroy-on-close @closed="resetForm">
+      <div v-loading="dialogLoading" class="dialog-content">
+        <el-descriptions v-if="dialogType === 'view'" :column="2" border>
+          <el-descriptions-item label="登录账号">{{ form.username || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="昵称">{{ form.nickname || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="真实姓名">{{ form.realName || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="性别">{{ getGenderText(form.gender) }}</el-descriptions-item>
+          <el-descriptions-item label="手机号">{{ formatPhone(form.phone) }}</el-descriptions-item>
+          <el-descriptions-item label="角色">{{ getRoleText(form.role) }}</el-descriptions-item>
+          <el-descriptions-item label="账号状态">{{ getAccountStatusText(form.accountStatus) }}</el-descriptions-item>
+          <el-descriptions-item label="黑名单">{{ form.blacklist ? '是' : '否' }}</el-descriptions-item>
+          <el-descriptions-item label="师傅状态">{{ getInstallerStatusText(form.installerStatus) }}</el-descriptions-item>
+          <el-descriptions-item label="最近登录">{{ formatDateTime(form.lastLoginAt) }}</el-descriptions-item>
+          <el-descriptions-item label="注册时间" :span="2">{{ formatDateTime(form.createdAt) }}</el-descriptions-item>
+        </el-descriptions>
+
+        <el-form v-else ref="userFormRef" :model="form" :rules="formRules" label-width="96px">
+          <el-form-item label="昵称" prop="nickname">
+            <el-input v-model="form.nickname" maxlength="64" show-word-limit placeholder="请输入昵称" />
+          </el-form-item>
+          <el-form-item label="真实姓名" prop="realName">
+            <el-input v-model="form.realName" maxlength="64" show-word-limit placeholder="未填写可留空" />
+          </el-form-item>
+          <el-form-item label="性别" prop="gender">
+            <el-select v-model="form.gender" clearable placeholder="未设置">
+              <el-option label="男" value="MALE" />
+              <el-option label="女" value="FEMALE" />
+              <el-option label="未知" value="UNKNOWN" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="角色" prop="role">
+            <el-select v-model="form.role" placeholder="请选择角色">
+              <el-option v-for="item in roleOptions" :key="item.value" :label="item.label" :value="item.value" />
+            </el-select>
+          </el-form-item>
+          <el-alert title="手机号、账号状态及认证材料不在资料编辑契约内，请使用对应操作入口。" type="info" show-icon :closable="false" />
+        </el-form>
+      </div>
       <template #footer>
-        <div class="dialog-footer">
-          <el-button @click="dialogVisible = false">取消</el-button>
-          <el-button v-if="dialogType !== 'view'" type="primary" :loading="submitting" @click="submitForm">保存修改</el-button>
-        </div>
+        <el-button @click="dialogVisible = false">{{ dialogType === 'view' ? '关闭' : '取消' }}</el-button>
+        <el-button v-if="dialogType === 'edit'" type="primary" :loading="submitting" @click="submitForm">保存修改</el-button>
       </template>
     </el-dialog>
 
-    <el-dialog v-model="blacklistDialogVisible" :title="blacklistTarget?.blacklist ? '移出黑名单' : '加入黑名单'" width="460px" @closed="blacklistReason = ''">
-      <p class="dialog-tip">{{ blacklistTarget?.blacklist ? '移出后该用户可重新登录。' : '加入后该用户将无法登录，请说明操作原因。' }}</p>
-      <el-input v-model="blacklistReason" type="textarea" :rows="3" maxlength="100" show-word-limit placeholder="请输入操作原因" />
+    <el-dialog
+      v-model="blacklistDialogVisible"
+      :title="blacklistTarget?.blacklist ? '移出黑名单' : '加入黑名单'"
+      width="480px"
+      @closed="resetBlacklistDialog"
+    >
+      <el-alert
+        :title="blacklistTarget?.blacklist ? '移出后该用户将恢复正常状态。' : '加入黑名单属于高风险操作，请填写原因后确认。'"
+        :type="blacklistTarget?.blacklist ? 'info' : 'warning'"
+        show-icon
+        :closable="false"
+      />
+      <el-input
+        v-model="blacklistReason"
+        class="reason-input"
+        type="textarea"
+        :rows="4"
+        minlength="2"
+        maxlength="500"
+        show-word-limit
+        placeholder="请输入 2-500 字操作原因"
+      />
       <template #footer>
         <el-button @click="blacklistDialogVisible = false">取消</el-button>
-        <el-button :type="blacklistTarget?.blacklist ? 'primary' : 'danger'" :loading="blacklistLoading" @click="handleBlacklist">确认</el-button>
+        <el-button :type="blacklistTarget?.blacklist ? 'primary' : 'danger'" :loading="blacklistLoading" @click="handleBlacklist">
+          确认{{ blacklistTarget?.blacklist ? '移出' : '加入' }}
+        </el-button>
       </template>
     </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
-import { Search, Refresh, Bell } from '@element-plus/icons-vue'
-import { useRouter, useRoute } from 'vue-router'
-import { getUserListApi, toggleBlacklistApi, updateUserApi } from '@/api/users'
-import { getAuditListApi } from '@/api/audit'
+import { onMounted, reactive, ref } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Refresh, Search } from '@element-plus/icons-vue'
+import { useRoute, useRouter } from 'vue-router'
+import {
+  changeUserStatusApi,
+  getUserDetailApi,
+  getUserListApi,
+  toggleBlacklistApi,
+  updateUserApi
+} from '@/api/users'
+import { formatDateTime, formatPhone } from '@/utils/format'
 
-const router = useRouter()
 const route = useRoute()
+const router = useRouter()
 
-// 搜索表单
+const roleOptions = [
+  { label: '管理员', value: 'ADMIN' },
+  { label: '安装师傅', value: 'INSTALLER' },
+  { label: '普通用户', value: 'CUSTOMER' },
+  { label: '经销商', value: 'DEALER' }
+]
+
+const routeBlacklist = route.query.blacklist
 const searchForm = reactive({
-  nickname: typeof route.query.keyword === 'string' ? route.query.keyword : '',
-  role: typeof route.query.role === 'string' ? route.query.role : ''
+  keyword: typeof route.query.keyword === 'string' ? route.query.keyword : '',
+  role: typeof route.query.role === 'string' ? route.query.role.toUpperCase() : '',
+  accountStatus: typeof route.query.accountStatus === 'string' ? route.query.accountStatus.toUpperCase() : '',
+  blacklist: routeBlacklist === 'true' ? true : routeBlacklist === 'false' ? false : ''
 })
 
-// 分页配置
-const currentPage = ref(Number(route.query.page) || 1)
-const pageSize = ref(Number(route.query.pageSize) || 10)
+const currentPage = ref(Math.max(1, Number(route.query.page) || 1))
+const pageSize = ref([10, 20, 50].includes(Number(route.query.pageSize)) ? Number(route.query.pageSize) : 10)
 const total = ref(0)
 const loading = ref(false)
 const loadError = ref('')
-const auditCount = ref(0)
-
-// 列表数据
 const tableData = ref([])
 
-// 弹窗控制
 const dialogVisible = ref(false)
-const dialogType = ref('') // view 查看 / edit 编辑
-const dialogTitle = ref('')
+const dialogLoading = ref(false)
+const dialogType = ref('view')
+const dialogTitle = ref('用户详情')
 const userFormRef = ref(null)
 const submitting = ref(false)
+const originalRole = ref('')
+const statusLoadingId = ref(null)
+
 const blacklistDialogVisible = ref(false)
 const blacklistTarget = ref(null)
 const blacklistReason = ref('')
 const blacklistLoading = ref(false)
-// 表单数据 匹配UI字段：昵称、性别、身份、地区、身份证
+
 const form = reactive({
   id: '',
+  username: '',
   nickname: '',
+  realName: '',
   gender: '',
+  phone: '',
   role: '',
-  area: '',
-  idCard: ''
+  accountStatus: '',
+  blacklist: false,
+  installerStatus: '',
+  lastLoginAt: '',
+  createdAt: ''
 })
 
 const formRules = {
-  nickname: [{ required: true, message: '请输入昵称', trigger: 'blur' }],
-  gender: [{ required: true, message: '请选择性别', trigger: 'change' }],
-  role: [{ required: true, message: '请选择身份', trigger: 'change' }],
-  idCard: [{ pattern: /(^\d{15}$)|(^\d{17}[\dXx]$)/, message: '身份证号格式不正确', trigger: 'blur' }]
+  nickname: [{ required: true, whitespace: true, message: '请输入昵称', trigger: 'blur' }],
+  role: [{ required: true, message: '请选择角色', trigger: 'change' }]
 }
 
-/**
- * 加载用户列表
- */
 async function loadList() {
   syncRouteState()
   loading.value = true
   loadError.value = ''
   try {
-    const params = {
-      page: currentPage.value,
-      pageSize: pageSize.value
-    }
-    const kw = searchForm.nickname.trim()
-    if (kw) params.keyword = kw
+    const params = { page: currentPage.value, pageSize: pageSize.value }
+    const keyword = searchForm.keyword.trim()
+    if (keyword) params.keyword = keyword
     if (searchForm.role) params.role = searchForm.role
-    const res = await getUserListApi(params)
-    tableData.value = res?.list || []
-    total.value = res?.total || 0
-  } catch (e) {
+    if (searchForm.accountStatus) params.accountStatus = searchForm.accountStatus
+    if (typeof searchForm.blacklist === 'boolean') params.blacklist = searchForm.blacklist
+    const data = await getUserListApi(params, { silent: true })
+    tableData.value = Array.isArray(data?.list) ? data.list : []
+    total.value = Number(data?.total || 0)
+  } catch (error) {
     tableData.value = []
     total.value = 0
-    loadError.value = '用户数据加载失败，请检查网络后重试。'
+    const status = error?.response?.status
+    loadError.value = status === 404
+      ? '联调服务尚未部署最新用户管理接口，请后端更新 dev 服务后重试。'
+      : status === 403
+        ? '当前账号没有用户管理权限，请使用管理员账号登录。'
+        : '用户数据加载失败，请检查联调服务后重试。'
   } finally {
     loading.value = false
   }
 }
 
-// 角色标签颜色
-const getRoleTagType = (role) => {
-  const map = { admin: 'danger', installer: 'warning', customer: 'success' }
-  return map[role] || 'info'
-}
-// 角色文字转换
-const getRoleText = (role) => {
-  const map = { admin: '管理员', installer: '安装师傅', customer: '普通用户' }
-  return map[role] || role
-}
-// 手机号脱敏
-const formatPhone = (phone) => {
-  if (!phone) return ''
-  return phone.slice(0, 3) + '****' + phone.slice(-4)
-}
-
-// 搜索
-const handleSearch = () => {
-  currentPage.value = 1
-  loadList()
-}
-// 重置搜索
-const handleReset = () => {
-  searchForm.nickname = ''
-  searchForm.role = ''
+function handleSearch() {
   currentPage.value = 1
   loadList()
 }
 
-// 分页切换
-const handleSizeChange = () => {
+function handleReset() {
+  Object.assign(searchForm, { keyword: '', role: '', accountStatus: '', blacklist: '' })
   currentPage.value = 1
   loadList()
 }
-const handleCurrentChange = () => {
+
+function handleSizeChange() {
+  currentPage.value = 1
   loadList()
 }
 
-// 打开弹窗：view查看 / edit编辑
-const openDialog = (type, row) => {
+function syncRouteState() {
+  router.replace({
+    query: {
+      ...(searchForm.keyword.trim() ? { keyword: searchForm.keyword.trim() } : {}),
+      ...(searchForm.role ? { role: searchForm.role } : {}),
+      ...(searchForm.accountStatus ? { accountStatus: searchForm.accountStatus } : {}),
+      ...(typeof searchForm.blacklist === 'boolean' ? { blacklist: String(searchForm.blacklist) } : {}),
+      ...(currentPage.value > 1 ? { page: currentPage.value } : {}),
+      ...(pageSize.value !== 10 ? { pageSize: pageSize.value } : {})
+    }
+  })
+}
+
+async function openDialog(type, row) {
   dialogType.value = type
-  // 回填表单
-  form.id = row.id
-  form.nickname = row.nickname
-  form.gender = row.gender
-  form.role = row.role
-  form.area = row.area
-  form.idCard = row.idCard
-  // 弹窗标题
-  dialogTitle.value = type === 'view' ? '用户详情' : '修改用户信息'
+  dialogTitle.value = type === 'view' ? '用户详情' : '编辑用户资料'
   dialogVisible.value = true
+  dialogLoading.value = true
+  fillForm(row)
+  try {
+    const detail = await getUserDetailApi(row.id)
+    fillForm(detail || row)
+  } catch {
+    ElMessage.warning('用户详情获取失败，当前展示列表中的最新数据')
+  } finally {
+    dialogLoading.value = false
+  }
 }
 
-// 重置表单
-const resetForm = () => {
+function fillForm(user = {}) {
+  Object.assign(form, {
+    id: user.id ?? '',
+    username: user.username ?? '',
+    nickname: user.nickname ?? '',
+    realName: user.realName ?? '',
+    gender: user.gender ?? '',
+    phone: user.phone ?? '',
+    role: String(user.role || user.roles?.[0] || '').toUpperCase(),
+    accountStatus: user.accountStatus ?? '',
+    blacklist: Boolean(user.blacklist),
+    installerStatus: user.installerStatus ?? '',
+    lastLoginAt: user.lastLoginAt ?? '',
+    createdAt: user.createdAt || user.registerTime || ''
+  })
+  originalRole.value = form.role
+}
+
+function resetForm() {
   userFormRef.value?.clearValidate()
-  form.id = ''
-  form.nickname = ''
-  form.gender = ''
-  form.role = ''
-  form.area = ''
-  form.idCard = ''
+  Object.assign(form, {
+    id: '', username: '', nickname: '', realName: '', gender: '', phone: '', role: '',
+    accountStatus: '', blacklist: false, installerStatus: '', lastLoginAt: '', createdAt: ''
+  })
+  originalRole.value = ''
 }
 
-// 提交编辑表单
-const submitForm = async () => {
+async function submitForm() {
   if (submitting.value) return
   try {
-    await userFormRef.value.validate()
+    await userFormRef.value?.validate()
+    if (form.role !== originalRole.value) {
+      await ElMessageBox.confirm(
+        `确认将该用户角色调整为“${getRoleText(form.role)}”吗？角色变更会影响其可访问功能。`,
+        '确认角色变更',
+        { type: 'warning', confirmButtonText: '确认保存', cancelButtonText: '取消' }
+      )
+    }
     submitting.value = true
     await updateUserApi(form.id, {
-      nickname: form.nickname,
-      gender: form.gender,
-      role: form.role,
-      area: form.area,
-      idCard: form.idCard
+      nickname: form.nickname.trim(),
+      realName: form.realName.trim() || null,
+      gender: form.gender || null,
+      role: form.role
     })
     dialogVisible.value = false
-    ElMessage.success('用户信息修改成功')
-    loadList()
-  } catch (e) {
-    // 校验失败或接口失败，错误已在拦截器/表单内提示
+    ElMessage.success('用户资料已更新')
+    await loadList()
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close' && !error?.fields) {
+      // 接口错误由请求拦截器统一反馈。
+    }
   } finally {
     submitting.value = false
   }
 }
 
-// 黑名单气泡确认逻辑：调用接口切换，成功后本地更新状态
-const openBlacklistDialog = (row) => {
+async function handleStatusChange(row) {
+  const nextStatus = row.accountStatus === 'ENABLED' ? 'DISABLED' : 'ENABLED'
+  const action = nextStatus === 'ENABLED' ? '启用' : '停用'
+  try {
+    await ElMessageBox.confirm(
+      `确认${action}用户“${row.nickname || row.username || row.id}”吗？`,
+      `确认${action}账号`,
+      { type: nextStatus === 'DISABLED' ? 'warning' : 'info', confirmButtonText: `确认${action}`, cancelButtonText: '取消' }
+    )
+    statusLoadingId.value = row.id
+    const updated = await changeUserStatusApi(row.id, nextStatus)
+    Object.assign(row, updated || { accountStatus: nextStatus })
+    ElMessage.success(`账号已${action}`)
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') {
+      // 接口错误由请求拦截器统一反馈。
+    }
+  } finally {
+    statusLoadingId.value = null
+  }
+}
+
+function openBlacklistDialog(row) {
   blacklistTarget.value = row
+  blacklistReason.value = ''
   blacklistDialogVisible.value = true
 }
 
-function syncRouteState() {
-  router.replace({ query: {
-    ...(searchForm.nickname.trim() ? { keyword: searchForm.nickname.trim() } : {}),
-    ...(searchForm.role ? { role: searchForm.role } : {}),
-    ...(currentPage.value > 1 ? { page: currentPage.value } : {}),
-    ...(pageSize.value !== 10 ? { pageSize: pageSize.value } : {})
-  } })
+function resetBlacklistDialog() {
+  blacklistTarget.value = null
+  blacklistReason.value = ''
 }
 
-const handleBlacklist = async () => {
+async function handleBlacklist() {
   const row = blacklistTarget.value
+  const reason = blacklistReason.value.trim()
   if (!row) return
-  if (!blacklistReason.value.trim()) {
-    ElMessage.warning('请填写操作原因')
+  if (reason.length < 2) {
+    ElMessage.warning('操作原因至少填写 2 个字符')
     return
   }
   blacklistLoading.value = true
   try {
-    await toggleBlacklistApi(row.id, { blacklist: !row.blacklist, reason: blacklistReason.value.trim() })
-    row.blacklist = !row.blacklist
-    ElMessage.success(row.blacklist ? '已加入黑名单' : '已移出黑名单')
+    const updated = await toggleBlacklistApi(row.id, { blacklist: !row.blacklist, reason })
+    Object.assign(row, updated || { blacklist: !row.blacklist })
+    ElMessage.success(row.blacklist ? '用户已加入黑名单' : '用户已移出黑名单')
     blacklistDialogVisible.value = false
-  } catch (e) {
-    // 错误已在响应拦截器提示，状态保持不变
   } finally {
     blacklistLoading.value = false
   }
 }
 
-// 跳转用户审核列表页
-const handleAudit = () => {
-  router.push({ name: 'UserAudit' })
+function getRoleTagType(role) {
+  return { ADMIN: 'danger', INSTALLER: 'warning', CUSTOMER: 'success', DEALER: 'primary' }[String(role || '').toUpperCase()] || 'info'
 }
 
-const maskIdCard = (value) => {
-  if (!value || value.length < 8) return value || '-'
-  return `${value.slice(0, 4)}**********${value.slice(-4)}`
+function getRoleText(role) {
+  return { ADMIN: '管理员', INSTALLER: '安装师傅', CUSTOMER: '普通用户', DEALER: '经销商' }[String(role || '').toUpperCase()] || role || '-'
 }
 
-async function loadAuditCount() {
-  try {
-    const res = await getAuditListApi({ page: 1, pageSize: 1, status: 'pending' }, { silent: true })
-    auditCount.value = Number(res?.total || 0)
-  } catch {
-    auditCount.value = 0
-  }
+function getGenderText(gender) {
+  return { MALE: '男', FEMALE: '女', UNKNOWN: '未知', '男': '男', '女': '女' }[gender] || '-'
 }
 
-onMounted(() => {
-  loadList()
-  loadAuditCount()
-})
+function getAccountStatusText(status) {
+  return { ENABLED: '已启用', DISABLED: '已停用' }[status] || status || '-'
+}
+
+function getInstallerStatusText(status) {
+  return { PENDING: '待认证', APPROVED: '已认证', REJECTED: '已驳回', DISABLED: '已停用' }[status] || status || '不适用'
+}
+
+onMounted(loadList)
 </script>
 
 <style lang="scss" scoped>
 .user-page {
+  min-height: 100%;
   padding: 20px;
-  background-color: #f8fafc;
-  min-height: 100vh;
+  background: #f8fafc;
+}
 
-  // 顶部头部 全站统一
-  .page-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 20px;
-    padding: 14px 18px;
-    background: #fff;
-    border-radius: 8px;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+.page-header {
+  margin-bottom: 18px;
 
-    .header-left {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-
-      .page-title {
-        font-size: 20px;
-        font-weight: 600;
-        color: #1f2937;
-        margin: 0;
-      }
-
-      .page-desc {
-        font-size: 14px;
-        color: #6b7280;
-      }
-    }
+  .page-title {
+    margin: 0 0 6px;
+    color: #0f172a;
+    font-size: 22px;
+    font-weight: 700;
   }
 
-  // 搜索卡片 单行横向不换行
-  .search-card {
-    margin-bottom: 16px;
-    border-radius: 8px;
-    border: none;
-
-    :deep(.el-card__body) {
-      padding: 18px;
-    }
-
-    .search-bar {
-      .search-input {
-        width: 320px;
-
-        :deep(.el-input__wrapper) {
-          border: 1px solid #d1d5db;
-          box-shadow: none;
-          border-radius: 6px;
-        }
-      }
-
-      .role-select {
-        width: 160px;
-      }
-
-      .search-btn-group {
-        display: flex;
-        gap: 10px;
-
-        :deep(.el-button) {
-          border-radius: 6px;
-          padding: 7px 18px;
-          display: flex;
-          align-items: center;
-          gap: 5px;
-        }
-      }
-    }
-  }
-
-  // 表格卡片
-  .table-card {
-    border-radius: 8px;
-    border: none;
-
-    :deep(.el-card__body) {
-      padding: 18px;
-    }
-  }
-
-  // 分页居右
-  .pagination-wrap {
-    margin-top: 24px;
-    display: flex;
-    justify-content: flex-end;
-
-    :deep(.el-pagination) {
-
-      .btn-prev,
-      .btn-next,
-      .number {
-        border-radius: 4px;
-      }
-    }
-  }
-
-  // 弹窗底部按钮靠右
-  .dialog-footer {
-    display: flex;
-    justify-content: flex-end;
-    gap: 12px;
+  .page-desc {
+    color: #64748b;
+    font-size: 14px;
   }
 }
 
-// 移动端适配
+.search-card,
+.table-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+}
+
+.search-card {
+  margin-bottom: 16px;
+
+  :deep(.el-card__body) {
+    padding: 18px 20px 2px;
+  }
+}
+
+.search-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 14px;
+
+  .keyword-input {
+    width: 260px;
+  }
+
+  .filter-select {
+    width: 148px;
+  }
+
+  .search-actions {
+    margin-left: auto;
+  }
+}
+
+.table-card {
+  :deep(.el-card__body) {
+    padding: 0;
+  }
+
+  :deep(.el-table th.el-table__cell) {
+    height: 50px;
+    color: #334155;
+    background: #f8fafc;
+  }
+
+  :deep(.el-table td.el-table__cell) {
+    height: 62px;
+  }
+}
+
+.load-alert {
+  margin: 20px;
+}
+
+.user-cell {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+
+  .primary-text,
+  .secondary-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .primary-text {
+    color: #0f172a;
+    font-weight: 600;
+  }
+
+  .secondary-text {
+    color: #94a3b8;
+    font-size: 12px;
+  }
+}
+
+.datetime-cell {
+  color: #475569;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.pagination-wrap {
+  display: flex;
+  justify-content: flex-end;
+  padding: 16px 20px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.dialog-content {
+  min-height: 120px;
+
+  :deep(.el-select) {
+    width: 100%;
+  }
+}
+
+.reason-input {
+  margin-top: 18px;
+}
+
+@media (max-width: 1100px) {
+  .search-form .search-actions {
+    margin-left: 0;
+  }
+}
+
 @media (max-width: 768px) {
   .user-page {
-    padding: 12px;
+    padding: 14px;
+  }
 
-    .page-header {
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 14px;
-    }
+  .search-form {
+    display: block;
 
-    .search-bar {
-      flex-wrap: wrap;
-
-      .search-input {
-        width: 100%;
-      }
+    .keyword-input,
+    .filter-select {
+      width: 100%;
     }
   }
 }

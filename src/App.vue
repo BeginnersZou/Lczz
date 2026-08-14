@@ -1,8 +1,12 @@
 <template>
-  <router-view />
+  <el-config-provider :locale="zhCn">
+    <router-view />
+  </el-config-provider>
 </template>
 
 <script setup>
+import { ElConfigProvider } from 'element-plus'
+import zhCn from 'element-plus/es/locale/lang/zh-cn'
 </script>
 
 <style>
@@ -26,6 +30,12 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+}
+
+body,
+.el-table,
+.el-pagination {
+  font-variant-numeric: tabular-nums;
 }
 
 button,
@@ -142,6 +152,11 @@ select {
   box-shadow: var(--shadow-card) !important;
 }
 
+.main-content .table-card .el-table__body-wrapper,
+.main-content .table-card .el-scrollbar__wrap {
+  scrollbar-gutter: stable;
+}
+
 .main-content .table-card > .el-card__body {
   padding: 0 !important;
 }
@@ -161,6 +176,23 @@ select {
   color: var(--text-primary);
   font-weight: 500;
   line-height: 1.5;
+}
+
+.datetime-cell,
+.code-cell {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--text-secondary);
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.code-cell {
+  color: var(--text-primary);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 13px;
 }
 
 .secondary-cell {
@@ -234,6 +266,31 @@ select {
   padding: 24px !important;
 }
 
+.main-content :is(.form-content, .publish-form, .detail-content) {
+  width: min(100%, 1180px) !important;
+  margin-right: auto !important;
+  margin-left: auto !important;
+}
+
+.main-content :is(.order-form-page, .publish-page, .detail-edit-page, .audit-detail-page) > .page-header {
+  width: min(100%, 1180px);
+  margin-right: auto !important;
+  margin-left: auto !important;
+  justify-content: flex-start !important;
+}
+
+.main-content :is(.order-form-page, .publish-page, .detail-edit-page, .audit-detail-page) > .page-header .back-btn {
+  flex: 0 0 auto;
+}
+
+.main-content :is(.order-form-page, .publish-page, .detail-edit-page, .audit-detail-page) > .page-header .header-empty {
+  display: none;
+}
+
+.main-content .form-card .el-form-item:last-child {
+  margin-bottom: 0;
+}
+
 .main-content .card-title {
   color: var(--text-primary) !important;
   font-size: 16px !important;
@@ -291,6 +348,10 @@ select {
 
   .main-content .search-card .search-input,
   .main-content .search-card :is(.status-select, .role-select, .category-select) {
+    width: 100% !important;
+  }
+
+  .main-content :is(.form-content, .publish-form, .detail-content) {
     width: 100% !important;
   }
 }
