@@ -8,6 +8,17 @@
 			</view>
 			<view class="live-dot"><view class="dot"></view><text>实时更新</text></view>
 		</view>
+		<view class="order-search">
+			<view class="search-input-wrap">
+				<up-icon name="search" size="18" color="#6f8396"></up-icon>
+				<input v-model="searchKeyword" class="search-input" placeholder="搜索订单编号、客户姓名"
+					placeholder-class="search-placeholder" confirm-type="search" @confirm="performSearch" />
+				<view v-if="searchKeyword" class="search-clear" @click="clearSearch">
+					<up-icon name="close-circle-fill" size="17" color="#a4b0bd"></up-icon>
+				</view>
+			</view>
+			<view class="search-btn" hover-class="hover-press" :hover-stay-time="80" @click="performSearch">搜索</view>
+		</view>
 		<!-- 标签切换 -->
 		<view class="tabs-wrap">
 		<view class="tabs-row">
@@ -91,16 +102,28 @@
 
 		</view>
 
+				<!-- 失败状态：权限、网络和业务失败不再伪装成空数据 -->
+				<view class="empty-state error-state" v-if="listError && displayOrders.length === 0 && !listLoading">
+					<view class="empty-icon error-icon"><up-icon name="warning" size="38" color="#d97706"></up-icon></view>
+					<text class="empty-title">{{ listError.title }}</text>
+					<text class="empty-text">{{ listError.message }}</text>
+					<view class="empty-action" @click="retryOrders">重新加载</view>
+				</view>
+
 				<!-- 空状态 -->
-				<view class="empty-state" v-if="displayOrders.length === 0 && !listLoading">
+				<view class="empty-state" v-else-if="displayOrders.length === 0 && !listLoading">
 					<view class="empty-icon"><up-icon name="empty-order" size="42" color="#7e91a4"></up-icon></view>
 					<text class="empty-title">暂无相关订单</text>
-					<text class="empty-text">预约服务后，可在这里查看处理进度</text>
-					<view class="empty-action" @click="goHome">去首页看看</view>
+					<text class="empty-text">{{ activeKeyword ? '没有匹配的订单，请更换关键词' : '服务订单创建后，可在这里查看处理进度' }}</text>
+					<view class="empty-action" v-if="activeKeyword" @click="clearSearch">清除搜索</view>
+					<view class="empty-action" v-else @click="goHome">去首页看看</view>
 				</view>
 
 				<!-- 触底加载状态 -->
 				<view class="load-status" v-if="displayOrders.length > 0">
+					<view class="load-retry" v-if="listError" @click="retryOrders">
+						<text>{{ listError.message }}，点击重试</text>
+					</view>
 					<view class="loading-more" v-if="loadStatus === 'loading'">
 						<view class="loading-dot"></view>
 						<view class="loading-dot"></view>
@@ -155,7 +178,7 @@ onShareAppMessage(() => ({
 	path: '/pages/index/index'
 }))
 
-// 标签（type 直接存中文，与订单 status 字段一致，mock/真实接口均按此过滤）
+// 标签使用后端已公开支持的中文状态别名进行过滤。
 const tabs = [{
 	name: '全部',
 	type: 'all'
@@ -182,6 +205,9 @@ const total = ref(0)
 const listLoading = ref(false)
 const loadStatus = ref('')
 const userRole = ref('')
+const searchKeyword = ref('')
+const activeKeyword = ref('')
+const listError = ref(null)
 
 // 当前登录用户角色
 const loadUserRole = async () => {
@@ -205,6 +231,32 @@ const switchTab = (index) => {
 	fetchOrders(true)
 }
 
+const performSearch = () => {
+	activeKeyword.value = searchKeyword.value.trim()
+	fetchOrders(true)
+}
+
+const clearSearch = () => {
+	const hadKeyword = Boolean(activeKeyword.value || searchKeyword.value)
+	searchKeyword.value = ''
+	activeKeyword.value = ''
+	if (hadKeyword) fetchOrders(true)
+}
+
+const setListError = (response) => {
+	if (response?.code === 403) {
+		listError.value = { title: '暂无访问权限', message: response.msg || '当前账号无权查看这些订单' }
+		return
+	}
+	if (response?.code === -1) {
+		listError.value = { title: '网络连接失败', message: response.msg || '请检查网络后重试' }
+		return
+	}
+	listError.value = { title: '订单加载失败', message: response?.msg || '服务暂时不可用，请稍后重试' }
+}
+
+const retryOrders = () => fetchOrders(allOrders.value.length === 0)
+
 // 获取订单列表
 const fetchOrders = async (isRefresh = false) => {
 	if (listLoading.value) return
@@ -212,6 +264,7 @@ const fetchOrders = async (isRefresh = false) => {
 		page.value = 1
 		allOrders.value = []
 		loadStatus.value = ''
+		listError.value = null
 	} else if (total.value > 0 && allOrders.value.length >= total.value) {
 		loadStatus.value = 'noMore'
 		return
@@ -220,21 +273,26 @@ const fetchOrders = async (isRefresh = false) => {
 	loadStatus.value = 'loading'
 	try {
 			const tab = tabs[currentTab.value]
-			const params = { page: page.value, pageSize }
-			if (tab.type !== 'all') params.status = tab.type
-			const orderRes = await orderApi.getList(params)
-			if (orderRes.code !== 200) {
-				loadStatus.value = ''
-				return
-			}
-			const list = (orderRes.data && orderRes.data.list) || []
-			total.value = (orderRes.data && orderRes.data.total) || 0
-			allOrders.value = isRefresh ? list : [...allOrders.value, ...list]
-			page.value++
-			loadStatus.value = allOrders.value.length >= total.value ? 'noMore' : ''
-		} catch (err) {
-		// request.js 已统一处理错误提示
+		const params = { page: page.value, pageSize }
+		if (tab.type !== 'all') params.status = tab.type
+		if (activeKeyword.value) params.keyword = activeKeyword.value
+		const orderRes = await orderApi.getList(params)
+		if (orderRes.code !== 200) {
+			loadStatus.value = ''
+			setListError(orderRes)
+			return false
+		}
+		const list = (orderRes.data && orderRes.data.list) || []
+		total.value = (orderRes.data && orderRes.data.total) || 0
+		allOrders.value = isRefresh ? list : [...allOrders.value, ...list]
+		page.value++
+		loadStatus.value = allOrders.value.length >= total.value ? 'noMore' : ''
+		listError.value = null
+		return true
+	} catch (err) {
+		setListError({ code: -1, msg: '请求异常，请稍后重试' })
 		loadStatus.value = ''
+		return false
 	} finally {
 		listLoading.value = false
 	}
@@ -246,9 +304,9 @@ onReachBottom(() => {
 })
 
 onPullDownRefresh(async () => {
-	await fetchOrders(true)
+	const success = await fetchOrders(true)
 	uni.stopPullDownRefresh()
-	uni.showToast({ title: '刷新成功', icon: 'none', duration: 1000 })
+	if (success) uni.showToast({ title: '刷新成功', icon: 'none', duration: 1000 })
 })
 
 // 状态样式
@@ -318,6 +376,13 @@ $text-light: #94a3b8;
 .banner-title { color: #fff; font-size: 29rpx; font-weight: 700; }.banner-desc { color: rgba(255,255,255,.7); font-size: 20rpx; margin-top: 6rpx; white-space: nowrap; }
 .live-dot { margin-left: auto; display: flex; align-items: center; align-self: flex-start; color: rgba(255,255,255,.76); font-size: 18rpx; }
 .live-dot .dot { width: 10rpx; height: 10rpx; border-radius: 50%; background: #48dfb7; margin-right: 6rpx; box-shadow: 0 0 0 5rpx rgba(72,223,183,.14); }
+
+.order-search { margin: 18rpx 24rpx 0; display: flex; gap: 14rpx; }
+.search-input-wrap { flex: 1; min-width: 0; height: 72rpx; padding: 0 20rpx; border-radius: 20rpx; background: #fff; display: flex; align-items: center; box-shadow: 0 6rpx 20rpx rgba(30, 64, 104, .06); }
+.search-input { flex: 1; height: 72rpx; margin-left: 12rpx; font-size: 25rpx; color: $text-main; }
+.search-placeholder { color: #9aa8b6; }
+.search-clear { padding: 12rpx 0 12rpx 16rpx; }
+.search-btn { width: 112rpx; height: 72rpx; border-radius: 20rpx; background: $primary; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 25rpx; font-weight: 650; box-shadow: 0 8rpx 20rpx rgba(11, 99, 206, .18); }
 
 /* 标签切换 */
 .tabs-wrap { position: sticky; top: 0; z-index: 20; background: rgba(244,247,251,.96); padding: 16rpx 24rpx 6rpx; }
@@ -607,6 +672,9 @@ $text-light: #94a3b8;
 	margin-top: 8rpx;
 }
 .empty-action { margin-top: 25rpx; padding: 13rpx 30rpx; border-radius: 28rpx; background: #eaf3ff; color: $primary; font-size: 23rpx; }
+.error-state { padding-top: 110rpx; }
+.error-icon { background: #fff7e6; }
+.load-retry { color: #b45309; background: #fff7e6; border-radius: 24rpx; padding: 12rpx 24rpx; font-size: 22rpx; }
 
 /* ═══ 触底加载状态 ═══ */
 .load-status {
