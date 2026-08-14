@@ -3,11 +3,13 @@ package com.lczz.product.web;
 import com.lczz.auth.domain.AuthenticatedUser;
 import com.lczz.common.api.ApiResponse;
 import com.lczz.product.service.ProductService;
+import com.lczz.product.service.ProductService.AuditContext;
 import com.lczz.product.service.ProductService.CategoryCommand;
 import com.lczz.product.service.ProductService.CategoryView;
 import com.lczz.product.service.ProductService.ProductCommand;
 import com.lczz.product.service.ProductService.ProductPage;
 import com.lczz.product.service.ProductService.ProductView;
+import com.lczz.product.service.ProductService.StockAdjustmentCommand;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
@@ -54,8 +56,9 @@ public class ProductController {
                                   @RequestParam(required = false) @Size(max = 100) String keyword,
                                   @RequestParam(required = false) @Size(max = 128) String category,
                                   @RequestParam(required = false) Boolean enabled,
+                                  @RequestParam(required = false) @Size(max = 16) String stockStatus,
                                   HttpServletRequest request) {
-        return ApiResponse.success(productService.list(actor, page, pageSize, keyword, category, enabled),
+        return ApiResponse.success(productService.list(actor, page, pageSize, keyword, category, enabled, stockStatus),
                 requestId(request));
     }
 
@@ -129,6 +132,18 @@ public class ProductController {
         return ApiResponse.success(productService.setEnabled(actor, id, body.enabled()), requestId(request));
     }
 
+    @PostMapping("/{id}/stock-adjustment")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "管理员按原因执行耗材入库或出库")
+    ApiResponse<ProductView> adjustStock(@AuthenticationPrincipal AuthenticatedUser actor,
+                                         @PathVariable @Min(1) long id,
+                                         @Valid @RequestBody StockAdjustmentRequest body,
+                                         HttpServletRequest request) {
+        AuditContext context = new AuditContext(requestId(request), request.getRemoteAddr());
+        return ApiResponse.success(productService.adjustStock(actor, id, body.toCommand(), context),
+                requestId(request));
+    }
+
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "管理员逻辑删除产品")
@@ -173,4 +188,13 @@ public class ProductController {
     }
 
     record EnabledRequest(@NotNull Boolean enabled) { }
+
+    record StockAdjustmentRequest(
+            @NotBlank @Pattern(regexp = "(?i)IN|OUT") String type,
+            @NotNull @DecimalMin(value = "0", inclusive = false) BigDecimal quantity,
+            @NotBlank @Size(min = 2, max = 500) String reason) {
+        StockAdjustmentCommand toCommand() {
+            return new StockAdjustmentCommand(type, quantity, reason);
+        }
+    }
 }

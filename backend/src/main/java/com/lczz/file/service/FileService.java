@@ -20,12 +20,15 @@ import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.Base64;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import org.springframework.core.io.Resource;
@@ -112,6 +115,42 @@ public class FileService {
         authorizeBusiness(actor, normalized.businessType(), normalized.businessId(), true);
         addRelation(actor, fileId, normalized);
         return toView(file, signedUrl(fileId));
+    }
+
+    @Transactional(readOnly = true)
+    public List<FileView> listBusinessFiles(AuthenticatedUser actor, RelationCommand relation) {
+        RelationCommand normalized = normalizeRequiredRelation(relation);
+        authorizeBusiness(actor, normalized.businessType(), normalized.businessId(), false);
+        List<FileRelationRecord> relations = relationMapper.selectList(
+                new LambdaQueryWrapper<FileRelationRecord>()
+                        .eq(FileRelationRecord::getBusinessType, normalized.businessType())
+                        .eq(FileRelationRecord::getBusinessId, normalized.businessId())
+                        .eq(FileRelationRecord::getUsageType, normalized.usageType())
+                        .orderByAsc(FileRelationRecord::getSortOrder)
+                        .orderByAsc(FileRelationRecord::getId));
+        if (relations.isEmpty()) return List.of();
+        Map<Long, FileAssetRecord> files = fileMapper.selectBatchIds(relations.stream()
+                        .map(FileRelationRecord::getFileId).collect(Collectors.toSet())).stream()
+                .filter(file -> !Boolean.TRUE.equals(file.getDeleted()))
+                .collect(Collectors.toMap(FileAssetRecord::getId, Function.identity(),
+                        (left, right) -> left, LinkedHashMap::new));
+        return relations.stream().map(link -> files.get(link.getFileId()))
+                .filter(Objects::nonNull)
+                .map(file -> toView(file, signedUrl(file.getId())))
+                .toList();
+    }
+
+    @Transactional
+    public boolean unbind(AuthenticatedUser actor, long fileId, RelationCommand relation) {
+        requireFile(fileId);
+        RelationCommand normalized = normalizeRequiredRelation(relation);
+        authorizeBusiness(actor, normalized.businessType(), normalized.businessId(), true);
+        relationMapper.delete(new LambdaQueryWrapper<FileRelationRecord>()
+                .eq(FileRelationRecord::getBusinessType, normalized.businessType())
+                .eq(FileRelationRecord::getBusinessId, normalized.businessId())
+                .eq(FileRelationRecord::getUsageType, normalized.usageType())
+                .eq(FileRelationRecord::getFileId, fileId));
+        return true;
     }
 
     public FileContent authenticatedContent(AuthenticatedUser actor, long fileId) {

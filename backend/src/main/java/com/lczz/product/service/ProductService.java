@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.lczz.auth.domain.AuthenticatedUser;
 import com.lczz.auth.domain.RoleCode;
+import com.lczz.common.audit.OperationAuditService;
 import com.lczz.common.exception.BusinessException;
 import com.lczz.file.service.FileService;
 import com.lczz.product.persistence.BusinessFileRelationEntity;
@@ -35,25 +36,28 @@ import org.springframework.transaction.annotation.Transactional;
 public class ProductService {
     private static final String BUSINESS_TYPE = "PRODUCT";
     private static final String DETAIL_USAGE = "DETAIL";
+    private static final BigDecimal LOW_STOCK_THRESHOLD = BigDecimal.valueOf(5);
 
     private final ProductMapper productMapper;
     private final ProductCategoryMapper categoryMapper;
     private final FileAssetMapper fileMapper;
     private final BusinessFileRelationMapper relationMapper;
     private final FileService fileService;
+    private final OperationAuditService auditService;
 
     public ProductService(ProductMapper productMapper, ProductCategoryMapper categoryMapper,
                           FileAssetMapper fileMapper, BusinessFileRelationMapper relationMapper,
-                          FileService fileService) {
+                          FileService fileService, OperationAuditService auditService) {
         this.productMapper = productMapper;
         this.categoryMapper = categoryMapper;
         this.fileMapper = fileMapper;
         this.relationMapper = relationMapper;
         this.fileService = fileService;
+        this.auditService = auditService;
     }
 
     public ProductPage list(AuthenticatedUser actor, int page, int pageSize, String keyword,
-                            String category, Boolean enabled) {
+                            String category, Boolean enabled, String stockStatus) {
         boolean admin = isAdmin(actor);
         LambdaQueryWrapper<ProductEntity> query = new LambdaQueryWrapper<>();
         if (!admin) {
@@ -73,6 +77,7 @@ public class ProductService {
             if (categoryIds.isEmpty()) return new ProductPage(List.of(), 0, page, pageSize);
             query.in(ProductEntity::getCategoryId, categoryIds);
         }
+        applyStockStatus(query, stockStatus);
         Page<ProductEntity> result = productMapper.selectPage(new Page<>(page, pageSize), query);
         return new ProductPage(toViews(actor, result.getRecords(), false), result.getTotal(), page, pageSize);
     }
@@ -176,6 +181,28 @@ public class ProductService {
     }
 
     @Transactional
+    public ProductView adjustStock(AuthenticatedUser actor, long id, StockAdjustmentCommand command,
+                                   AuditContext context) {
+        ProductEntity product = productMapper.selectForUpdate(id);
+        if (product == null) throw notFound("PRODUCT_NOT_FOUND", "产品不存在");
+        String type = normalizeAdjustmentType(command.type());
+        BigDecimal before = product.getDisplayStock() == null ? BigDecimal.ZERO : product.getDisplayStock();
+        BigDecimal after = "IN".equals(type) ? before.add(command.quantity()) : before.subtract(command.quantity());
+        if (after.signum() < 0) {
+            throw new BusinessException(409, "INSUFFICIENT_PRODUCT_STOCK", "耗材库存不足，不能完成本次出库");
+        }
+        product.setDisplayStock(after);
+        product.setUpdatedBy(actor.userId());
+        productMapper.updateById(product);
+        ProductView result = detail(actor, id);
+        auditService.recordSuccess(actor.userId(), "PRODUCT_STOCK_ADJUSTMENT", "PRODUCT", id,
+                context.requestId(), context.clientIp(),
+                new StockAuditSnapshot(before, null, null, null),
+                new StockAuditSnapshot(after, type, command.quantity(), command.reason().trim()));
+        return result;
+    }
+
+    @Transactional
     public void delete(long id) {
         requireProduct(id);
         productMapper.deleteById(id);
@@ -255,6 +282,26 @@ public class ProductService {
                     .forEach(item -> ids.add(item.getId()));
         }
         return ids;
+    }
+
+    private void applyStockStatus(LambdaQueryWrapper<ProductEntity> query, String rawStatus) {
+        if (rawStatus == null || rawStatus.isBlank() || "all".equalsIgnoreCase(rawStatus.trim())) return;
+        switch (rawStatus.trim().toLowerCase(Locale.ROOT)) {
+            case "empty" -> query.and(wrapper -> wrapper.isNull(ProductEntity::getDisplayStock)
+                    .or().eq(ProductEntity::getDisplayStock, BigDecimal.ZERO));
+            case "low" -> query.gt(ProductEntity::getDisplayStock, BigDecimal.ZERO)
+                    .le(ProductEntity::getDisplayStock, LOW_STOCK_THRESHOLD);
+            case "normal" -> query.gt(ProductEntity::getDisplayStock, LOW_STOCK_THRESHOLD);
+            default -> throw new BusinessException("INVALID_STOCK_STATUS", "库存状态只支持 normal、low 或 empty");
+        }
+    }
+
+    private String normalizeAdjustmentType(String rawType) {
+        String value = rawType == null ? "" : rawType.trim().toUpperCase(Locale.ROOT);
+        if (!Set.of("IN", "OUT").contains(value)) {
+            throw new BusinessException("INVALID_STOCK_ADJUSTMENT_TYPE", "库存调整类型只支持 IN 或 OUT");
+        }
+        return value;
     }
 
     private void applyProduct(ProductEntity product, ProductCommand command, ProductCategoryEntity category,
@@ -379,6 +426,12 @@ public class ProductService {
     public record ProductCommand(String productCode, String name, Long categoryId, String spec, String unit,
                                  BigDecimal stock, BigDecimal price, String remark, Long coverFileId,
                                  List<Long> detailFileIds, Boolean enabled, Integer sortOrder) { }
+
+    public record StockAdjustmentCommand(String type, BigDecimal quantity, String reason) { }
+
+    public record AuditContext(String requestId, String clientIp) { }
+
+    private record StockAuditSnapshot(BigDecimal stock, String type, BigDecimal quantity, String reason) { }
 
     public record CategoryCommand(String code, String name, Long parentId, Integer sortOrder, Boolean enabled) { }
 

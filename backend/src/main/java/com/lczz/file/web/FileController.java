@@ -23,6 +23,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -63,6 +64,18 @@ public class FileController {
                                @Valid @RequestBody RelationRequest body,
                                HttpServletRequest request) {
         return ApiResponse.success(fileService.bind(actor, id, body.toCommand()), requestId(request));
+    }
+
+    @DeleteMapping("/{id}/relations")
+    @Operation(summary = "解绑文件与业务关系；校验当前用户的业务写权限")
+    ApiResponse<Boolean> unbind(@AuthenticationPrincipal AuthenticatedUser actor,
+                                @PathVariable @Min(1) long id,
+                                @RequestParam @NotBlank @Size(max = 32) String businessType,
+                                @RequestParam @Min(1) long businessId,
+                                @RequestParam @NotBlank @Size(max = 32) String usageType,
+                                HttpServletRequest request) {
+        RelationCommand relation = new RelationCommand(businessType, businessId, usageType, null);
+        return ApiResponse.success(fileService.unbind(actor, id, relation), requestId(request));
     }
 
     @GetMapping("/{id}/url")

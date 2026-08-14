@@ -26,6 +26,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -137,6 +138,32 @@ class FileIntegrationTests {
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM file_asset", Long.class)).isZero();
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM business_file_relation", Long.class)).isZero();
         assertThat(storedFileCount()).isZero();
+    }
+
+    @Test
+    void orderDetailReturnsAttachmentsAndOnlyWriterCanUnbind() throws Exception {
+        JsonNode uploaded = upload("order.png", "image/png", PNG, installerToken, orderId);
+        long fileId = uploaded.path("id").asLong();
+
+        mockMvc.perform(get("/api/orders/detail/{id}", orderId)
+                        .header("Authorization", "Bearer " + customerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.fileList[0].id").value(fileId))
+                .andExpect(jsonPath("$.data.fileList[0].url").isNotEmpty());
+        mockMvc.perform(delete("/api/v1/files/{id}/relations", fileId)
+                        .param("businessType", "ORDER").param("businessId", String.valueOf(orderId))
+                        .param("usageType", "ATTACHMENT")
+                        .header("Authorization", "Bearer " + customerToken))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("FILE_RELATION_FORBIDDEN"));
+        mockMvc.perform(delete("/api/v1/files/{id}/relations", fileId)
+                        .param("businessType", "ORDER").param("businessId", String.valueOf(orderId))
+                        .param("usageType", "ATTACHMENT")
+                        .header("Authorization", "Bearer " + installerToken))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data").value(true));
+        mockMvc.perform(get("/api/orders/detail/{id}", orderId)
+                        .header("Authorization", "Bearer " + customerToken))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.fileList").isEmpty());
     }
 
     private JsonNode upload(String name, String mime, byte[] bytes, String token, long targetOrderId) throws Exception {
