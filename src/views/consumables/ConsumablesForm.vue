@@ -27,8 +27,15 @@
 
         <!-- 耗材分类（二级级联） -->
         <el-form-item label="耗材分类" prop="category">
-          <el-cascader v-model="form.category" :options="categoryOptions" placeholder="请选择耗材分类" class="input-base"
-            style="width: 100%" clearable />
+          <div class="category-control">
+            <el-cascader v-model="form.category" :options="categoryOptions"
+              :placeholder="categoryLoading ? '正在加载分类…' : '请选择耗材分类'" class="input-base"
+              :disabled="categoryLoading || categoryOptions.length === 0" style="width: 100%" clearable filterable />
+            <div v-if="categoryError" class="field-feedback is-error">
+              <span>{{ categoryError }}</span>
+              <el-button type="primary" link :loading="categoryLoading" @click="loadCategories">重新加载</el-button>
+            </div>
+          </div>
         </el-form-item>
 
         <!-- 规格 -->
@@ -170,56 +177,15 @@ const loadError = ref('')
 const formIsDirty = ref(false)
 const previewVisible = ref(false)
 const mainImageUploading = ref(false)
+const categoryLoading = ref(false)
+const categoryError = ref('')
 // 详情图片唯一 uid 生成器（编辑回显与新增上传共用，避免冲突）
 let detailUid = 1
 
 // 单位选项
 const unitOptions = ['米', '瓶', '个', '把', '套', '卷', '台', '件']
 
-// 二级耗材分类
-const fallbackCategoryOptions = [
-  {
-    value: '安装辅料',
-    label: '安装辅料',
-    children: [
-      { value: '铜管', label: '铜管' },
-      { value: '保温管', label: '保温管' },
-      { value: '排水管', label: '排水管' },
-      { value: '电缆', label: '电缆' },
-      { value: '扎带', label: '扎带' }
-    ]
-  },
-  {
-    value: '制冷剂',
-    label: '制冷剂',
-    children: [
-      { value: 'R410A', label: 'R410A' },
-      { value: 'R32', label: 'R32' },
-      { value: 'R22', label: 'R22' },
-      { value: 'R134a', label: 'R134a' }
-    ]
-  },
-  {
-    value: '工具',
-    label: '工具',
-    children: [
-      { value: '焊接工具', label: '焊接工具' },
-      { value: '检测仪表', label: '检测仪表' },
-      { value: '扳手工具', label: '扳手工具' },
-      { value: '真空泵', label: '真空泵' }
-    ]
-  },
-  {
-    value: '空调设备',
-    label: '空调设备',
-    children: [
-      { value: '中央空调', label: '中央空调' },
-      { value: '家用空调', label: '家用空调' },
-      { value: '商用空调', label: '商用空调' }
-    ]
-  }
-]
-const categoryOptions = ref(fallbackCategoryOptions)
+const categoryOptions = ref([])
 const categoryIdByName = new Map()
 
 // 表单数据
@@ -270,6 +236,8 @@ onMounted(() => {
 })
 
 async function loadCategories() {
+  categoryLoading.value = true
+  categoryError.value = ''
   try {
     const categories = await getConsumableCategoriesApi()
     const parents = (categories || []).filter(item => item.level === 1)
@@ -282,13 +250,17 @@ async function loadCategories() {
         return { value: child.name, label: child.name }
       })
     })).filter(parent => parent.children.length)
-    if (options.length) categoryOptions.value = options
+    if (!options.length) throw new Error('EMPTY_CATEGORY_TREE')
+    categoryOptions.value = options
     if (form.category.length) {
       const selectedId = categoryIdByName.get(form.category[form.category.length - 1])
       if (selectedId) form.categoryId = selectedId
     }
   } catch {
-    // 保留静态原型作为加载失败时的展示；提交仍要求后端有效分类。
+    categoryOptions.value = []
+    categoryError.value = '耗材分类加载失败，请检查分类接口后重试。'
+  } finally {
+    categoryLoading.value = false
   }
 }
 
@@ -629,6 +601,23 @@ function returnToConsumablesList() {
       &.is-focus {
         border-color: #409eff;
       }
+    }
+  }
+
+  .category-control {
+    width: 100%;
+  }
+
+  .field-feedback {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 24px;
+    margin-top: 4px;
+    font-size: 12px;
+
+    &.is-error {
+      color: var(--brand-danger);
     }
   }
 

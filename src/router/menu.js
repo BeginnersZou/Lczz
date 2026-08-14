@@ -1,6 +1,5 @@
 import {
   Monitor,
-  Bell,
   ShoppingCart,
   Document,
   Box,
@@ -39,12 +38,6 @@ const menuItems = [
     name: 'Users',
     icon: User,
     meta: { title: '用户管理' }
-  },
-  {
-    path: '/dynamic',
-    name: 'Dynamic',
-    icon: Bell,
-    meta: { title: '内容管理' }
   }
 ]
 

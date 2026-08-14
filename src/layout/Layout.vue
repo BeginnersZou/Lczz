@@ -465,13 +465,13 @@ async function handleCommand(command) {
 }
 
 .main-content {
-  padding: 24px;
+  padding: clamp(18px, 2vw, 28px);
   overflow-y: auto;
   background: var(--surface-page);
 
   > * {
     width: 100%;
-    max-width: 1600px;
+    max-width: 1480px;
     margin-right: auto;
     margin-left: auto;
   }

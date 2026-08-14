@@ -49,8 +49,15 @@
         <!-- 省市区三级联动地址 -->
         <el-form-item label="订单地址" prop="addressDetail">
           <div class="city-row">
-            <el-cascader v-model="form.addressArea" :options="cityOptions" placeholder="选择省市区" class="city-cascader"
-              clearable />
+            <div class="region-control">
+              <el-cascader v-model="form.addressArea" :options="cityOptions"
+                :placeholder="regionLoading ? '正在加载地区数据…' : '选择省 / 市 / 区'" class="city-cascader"
+                :disabled="regionLoading || cityOptions.length === 0" clearable filterable />
+              <div v-if="regionError" class="field-feedback is-error">
+                <span>{{ regionError }}</span>
+                <el-button type="primary" link :loading="regionLoading" @click="loadRegions">重新加载</el-button>
+              </div>
+            </div>
             <el-input v-model="form.addressDetail" placeholder="详细街道门牌号" class="city-detail" />
           </div>
         </el-form-item>
@@ -58,8 +65,10 @@
         <!-- 订单时间 双日期框 -->
         <el-form-item label="订单时间" prop="orderEndTime">
           <div class="time-row">
-            <el-date-picker v-model="form.orderStartTime" type="datetime" placeholder="上门开始时间" class="time-input" />
-            <el-date-picker v-model="form.orderEndTime" type="datetime" placeholder="预计结束时间" class="time-input" />
+            <el-date-picker v-model="form.orderStartTime" type="datetime" placeholder="上门开始时间" class="time-input"
+              format="YYYY-MM-DD HH:mm" value-format="YYYY-MM-DDTHH:mm:ss" />
+            <el-date-picker v-model="form.orderEndTime" type="datetime" placeholder="预计结束时间" class="time-input"
+              format="YYYY-MM-DD HH:mm" value-format="YYYY-MM-DDTHH:mm:ss" />
           </div>
         </el-form-item>
 
@@ -183,11 +192,11 @@ import {
   ArrowLeft, Plus, Document, Check, Delete, InfoFilled, Loading, Search
 } from '@element-plus/icons-vue'
 import { useRouter, useRoute } from 'vue-router'
-import cityData from './city.js'
 import {
   getOrderDetailApi, addOrderApi, updateOrderApi,
   uploadOrderImageApi, bindOrderFileApi, getMasterListApi, cancelOrderApi
 } from '@/api/orders'
+import { getRegionTreeApi } from '@/api/regions'
 import { useUnsavedChanges } from '@/composables/useUnsavedChanges'
 
 const router = useRouter()
@@ -217,7 +226,9 @@ const masterLoading = ref(false)
 // 附件上传中计数，提交时据此拦截，避免丢图
 const uploadingCount = ref(0)
 
-const cityOptions = ref(cityData)
+const cityOptions = ref([])
+const regionLoading = ref(false)
+const regionError = ref('')
 
 // 表单结构完全不变，fileList 存储 {uid, file, previewUrl, url, uploading}
 const form = reactive({
@@ -284,13 +295,30 @@ watch(form, () => {
   formIsDirty.value = true
 }, { deep: true })
 
-onMounted(() => {
+onMounted(async () => {
+  const tasks = [loadRegions()]
   if (route.params.id) {
     isEdit.value = true
     orderId.value = route.params.id
-    loadEditData()
+    tasks.push(loadEditData())
   }
+  await Promise.allSettled(tasks)
 })
+
+async function loadRegions() {
+  regionLoading.value = true
+  regionError.value = ''
+  try {
+    const rows = await getRegionTreeApi()
+    if (!rows.length) throw new Error('EMPTY_REGION_TREE')
+    cityOptions.value = rows
+  } catch {
+    cityOptions.value = []
+    regionError.value = '后端尚未提供省市区数据，暂时无法选择订单地区。'
+  } finally {
+    regionLoading.value = false
+  }
+}
 
 /**
  * 编辑态：拉取订单详情回显
@@ -726,15 +754,35 @@ function returnToOrderList() {
 
   .city-row {
     display: flex;
-    gap: 12px;
+    align-items: flex-start;
+    gap: 14px;
     width: 100%;
 
+    .region-control {
+      flex: 0 0 360px;
+      min-width: 0;
+    }
+
     .city-cascader {
-      flex: 0 0 320px;
+      width: 100%;
     }
 
     .city-detail {
       flex: 1;
+    }
+  }
+
+  .field-feedback {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 24px;
+    margin-top: 4px;
+    color: var(--text-tertiary);
+    font-size: 12px;
+
+    &.is-error {
+      color: var(--brand-danger);
     }
   }
 
@@ -1047,6 +1095,11 @@ function returnToOrderList() {
 
   .order-form-page .city-cascader {
     width: 100% !important;
+    flex: none;
+  }
+
+  .order-form-page .region-control {
+    width: 100%;
     flex: none;
   }
 
