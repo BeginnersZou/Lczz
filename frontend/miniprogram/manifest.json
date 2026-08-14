@@ -1,7 +1,7 @@
 {
     "name": "sinoCb-dev",
     "appid": "__UNI__1F1AC2B",
-    "description": "鑫立创空调安装、售后服务与配件商城微信小程序",
+    "description": "鑫立创空调安装、售后服务与配件展示微信小程序",
     "versionName": "1.0.0",
     "versionCode": "100",
     "transformPx": false,
@@ -59,9 +59,9 @@
         "usingComponents": true,
         "mergeVirtualHostAttributes": true,
         "lazyCodeLoading": "requiredComponents",
-        /* 保留微信隐私合规检查，但不声明当前版本未使用的敏感权限 */
+        /* 保留微信隐私合规检查 */
         "__usePrivacyCheck__": true,
-        /* 当前版本未调用定位、相机、相册及地址接口，不提前申请无关权限 */
+        /* 订单进度与评价会通过 chooseImage 选择图片，发布前需在微信后台完成对应隐私用途声明 */
         "unipush": {
             "enable": true
         }
