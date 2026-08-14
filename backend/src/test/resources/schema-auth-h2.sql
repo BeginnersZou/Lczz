@@ -35,6 +35,20 @@ CREATE TABLE sys_user_role (
   UNIQUE(user_id, role_id)
 );
 
+CREATE TABLE operation_audit_log (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  operator_user_id BIGINT,
+  operation_type VARCHAR(64) NOT NULL,
+  business_type VARCHAR(64) NOT NULL,
+  business_id VARCHAR(64),
+  request_id VARCHAR(64),
+  before_json CLOB,
+  after_json CLOB,
+  result_code VARCHAR(64),
+  client_ip VARCHAR(64),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
 CREATE TABLE user_wechat_identity (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
   user_id BIGINT NOT NULL, app_id VARCHAR(64) NOT NULL, open_id VARCHAR(128) NOT NULL,
