@@ -30,16 +30,6 @@
 			}
 		},
 		{
-			"path": "pages/notice/notice",
-			"style": {
-				"navigationBarTitleText": "空调资讯",
-				"enablePullDownRefresh": true,
-				"navigationBarTextStyle": "black",
-				"backgroundColorTop": "#f4f7fb",
-				"backgroundColorBottom": "#f4f7fb"
-			}
-		},
-		{
 			"path": "pages/official/official",
 			"style": {
 				"navigationBarTitleText": "品牌服务",
@@ -117,15 +107,6 @@
 					}
 				},
 				{
-					"path": "notices-detail/notices-detail",
-					"style": {
-						"navigationBarTitleText": "公告详情",
-						"navigationStyle": "custom",
-						"backgroundColorTop": "#f4f7fb",
-						"backgroundColorBottom": "#f4f7fb"
-					}
-				},
-				{
 					"path": "settings/settings",
 					"style": {
 						"navigationBarTitleText": "设置",
@@ -159,12 +140,6 @@
 				"text": "首页",
 				"iconPath": "static/tabbar/home.png",
 				"selectedIconPath": "static/tabbar/homeActive.png"
-			},
-			{
-				"pagePath": "pages/notice/notice",
-				"text": "资讯",
-				"iconPath": "static/tabbar/jurassic.png",
-				"selectedIconPath": "static/tabbar/jurassic-active.png"
 			},
 			{
 				"pagePath": "pages/official/official",

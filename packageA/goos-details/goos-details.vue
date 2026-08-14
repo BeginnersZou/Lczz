@@ -5,15 +5,26 @@
 			<view class="nav-back" @click="goBack">
 				<up-icon name="arrow-left" size="20" color="#142434"></up-icon>
 			</view>
-			<text class="nav-title">{{ goods.title }}</text>
-			<!-- <view class="nav-share" @click="handleShare">
-        <up-icon name="share-square" size="18" color="#142434"></up-icon>
-      </view> -->
+			<text class="nav-title">{{ goods.title || '产品详情' }}</text>
 		</view>
+
+		<view class="detail-state" v-if="detailLoading">
+			<up-loading-icon mode="circle" color="#0b63ce" size="34"></up-loading-icon>
+			<text class="state-title">正在加载产品信息</text>
+			<text class="state-desc">请稍候</text>
+		</view>
+		<view class="detail-state" v-else-if="detailError">
+			<view class="state-icon"><up-icon name="warning" size="38" color="#d97706"></up-icon></view>
+			<text class="state-title">{{ detailError.title }}</text>
+			<text class="state-desc">{{ detailError.message }}</text>
+			<view class="state-action" @click="loadDetail">重新加载</view>
+		</view>
+
+		<template v-else>
 
 		<!-- ═══ 封面图片 ═══ -->
 		<view class="cover-section">
-			<image v-if="!isMockImage(goods.image)" class="cover-img" :src="goods.image" mode="aspectFill"></image>
+			<image v-if="!isPlaceholderImage(goods.image)" class="cover-img" :src="goods.image" mode="aspectFill"></image>
 			<view v-else class="cover-visual" :class="`visual-${goods.type || 'aux'}`">
 				<view class="cover-ring ring-large"></view>
 				<view class="cover-ring ring-small"></view>
@@ -90,11 +101,6 @@
 					<up-icon name="home" size="22" color="#475569"></up-icon>
 					<text class="bar-icon-text">首页</text>
 				</view>
-				<view class="bar-icon-item" hover-class="hover-press" :hover-stay-time="80" @click="handleFavor">
-					<up-icon :name="isFavor ? 'heart-fill' : 'heart'" size="22"
-						:color="isFavor ? '#ff4d4f' : '#475569'"></up-icon>
-					<text class="bar-icon-text" :class="{ active: isFavor }">{{ isFavor ? '已收藏' : '收藏' }}</text>
-				</view>
 				<view class="bar-icon-item" hover-class="hover-press" :hover-stay-time="80" @click="handleService">
 					<up-icon name="kefu-ermai" size="22" color="#475569"></up-icon>
 					<text class="bar-icon-text">客服</text>
@@ -102,34 +108,7 @@
 			</view>
 			<view class="bar-actions"><view class="action-btn buy" hover-class="hover-mask" :hover-stay-time="80" @click="handleService">电话咨询</view></view>
 		</view>
-
-		<!-- ═══ 分享弹窗 ═══ -->
-		<up-popup :show="showShare" mode="bottom" round="20" @close="showShare = false">
-			<view class="share-popup">
-				<text class="share-title">分享到</text>
-				<view class="share-options">
-					<view class="share-item" @click="shareTo('wechat')">
-						<view class="share-icon wechat">
-							<up-icon name="weixin-fill" size="28" color="#fff"></up-icon>
-						</view>
-						<text class="share-label">微信好友</text>
-					</view>
-					<view class="share-item" @click="shareTo('moment')">
-						<view class="share-icon moment">
-							<up-icon name="moments" size="28" color="#fff"></up-icon>
-						</view>
-						<text class="share-label">朋友圈</text>
-					</view>
-					<view class="share-item" @click="shareTo('poster')">
-						<view class="share-icon poster">
-							<up-icon name="photo" size="28" color="#fff"></up-icon>
-						</view>
-						<text class="share-label">生成海报</text>
-					</view>
-				</view>
-				<view class="share-cancel" @click="showShare = false">取消</view>
-			</view>
-		</up-popup>
+		</template>
 	</view>
 </template>
 
@@ -161,30 +140,55 @@ const goods = ref({
 })
 
 const detailImages = ref([])
-const displayDetailImages = computed(() => detailImages.value.filter(img => !isMockImage(img)))
+const displayDetailImages = computed(() => detailImages.value.filter(img => !isPlaceholderImage(img)))
+const detailLoading = ref(true)
+const detailError = ref(null)
 
-const isFavor = ref(false)
-const showShare = ref(false)
-
-const isMockImage = (url) => !url || String(url).includes('picsum.photos')
+const isPlaceholderImage = (url) => !url || String(url).includes('picsum.photos')
 const productIcon = (type) => ({
 	copper: 'integral', bracket: 'grid-fill', cable: 'share-fill', refrigerant: 'hourglass-half-fill', aux: 'bag-fill'
 }[type] || 'bag-fill')
 
 
-onLoad(async (options) => {
-	const id = options?.id
-	if (!id) return
-	goodsId.value = id
+const setDetailError = (response) => {
+	if (response?.code === 403) {
+		detailError.value = { title: '暂无访问权限', message: response.msg || '当前账号无权查看该产品' }
+		return
+	}
+	if (response?.code === -1) {
+		detailError.value = { title: '网络连接失败', message: response.msg || '请检查网络后重试' }
+		return
+	}
+	detailError.value = { title: '产品加载失败', message: response?.msg || '产品不存在或服务暂时不可用' }
+}
+
+const loadDetail = async () => {
+	if (!goodsId.value) {
+		detailLoading.value = false
+		detailError.value = { title: '产品参数有误', message: '未找到需要查看的产品' }
+		return
+	}
+	detailLoading.value = true
+	detailError.value = null
 	try {
-		const res = await consumablesApi.getDetail(id)
-		if (res.code !== 200) return
+		const res = await consumablesApi.getDetail(goodsId.value)
+		if (res.code !== 200) {
+			setDetailError(res)
+			return
+		}
 		// 耗材字段已与模板对齐，res.data 直接赋值
 		goods.value = res.data || {}
 		detailImages.value = (res.data && res.data.detailImages) || []
 	} catch (err) {
-		// request.js 已统一处理错误提示
+		setDetailError({ code: -1, msg: '请求异常，请稍后重试' })
+	} finally {
+		detailLoading.value = false
 	}
+}
+
+onLoad((options) => {
+	goodsId.value = options?.id || ''
+	loadDetail()
 })
 
 // 分享商品详情给好友
@@ -207,14 +211,6 @@ const goHome = () => {
 	})
 }
 
-const handleFavor = () => {
-	isFavor.value = !isFavor.value
-	uni.showToast({
-		title: isFavor.value ? '已收藏' : '取消收藏',
-		icon: 'none'
-	})
-}
-
 const handleService = () => {
 	uni.showActionSheet({
 		itemList: ['027-82710326', '027-82710380'],
@@ -222,23 +218,6 @@ const handleService = () => {
 			const phones = ['02782710326', '02782710380']
 			uni.makePhoneCall({ phoneNumber: phones[res.tapIndex] })
 		}
-	})
-}
-
-// const handleShare = () => {
-//   showShare.value = true
-// }
-
-const shareTo = (type) => {
-	showShare.value = false
-	const text = {
-		wechat: '已复制链接，去微信粘贴分享',
-		moment: '已生成分享图片',
-		poster: '海报已保存到相册',
-	}
-	uni.showToast({
-		title: text[type],
-		icon: 'none'
 	})
 }
 
@@ -258,6 +237,20 @@ $text-light: #94a3b8;
 	background: $bg;
 }
 
+.detail-state {
+	min-height: calc(100vh - 220rpx);
+	padding: calc(220rpx + var(--status-bar-height, 44rpx)) 48rpx 80rpx;
+	box-sizing: border-box;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	text-align: center;
+}
+.state-icon { width: 96rpx; height: 96rpx; border-radius: 50%; background: #fff7e6; display: flex; align-items: center; justify-content: center; }
+.state-title { margin-top: 24rpx; font-size: 30rpx; font-weight: 700; color: $text-main; }
+.state-desc { margin-top: 10rpx; font-size: 24rpx; color: $text-light; line-height: 1.6; }
+.state-action { margin-top: 28rpx; padding: 14rpx 34rpx; border-radius: 30rpx; color: $primary; background: #eaf3ff; font-size: 24rpx; }
+
 /* 导航栏 */
 .nav-bar {
 	position: fixed;
@@ -275,8 +268,7 @@ $text-light: #94a3b8;
 	box-shadow: 0 1rpx 0 rgba(0, 0, 0, 0.04);
 }
 
-.nav-back,
-.nav-share {
+.nav-back {
 	width: 64rpx;
 	height: 64rpx;
 	display: flex;
@@ -744,70 +736,4 @@ $text-light: #94a3b8;
 	}
 }
 
-/* 分享弹窗 */
-.share-popup {
-	padding: 40rpx 32rpx calc(20rpx + env(safe-area-inset-bottom));
-}
-
-.share-title {
-	font-size: 30rpx;
-	font-weight: 600;
-	color: $text-main;
-	text-align: center;
-	display: block;
-	margin-bottom: 40rpx;
-}
-
-.share-options {
-	display: flex;
-	justify-content: space-around;
-	margin-bottom: 40rpx;
-}
-
-.share-item {
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	gap: 12rpx;
-
-	&:active {
-		opacity: 0.7;
-	}
-}
-
-.share-icon {
-	width: 96rpx;
-	height: 96rpx;
-	border-radius: 50%;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-
-	&.wechat {
-		background: #07c160;
-	}
-
-	&.moment {
-		background: #07c160;
-	}
-
-	&.poster {
-		background: $primary;
-	}
-}
-
-.share-label {
-	font-size: 24rpx;
-	color: $text-sub;
-}
-
-.share-cancel {
-	height: 88rpx;
-	line-height: 88rpx;
-	text-align: center;
-	background: #f5f5f5;
-	border-radius: 44rpx;
-	font-size: 30rpx;
-	color: $text-sub;
-}
 </style>

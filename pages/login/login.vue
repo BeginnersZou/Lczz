@@ -67,7 +67,6 @@
 <script setup>
 import { ref } from 'vue'
 import { authApi } from '@/api/api.js'
-import { USE_MOCK_LOGIN } from '@/config.js'
 import {
   clearAuthSession,
   isValidAuthUser,
@@ -87,21 +86,6 @@ const goToAgreement = (type) => {
   })
 }
 
-// ============ 虚拟登录（仅开发环境显式开启时可用） ============
-const virtualLogin = () => {
-  saveAuthSession('mock_token_' + Date.now(), {
-    id: -1,
-    nickname: '体验用户',
-    phone: '138****8888',
-    role: 'customer',
-    roles: ['customer']
-  })
-  uni.showToast({ title: '体验登录成功', icon: 'success' })
-  setTimeout(() => {
-    uni.reLaunch({ url: '/pages/index/index' })
-  }, 1000)
-}
-
 // ============ 步骤一：微信快捷登录 ============
 const handleWechatLogin = async () => {
   if (isLogging.value) return
@@ -111,15 +95,6 @@ const handleWechatLogin = async () => {
   }
   isLogging.value = true
   uni.showLoading({ title: '正在登录...', mask: true })
-
-  // 虚拟登录模式：后端未就绪时直接走 mock，不调真实接口
-  if (USE_MOCK_LOGIN) {
-    uni.hideLoading()
-    isLogging.value = false
-    virtualLogin()
-    return
-  }
-
   try {
     // 1. 获取微信登录凭证 code
     const code = await getWxCode()

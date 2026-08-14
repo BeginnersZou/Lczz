@@ -25,20 +25,27 @@
 		</view>
 
 		<!-- ═══ 工作概览卡片（浮于头部下方） ═══ -->
-		<view class="stats-card" hover-class="hover-press" :hover-stay-time="80" @click="goToOrder()">
+		<view class="stats-card" v-if="!statsError" hover-class="hover-press" :hover-stay-time="80" @click="goToOrder()">
 			<view class="stat-item" @click.stop="goToOrder(1)">
-				<text class="stat-num">{{ stats.pending }}</text>
+				<text class="stat-num">{{ statsLoading ? '--' : stats.pending }}</text>
 				<text class="stat-label">待上门</text>
 			</view>
 			<view class="stat-divider"></view>
 			<view class="stat-item" @click.stop="goToOrder(2)">
-				<text class="stat-num">{{ stats.processing }}</text>
+				<text class="stat-num">{{ statsLoading ? '--' : stats.processing }}</text>
 				<text class="stat-label">处理中</text>
 			</view>
 			<view class="stat-divider"></view>
 			<view class="stat-item" @click.stop="goToOrder(3)">
-				<text class="stat-num">{{ stats.done }}</text>
-				<text class="stat-label">本月完工</text>
+				<text class="stat-num">{{ statsLoading ? '--' : stats.done }}</text>
+				<text class="stat-label">已完成</text>
+			</view>
+		</view>
+		<view class="stats-card stats-error-card" v-else @click="fetchStats">
+			<up-icon name="reload" size="22" color="#0b63ce"></up-icon>
+			<view class="stats-error-copy">
+				<text class="stats-error-title">订单概览暂不可用</text>
+				<text class="stats-error-desc">点击重新加载真实数据</text>
 			</view>
 		</view>
 
@@ -49,12 +56,6 @@
 					<up-icon name="order" size="24" color="#fff"></up-icon>
 				</view>
 				<text class="func-text">我的订单</text>
-			</view>
-			<view class="func-item" hover-class="hover-press" :hover-stay-time="80" @click="goToNotice">
-				<view class="func-icon icon-green">
-					<up-icon name="bell" size="24" color="#fff"></up-icon>
-				</view>
-				<text class="func-text">平台公告</text>
 			</view>
 			<view class="func-item" hover-class="hover-press" :hover-stay-time="80" @click="goToOfficial">
 				<view class="func-icon icon-orange">
@@ -130,7 +131,8 @@
 		onShow
 	} from '@dcloudio/uni-app'
 	import {
-		authApi
+		authApi,
+		dashboardApi
 	} from '@/api/api.js'
 	import {
 		clearAuthSession,
@@ -145,12 +147,13 @@
 	const version = ref('1.0.0')
 	const cacheSize = ref('0KB')
 
-	// 工作概览接口尚未由后端提供，保留已确认 UI 的零值占位。
 	const stats = ref({
 		pending: 0,
 		processing: 0,
 		done: 0
 	})
+	const statsLoading = ref(true)
+	const statsError = ref(false)
 
 	const fetchUserInfo = async () => {
 		try {
@@ -165,6 +168,27 @@
 			}
 		} catch (err) {
 			// request.js 已统一处理错误提示
+		}
+	}
+
+	const fetchStats = async () => {
+		statsLoading.value = true
+		statsError.value = false
+		try {
+			const res = await dashboardApi.getTodo({ page: 1, pageSize: 1 }, { silent: true })
+			if (res.code !== 200 || !res.data) {
+				statsError.value = true
+				return
+			}
+			stats.value = {
+				pending: Number(res.data.pending || 0),
+				processing: Number(res.data.processing || 0),
+				done: Number(res.data.done || 0)
+			}
+		} catch (err) {
+			statsError.value = true
+		} finally {
+			statsLoading.value = false
 		}
 	}
 
@@ -210,6 +234,7 @@
 		}
 		loadUserInfo()
 		fetchUserInfo()
+		fetchStats()
 	})
 
 	// 进入设置页
@@ -224,13 +249,6 @@
 		uni.$pendingOrderTab = (tabIndex !== undefined && tabIndex !== null) ? tabIndex : null
 		uni.switchTab({
 			url: '/pages/order/order'
-		})
-	}
-
-	// 跳转公告页
-	const goToNotice = () => {
-		uni.switchTab({
-			url: '/pages/notice/notice'
 		})
 	}
 
@@ -385,6 +403,19 @@
 			transform: scale(0.98);
 		}
 	}
+
+	.stats-error-card {
+		min-height: 128rpx;
+		box-sizing: border-box;
+		padding: 28rpx 36rpx;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 20rpx;
+	}
+	.stats-error-copy { display: flex; flex-direction: column; }
+	.stats-error-title { font-size: 26rpx; font-weight: 650; color: #142434; }
+	.stats-error-desc { margin-top: 6rpx; font-size: 21rpx; color: #8b9aaa; }
 
 	.stat-item {
 		flex: 1;

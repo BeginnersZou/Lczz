@@ -1,5 +1,18 @@
 <template>
 	<view class="page">
+		<view class="detail-state" v-if="detailLoading">
+			<up-loading-icon mode="circle" color="#0b63ce" size="34"></up-loading-icon>
+			<text class="state-title">正在加载订单详情</text>
+			<text class="state-desc">请稍候</text>
+		</view>
+		<view class="detail-state" v-else-if="detailError">
+			<view class="state-icon"><up-icon name="warning" size="38" color="#d97706"></up-icon></view>
+			<text class="state-title">{{ detailError.title }}</text>
+			<text class="state-desc">{{ detailError.message }}</text>
+			<view class="state-action" @click="loadOrderDetails">重新加载</view>
+		</view>
+
+		<template v-else>
 		<!-- ═══ 订单信息卡片 ═══ -->
 		<view class="order-card">
 			<view class="order-top">
@@ -282,6 +295,7 @@
 				</view>
 			</view>
 		</up-popup>
+		</template>
 	</view>
 </template>
 
@@ -311,6 +325,8 @@
 
 	// 订单 ID（onLoad 时由路由参数获取）
 	const orderId = ref('')
+	const detailLoading = ref(true)
+	const detailError = ref(null)
 
 	const orderInfo = ref({
 		serviceName: '',
@@ -717,56 +733,82 @@ const statusClass = computed(() => {
 		})
 	}
 
-	onLoad(async (options) => {
-	if (!getAuthToken()) {
-		uni.reLaunch({ url: '/pages/login/login' })
-		return
-	}
-	const id = options && options.id
-	if (!id) {
-		uni.showToast({
-			title: '订单ID缺失',
-			icon: 'none'
-		})
-		return
-	}
-	orderId.value = id
-	try {
-		// 并行获取订单详情与当前用户角色
-		const [orderRes, userRes, progressRes, evaluationRes] = await Promise.all([
-			orderApi.getDetail(id),
-			authApi.getUserInfo(),
-			orderApi.getProgress(id, { loading: false }),
-			evaluationApi.getByOrder(id, { loading: false })
-		])
-		if (userRes.code === 200 && userRes.data) {
-			userRole.value = userRes.data.role || ''
+	const setDetailError = (response) => {
+		if (response?.code === 403) {
+			detailError.value = { title: '暂无访问权限', message: response.msg || '当前账号无权查看该订单' }
+			return
 		}
-		if (orderRes.code !== 200) return
-		// 订单字段已与模板对齐，res.data 直接赋值
-		const data = orderRes.data || {}
-		orderInfo.value = data
-		if (progressRes.code === 200) progressRecords.value = progressRes.data || []
-		if (evaluationRes.code === 200) evaluation.value = evaluationRes.data || null
-		if (userRole.value === 'installer') {
-			const materialsRes = await orderApi.getMaterials(id, { loading: false, silent: true })
-			if (materialsRes.code === 200 && materialsRes.data) {
-				materialRequest.value = materialsRes.data
-				materialRemark.value = materialsRes.data.remark || ''
-				toolList.value = (materialsRes.data.materials || []).map(item => ({
-					id: item.productId,
-					title: item.name || '',
-					spec: item.spec || '',
-					unit: item.unit || '',
-					qty: Number(item.count || 1),
-					price: Number(item.displayPrice || 0)
-				}))
+		if (response?.code === -1) {
+			detailError.value = { title: '网络连接失败', message: response.msg || '请检查网络后重试' }
+			return
+		}
+		detailError.value = { title: '订单加载失败', message: response?.msg || '订单不存在或服务暂时不可用' }
+	}
+
+	const loadOrderDetails = async () => {
+		if (!orderId.value) {
+			detailLoading.value = false
+			detailError.value = { title: '订单参数有误', message: '未找到需要查看的订单' }
+			return
+		}
+		detailLoading.value = true
+		detailError.value = null
+		try {
+			// 并行获取订单详情与当前用户角色
+			const [orderRes, userRes, progressRes, evaluationRes] = await Promise.all([
+				orderApi.getDetail(orderId.value),
+				authApi.getUserInfo(),
+				orderApi.getProgress(orderId.value, { loading: false }),
+				evaluationApi.getByOrder(orderId.value, { loading: false })
+			])
+			const failedResponse = [orderRes, userRes, progressRes, evaluationRes].find(res => res.code !== 200)
+			if (failedResponse) {
+				setDetailError(failedResponse)
+				return
 			}
+			if (userRes.code === 200 && userRes.data) {
+				userRole.value = userRes.data.role || ''
+			}
+			// 订单字段已与模板对齐，res.data 直接赋值
+			const data = orderRes.data || {}
+			orderInfo.value = data
+			if (progressRes.code === 200) progressRecords.value = progressRes.data || []
+			if (evaluationRes.code === 200) evaluation.value = evaluationRes.data || null
+			if (userRole.value === 'installer') {
+				const materialsRes = await orderApi.getMaterials(orderId.value, { loading: false, silent: true })
+				// 后端以 404 表示该订单尚未提交耗材申请，此时应展示可填写的空表单。
+				if (![200, 404].includes(materialsRes.code)) {
+					setDetailError(materialsRes)
+					return
+				}
+				if (materialsRes.code === 200 && materialsRes.data) {
+					materialRequest.value = materialsRes.data
+					materialRemark.value = materialsRes.data.remark || ''
+					toolList.value = (materialsRes.data.materials || []).map(item => ({
+						id: item.productId,
+						title: item.name || '',
+						spec: item.spec || '',
+						unit: item.unit || '',
+						qty: Number(item.count || 1),
+						price: Number(item.displayPrice || 0)
+					}))
+				}
+			}
+		} catch (err) {
+			setDetailError({ code: -1, msg: '请求异常，请稍后重试' })
+		} finally {
+			detailLoading.value = false
 		}
-	} catch (err) {
-		// request.js 已统一处理错误提示
 	}
-})
+
+	onLoad((options) => {
+		if (!getAuthToken()) {
+			uni.reLaunch({ url: '/pages/login/login' })
+			return
+		}
+		orderId.value = options?.id || ''
+		loadOrderDetails()
+	})
 
 </script>
 
@@ -782,6 +824,20 @@ const statusClass = computed(() => {
 		background: $bg;
 		padding-bottom: calc(120rpx + env(safe-area-inset-bottom));
 	}
+
+	.detail-state {
+		min-height: calc(100vh - 160rpx);
+		padding: 180rpx 48rpx 80rpx;
+		box-sizing: border-box;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		text-align: center;
+	}
+	.state-icon { width: 96rpx; height: 96rpx; border-radius: 50%; background: #fff7e6; display: flex; align-items: center; justify-content: center; }
+	.state-title { margin-top: 24rpx; font-size: 30rpx; font-weight: 700; color: $text-main; }
+	.state-desc { margin-top: 10rpx; font-size: 24rpx; color: $text-light; line-height: 1.6; }
+	.state-action { margin-top: 28rpx; padding: 14rpx 34rpx; border-radius: 30rpx; color: $primary; background: #eaf3ff; font-size: 24rpx; }
 
 	/* ═══ 卡片通用 ═══ */
 	.order-card,
