@@ -3,7 +3,7 @@
     <div class="page-header">
       <div class="header-left">
         <h2 class="page-title">工作台</h2>
-        <span class="page-desc">聚合订单、库存与审核待办，快速掌握今日业务状态</span>
+        <span class="page-desc">聚合订单与库存待办，快速掌握今日业务状态</span>
       </div>
     </div>
     <el-card class="data-card">
@@ -129,8 +129,7 @@ const stats = reactive({
   pendingAssign: 0,
   processingOrders: 0,
   completedOrders: 0,
-  lowStock: 0,
-  pendingAudit: 0
+  lowStock: 0
 })
 
 const statCards = computed(() => [
@@ -138,8 +137,7 @@ const statCards = computed(() => [
   { key: 'pendingAssign', label: '待派单', hint: '需要尽快处理', route: { name: 'Orders', query: { status: 'PENDING_VISIT' } } },
   { key: 'processingOrders', label: '进行中', hint: '跟进施工进度', route: { name: 'Orders', query: { status: 'IN_PROGRESS' } } },
   { key: 'completedOrders', label: '已完成', hint: '查看完成情况', route: { name: 'Orders', query: { status: 'PENDING_REVIEW' } } },
-  { key: 'lowStock', label: '库存预警', hint: '处理缺货耗材', route: { name: 'Consumables', query: { stockStatus: 'low' } } },
-  { key: 'pendingAudit', label: '待审核用户', hint: '进入审核队列', route: { name: 'UserAudit', query: { status: 'pending' } } }
+  { key: 'lowStock', label: '库存预警', hint: '处理缺货耗材', route: { name: 'Consumables', query: { stockStatus: 'low' } } }
 ])
 
 // 活跃度图表数据（xAxis + series values）
@@ -167,8 +165,7 @@ async function loadOverview() {
       pendingAssign: data.pendingAssign ?? data.pendingOrderTotal ?? 0,
       processingOrders: data.processingOrders ?? data.processingTotal ?? 0,
       completedOrders: data.completedOrders ?? data.completedTotal ?? 0,
-      lowStock: data.lowStock ?? data.lowStockTotal ?? 0,
-      pendingAudit: data.pendingAudit ?? data.pendingAuditTotal ?? 0
+      lowStock: data.lowStock ?? data.lowStockTotal ?? 0
     })
     // 反馈评分（若后端返回）
     if (data.rating != null) ratingValue.value = data.rating

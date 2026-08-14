@@ -25,44 +25,6 @@ const routes = [
         meta: { title: '工作台' }
       },
       {
-        path: 'dynamic',
-        name: 'Dynamic',
-        component: () => import('@/views/Dynamic.vue'),
-        meta: { title: '内容管理' }
-      },
-      //发布动态信息
-      {
-        path: 'dynamic/publicInfo',
-        name: 'DynamicPublicInfo',
-        component: () => import('@/views/DynamicPublicInfo.vue'),
-        meta: { title: '发布动态资讯' }
-      },
-      //查看发布的信息和编辑发布的信息
-      {
-        path: 'dynamic/publicInfo/:id',
-        name: 'DynamicPublicInfoDetail',
-        component: () => import('@/views/DynamicPublicInfoDetail.vue'),
-        meta: { title: '动态资讯详情' }
-      },
-      {
-        path: 'dynamic/publish',
-        name: 'DynamicPublish',
-        component: () => import('@/views/PublishAirConditioner.vue'),
-        meta: { title: '发布空调产品' }
-      },
-      {
-        path: 'dynamic/:id',
-        name: 'DynamicDetail',
-        component: () => import('@/views/DynamicDetail.vue'),
-        meta: { title: '空调信息详情' }
-      },
-      {
-        path: 'dynamic/:id/edit',
-        name: 'DynamicEdit',
-        component: () => import('@/views/PublishAirConditioner.vue'),
-        meta: { title: '编辑空调信息' }
-      },
-      {
         path: 'orders',
         name: 'Orders',
         component: () => import('@/views/orders/OrderList.vue'),
@@ -116,20 +78,6 @@ const routes = [
         name: 'Users',
         component: () => import('@/views/users/UserList.vue'),
         meta: { title: '用户管理' }
-      },
-      //用户审核
-      {
-        path: 'users/audit',
-        name: 'UserAudit',
-        component: () => import('@/views/users/AuditList.vue'),
-        meta: { title: '用户审核' }
-      },
-      //用户审核详情
-      {
-        path: 'users/audit/:id',
-        name: 'UserAuditDetail',
-        component: () => import('@/views/users/AuditDetail.vue'),
-        meta: { title: '用户审核详情' }
       }
     ]
   },
