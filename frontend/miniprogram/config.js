@@ -3,17 +3,8 @@
 const viteEnv = import.meta.env || {}
 const nodeEnv = typeof process !== 'undefined' && process.env ? process.env : {}
 const configuredApiBaseUrl = viteEnv.VITE_API_BASE_URL || nodeEnv.VUE_APP_API_BASE_URL
-// 当前仅用于本地联调；真机需把 127.0.0.1 替换为后端电脑局域网 IP。
+// 当前默认使用已确认的局域网联调地址，开发者工具和真机保持同一 Wi-Fi 即可访问。
 // 正式域名确定后通过环境变量覆盖，不在代码中提前写线上域名。
-const baseUrl = (configuredApiBaseUrl || 'http://127.0.0.1:8080/api/v1').replace(/\/+$/, '')
-
-// ═══ 虚拟登录开关 ═══
-// true：后端不可用时，微信登录失败自动走虚拟登录（mock token），
-//       后续接口请求由 mock.js 拦截返回模拟数据，可预览全部页面。
-// false：走真实后端登录与接口。
-// Mock 必须显式开启，避免测试 token 被误带入真实联调或生产包。
-const configuredMockLogin = viteEnv.VITE_USE_MOCK_LOGIN || nodeEnv.VUE_APP_USE_MOCK_LOGIN
-const isDevelopment = viteEnv.DEV || nodeEnv.NODE_ENV === 'development'
-export const USE_MOCK_LOGIN = isDevelopment && configuredMockLogin === 'true'
+const baseUrl = (configuredApiBaseUrl || 'http://172.20.22.132:8080/api/v1').replace(/\/+$/, '')
 
 export default baseUrl

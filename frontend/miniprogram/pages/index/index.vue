@@ -78,12 +78,12 @@
 			</view>
 		</view>
 
-		<!-- 配件商城 -->
+		<!-- 配件展示 -->
 		<view id="product-section" class="section-card content-card">
 			<view class="section-heading product-heading">
 				<view>
 					<text class="section-title">常用配件</text>
-					<text class="section-subtitle">正品直供 · 价格透明</text>
+					<text class="section-subtitle">正品展示 · 电话咨询</text>
 				</view>
 				<text class="result-tip" v-if="activeKeyword">“{{ activeKeyword }}”的结果</text>
 				<text class="swipe-hint" v-else>‹ 左右滑动 ›</text>
@@ -130,7 +130,14 @@
 					</view>
 				</view>
 
-				<view class="empty-state" v-if="displayList.length === 0 && !listLoading">
+				<view class="empty-state error-state" v-if="listError && displayList.length === 0 && !listLoading">
+					<view class="empty-icon error-icon"><up-icon name="warning" size="30" color="#d97706"></up-icon></view>
+					<text class="empty-title">{{ listError.title }}</text>
+					<text class="empty-text">{{ listError.message }}</text>
+					<view class="empty-action" @click="retryProducts">重新加载</view>
+				</view>
+
+				<view class="empty-state" v-else-if="displayList.length === 0 && !listLoading">
 					<view class="empty-icon"><up-icon name="search" size="30" color="#7e91a4"></up-icon></view>
 					<text class="empty-title">没有找到相关配件</text>
 					<text class="empty-text">换个关键词或分类试试</text>
@@ -139,6 +146,9 @@
 			</view>
 
 			<view class="load-status" v-if="displayList.length > 0">
+				<view class="load-retry" v-if="listError" @click="retryProducts">
+					<text>{{ listError.message }}，点击重试</text>
+				</view>
 				<view class="loading-more" v-if="loadStatus === 'loading'">
 					<view class="loading-dot"></view><view class="loading-dot"></view><view class="loading-dot"></view>
 					<text class="load-text">加载中</text>
@@ -160,12 +170,12 @@ import { consumablesApi } from '@/api/api.js'
 
 onMounted(() => fetchList(true))
 
-onShareAppMessage(() => ({ title: '鑫立创 — 专业空调安装与配件直供', path: '/pages/index/index' }))
-onShareTimeline(() => ({ title: '鑫立创 — 专业空调安装与配件直供' }))
+onShareAppMessage(() => ({ title: '鑫立创 — 专业空调安装与配件展示', path: '/pages/index/index' }))
+onShareTimeline(() => ({ title: '鑫立创 — 专业空调安装与配件展示' }))
 
 const heroList = [
 	{ eyebrow: '专业暖通服务', title: '舒适，不止于冷暖', desc: '水系统中央空调安装、维修与保养', link: '立即咨询', icon: 'home-fill', theme: 'hero-blue', action: 'service' },
-	{ eyebrow: '常用耗材直供', title: '配件透明，选购放心', desc: '铜管、冷媒、支架等常用配件', link: '查看配件', icon: 'shopping-cart-fill', theme: 'hero-teal', action: 'shop' },
+	{ eyebrow: '常用耗材展示', title: '规格清晰，咨询放心', desc: '铜管、冷媒、支架等常用配件', link: '查看配件', icon: 'bag-fill', theme: 'hero-teal', action: 'shop' },
 	{ eyebrow: '全流程服务保障', title: '安装售后，一站负责', desc: '持证上岗 · 规范施工 · 快速响应', link: '了解服务', icon: 'server-fill', theme: 'hero-navy', action: 'official' }
 ]
 
@@ -178,11 +188,10 @@ const trustList = [
 const functionList = [
 	{ title: '预约安装', tip: '专业施工', icon: 'calendar', tone: 'blue', color: '#0b63ce', action: 'service' },
 	{ title: '快速报修', tip: '及时响应', icon: 'setting-fill', tone: 'red', color: '#dc5b62', action: 'service' },
-	{ title: '配件选购', tip: '正品直供', icon: 'shopping-cart', tone: 'cyan', color: '#0f9b91', action: 'shop' },
+	{ title: '配件展示', tip: '电话咨询', icon: 'bag', tone: 'cyan', color: '#0f9b91', action: 'shop' },
 	{ title: '清洗保养', tip: '节能健康', icon: 'reload', tone: 'green', color: '#189566', action: 'service' },
 	{ title: '我的订单', tip: '进度可查', icon: 'order', tone: 'blue', color: '#0b63ce', action: 'order' },
 	{ title: '服务保障', tip: '售后无忧', icon: 'server-fill', tone: 'amber', color: '#d47a18', action: 'official' },
-	{ title: '空调知识', tip: '专业指南', icon: 'file-text-fill', tone: 'purple', color: '#7459c7', action: 'notice' },
 	{ title: '联系客服', tip: '电话咨询', icon: 'phone-fill', tone: 'cyan', color: '#0f9b91', action: 'phone' }
 ]
 
@@ -200,6 +209,7 @@ const pageSize = 6
 const total = ref(0)
 const listLoading = ref(false)
 const loadStatus = ref('')
+const listError = ref(null)
 const displayList = computed(() => allList.value)
 
 const performSearch = () => {
@@ -221,12 +231,27 @@ const switchTab = (index) => {
 	fetchList(true)
 }
 
+const setListError = (response) => {
+	if (response?.code === 403) {
+		listError.value = { title: '暂无访问权限', message: response.msg || '当前账号无权查看产品信息' }
+		return
+	}
+	if (response?.code === -1) {
+		listError.value = { title: '网络连接失败', message: response.msg || '请检查网络后重试' }
+		return
+	}
+	listError.value = { title: '产品加载失败', message: response?.msg || '服务暂时不可用，请稍后重试' }
+}
+
+const retryProducts = () => fetchList(allList.value.length === 0)
+
 const fetchList = async (isRefresh = false) => {
 	if (listLoading.value) return
 	if (isRefresh) {
 		page.value = 1
 		allList.value = []
 		loadStatus.value = ''
+		listError.value = null
 	} else if (total.value > 0 && allList.value.length >= total.value) {
 		loadStatus.value = 'noMore'
 		return
@@ -242,15 +267,20 @@ const fetchList = async (isRefresh = false) => {
 		const res = await consumablesApi.getList(params)
 		if (res.code !== 200) {
 			loadStatus.value = ''
-			return
+			setListError(res)
+			return false
 		}
 		const list = (res.data && res.data.list) || []
 		total.value = (res.data && res.data.total) || 0
 		allList.value = isRefresh ? list : [...allList.value, ...list]
 		page.value++
 		loadStatus.value = allList.value.length >= total.value ? 'noMore' : ''
+		listError.value = null
+		return true
 	} catch (err) {
+		setListError({ code: -1, msg: '请求异常，请稍后重试' })
 		loadStatus.value = ''
+		return false
 	} finally {
 		listLoading.value = false
 	}
@@ -262,9 +292,9 @@ onReachBottom(() => {
 })
 
 onPullDownRefresh(async () => {
-	await fetchList(true)
+	const success = await fetchList(true)
 	uni.stopPullDownRefresh()
-	uni.showToast({ title: '已刷新', icon: 'none', duration: 1000 })
+	if (success) uni.showToast({ title: '已刷新', icon: 'none', duration: 1000 })
 })
 
 const handleHeroClick = (item) => handleAction(item.action, item.title)
@@ -276,7 +306,6 @@ const handleAction = (action, title) => {
 		return
 	}
 	if (action === 'order') return uni.switchTab({ url: '/pages/order/order' })
-	if (action === 'notice') return uni.switchTab({ url: '/pages/notice/notice' })
 	if (action === 'official') return uni.switchTab({ url: '/pages/official/official' })
 	if (action === 'phone') return callService()
 	uni.showActionSheet({
@@ -422,9 +451,12 @@ const handleCardClick = (item) => uni.navigateTo({ url: `/packageA/goos-details/
 .empty-icon { width: 88rpx; height: 88rpx; border-radius: 50%; background: #edf3f8; display: flex; align-items: center; justify-content: center; }
 .empty-title { font-size: 28rpx; color: $text-main; font-weight: 650; margin-top: 20rpx; }.empty-text { font-size: 23rpx; color: $text-light; margin-top: 8rpx; }
 .empty-action { margin-top: 24rpx; padding: 13rpx 30rpx; color: $primary; background: #eaf3ff; border-radius: 28rpx; font-size: 23rpx; }
+.error-state { padding-top: 76rpx; }
+.error-icon { background: #fff7e6; }
 
 .load-status { width: 100%; padding: 30rpx 0 8rpx; display: flex; justify-content: center; align-items: center; }
 .loading-more, .load-end { display: flex; align-items: center; gap: 9rpx; }
+.load-retry { color: #b45309; background: #fff7e6; border-radius: 24rpx; padding: 12rpx 24rpx; font-size: 22rpx; }
 .loading-dot { width: 10rpx; height: 10rpx; border-radius: 50%; background: $primary; animation: bounce 1.4s infinite ease-in-out both; }
 .loading-dot:nth-child(1) { animation-delay: -.32s; }.loading-dot:nth-child(2) { animation-delay: -.16s; }
 .end-line { width: 48rpx; height: 1rpx; background: #dbe3eb; }.load-text { font-size: 21rpx; color: $text-light; }
