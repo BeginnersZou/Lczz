@@ -9,6 +9,9 @@ import com.lczz.auth.persistence.RoleMapper;
 import com.lczz.auth.persistence.UserEntity;
 import com.lczz.auth.persistence.UserMapper;
 import com.lczz.common.exception.BusinessException;
+import com.lczz.file.service.FileService;
+import com.lczz.file.service.FileService.FileView;
+import com.lczz.file.service.FileService.RelationCommand;
 import com.lczz.order.persistence.WorkOrderAssignmentEntity;
 import com.lczz.order.persistence.WorkOrderAssignmentMapper;
 import com.lczz.order.persistence.WorkOrderEntity;
@@ -60,14 +63,17 @@ public class OrderService {
     private final WorkOrderStatusHistoryMapper historyMapper;
     private final UserMapper userMapper;
     private final RoleMapper roleMapper;
+    private final FileService fileService;
 
     public OrderService(WorkOrderMapper orderMapper, WorkOrderAssignmentMapper assignmentMapper,
-                        WorkOrderStatusHistoryMapper historyMapper, UserMapper userMapper, RoleMapper roleMapper) {
+                        WorkOrderStatusHistoryMapper historyMapper, UserMapper userMapper, RoleMapper roleMapper,
+                        FileService fileService) {
         this.orderMapper = orderMapper;
         this.assignmentMapper = assignmentMapper;
         this.historyMapper = historyMapper;
         this.userMapper = userMapper;
         this.roleMapper = roleMapper;
+        this.fileService = fileService;
     }
 
     public OrderPage list(AuthenticatedUser actor, int page, int pageSize, String keyword, String status,
@@ -100,7 +106,9 @@ public class OrderService {
 
     public OrderView detail(AuthenticatedUser actor, long id) {
         WorkOrderEntity order = requireAccessible(actor, id);
-        return toViews(List.of(order)).getFirst();
+        List<FileView> files = fileService.listBusinessFiles(actor,
+                new RelationCommand("ORDER", id, "ATTACHMENT", null));
+        return toViews(List.of(order), Map.of(id, files)).getFirst();
     }
 
     public List<InstallerView> installers(String keyword) {
@@ -295,15 +303,20 @@ public class OrderService {
     }
 
     private List<OrderView> toViews(List<WorkOrderEntity> orders) {
+        return toViews(orders, Map.of());
+    }
+
+    private List<OrderView> toViews(List<WorkOrderEntity> orders, Map<Long, List<FileView>> files) {
         Set<Long> userIds = orders.stream()
                 .flatMap(order -> java.util.stream.Stream.of(order.getCustomerUserId(), order.getInstallerUserId()))
                 .filter(java.util.Objects::nonNull).collect(Collectors.toSet());
         Map<Long, UserEntity> users = userIds.isEmpty() ? Map.of() : userMapper.selectByIds(userIds).stream()
                 .collect(Collectors.toMap(UserEntity::getId, Function.identity()));
-        return orders.stream().map(order -> toView(order, users)).toList();
+        return orders.stream().map(order -> toView(order, users, files.getOrDefault(order.getId(), List.of())))
+                .toList();
     }
 
-    private OrderView toView(WorkOrderEntity order, Map<Long, UserEntity> users) {
+    private OrderView toView(WorkOrderEntity order, Map<Long, UserEntity> users, List<FileView> fileList) {
         UserEntity installer = users.get(order.getInstallerUserId());
         InstallerView master = installer == null
                 ? new InstallerView(order.getInstallerUserId(), "安装师傅", null)
@@ -318,7 +331,8 @@ public class OrderService {
                 area, order.getDetailedAddress(), address, order.getRequiredStartAt(), order.getExpectedEndAt(),
                 statusLabel(order.getOrderStatus()), order.getOrderStatus(), List.of(master), List.of(master),
                 order.getAdminRemark(), order.getCancelReason(), order.getCreatedAt(), order.getUpdatedAt(),
-                "空调服务", taskLabel, order.getDescription(), order.getCustomerName(), order.getCustomerPhone());
+                "空调服务", taskLabel, order.getDescription(), order.getCustomerName(), order.getCustomerPhone(),
+                fileList);
     }
 
     private String normalizePhone(String raw) {
@@ -425,5 +439,6 @@ public class OrderService {
                             LocalDateTime orderEndTime, String status, String statusCode,
                             List<InstallerView> selectedMasterList, List<InstallerView> masterList,
                             String adminRemark, String cancelReason, LocalDateTime createdAt, LocalDateTime updatedAt,
-                            String serviceName, String productName, String productSpec, String name, String phone) { }
+                            String serviceName, String productName, String productSpec, String name, String phone,
+                            List<FileView> fileList) { }
 }

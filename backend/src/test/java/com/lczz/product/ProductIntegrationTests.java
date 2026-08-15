@@ -33,6 +33,7 @@ class ProductIntegrationTests {
 
     @BeforeEach
     void resetData() {
+        jdbcTemplate.update("DELETE FROM operation_audit_log");
         jdbcTemplate.update("DELETE FROM business_file_relation");
         jdbcTemplate.update("DELETE FROM product");
         jdbcTemplate.update("DELETE FROM product_category");
@@ -113,6 +114,55 @@ class ProductIntegrationTests {
         mockMvc.perform(post("/api/v1/consumables/{id}/purchase", productId)
                         .header("Authorization", bearer(token)))
                 .andExpect(status().isNotFound()).andExpect(jsonPath("$.error").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void filtersStockStatusAndAdjustsStockWithAudit() throws Exception {
+        String token = adminToken();
+        long parentId = createCategory(token, "materials", "安装辅料", null);
+        long childId = createCategory(token, "stock", "库存测试", parentId);
+        long emptyId = insertProduct("P-EMPTY", "无库存耗材", childId, true);
+        long lowId = insertProduct("P-LOW", "低库存耗材", childId, true);
+        long normalId = insertProduct("P-NORMAL", "正常库存耗材", childId, true);
+        jdbcTemplate.update("UPDATE product SET display_stock=0 WHERE id=?", emptyId);
+        jdbcTemplate.update("UPDATE product SET display_stock=3 WHERE id=?", lowId);
+        jdbcTemplate.update("UPDATE product SET display_stock=10 WHERE id=?", normalId);
+
+        mockMvc.perform(get("/api/v1/consumables/list").header("Authorization", bearer(token))
+                        .param("stockStatus", "empty"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.list[0].id").value(emptyId));
+        mockMvc.perform(get("/api/v1/consumables/list").header("Authorization", bearer(token))
+                        .param("stockStatus", "low"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.list[0].id").value(lowId));
+        mockMvc.perform(get("/api/v1/consumables/list").header("Authorization", bearer(token))
+                        .param("stockStatus", "normal"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.list[0].id").value(normalId));
+        mockMvc.perform(get("/api/v1/consumables/list").header("Authorization", bearer(token))
+                        .param("stockStatus", "unknown"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_STOCK_STATUS"));
+
+        mockMvc.perform(post("/api/v1/consumables/{id}/stock-adjustment", lowId)
+                        .header("Authorization", bearer(token)).contentType("application/json")
+                        .content("{\"type\":\"in\",\"quantity\":2,\"reason\":\"采购入库\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.stock").value(5));
+        mockMvc.perform(post("/api/v1/consumables/{id}/stock-adjustment", lowId)
+                        .header("Authorization", bearer(token)).contentType("application/json")
+                        .content("{\"type\":\"OUT\",\"quantity\":6,\"reason\":\"安装领用\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value("INSUFFICIENT_PRODUCT_STOCK"));
+        String auditJson = jdbcTemplate.queryForObject(
+                "SELECT after_json FROM operation_audit_log WHERE business_type='PRODUCT' AND business_id=?",
+                String.class, Long.toString(lowId));
+        org.assertj.core.api.Assertions.assertThat(auditJson).contains("采购入库", "\"stock\":5");
+
+        mockMvc.perform(post("/api/v1/consumables/{id}/stock-adjustment", lowId)
+                        .header("Authorization", bearer(customerToken())).contentType("application/json")
+                        .content("{\"type\":\"IN\",\"quantity\":1,\"reason\":\"越权测试\"}"))
+                .andExpect(status().isForbidden());
     }
 
     private long createCategory(String token, String code, String name, Long parentId) throws Exception {

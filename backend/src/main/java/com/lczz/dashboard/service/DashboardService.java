@@ -104,7 +104,7 @@ public class DashboardService {
         args.add((page - 1) * pageSize);
         List<TodoItem> items = jdbcTemplate.query(
                 "SELECT id, order_no, task_type, order_status, customer_name, required_start_at "
-                        + "FROM work_order" + where + " ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                        + "FROM work_order" + where + " ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?",
                 (resultSet, rowNum) -> new TodoItem(
                         resultSet.getLong("id"), resultSet.getString("order_no"),
                         resultSet.getString("task_type"), resultSet.getString("order_status"),
