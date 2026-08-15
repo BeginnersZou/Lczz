@@ -130,13 +130,13 @@
         <el-form-item label="耗材"><strong>{{ currentStockRow?.name }}</strong></el-form-item>
         <el-form-item label="当前库存">{{ currentStockRow?.stock }} {{ currentStockRow?.unit }}</el-form-item>
         <el-form-item label="调整方式">
-          <el-radio-group v-model="stockForm.type"><el-radio-button value="in">入库</el-radio-button><el-radio-button value="out">出库</el-radio-button></el-radio-group>
+          <el-radio-group v-model="stockForm.type"><el-radio-button value="IN">入库</el-radio-button><el-radio-button value="OUT">出库</el-radio-button></el-radio-group>
         </el-form-item>
         <el-form-item label="数量">
           <el-input-number v-model="stockForm.quantity" :min="1" :max="99999" />
         </el-form-item>
         <el-form-item label="原因">
-          <el-input v-model="stockForm.reason" maxlength="100" show-word-limit placeholder="例如：采购入库、施工领用" />
+          <el-input v-model="stockForm.reason" maxlength="500" show-word-limit placeholder="例如：采购入库、施工领用" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -154,7 +154,7 @@ import {
   Plus, Search, Refresh, Download
 } from '@element-plus/icons-vue'
 import { useRouter, useRoute } from 'vue-router'
-import { getConsumablesListApi, getConsumablesDetailApi, getConsumableCategoriesApi, deleteConsumablesApi, exportConsumablesApi, updateConsumablesApi, setConsumableEnabledApi } from '@/api/consumables'
+import { getConsumablesListApi, getConsumableCategoriesApi, deleteConsumablesApi, exportConsumablesApi, adjustConsumableStockApi, setConsumableEnabledApi } from '@/api/consumables'
 import { formatDateTime } from '@/utils/format'
 
 const router = useRouter()
@@ -183,7 +183,7 @@ const currentDeleteRow = ref(null)
 const stockDialogVisible = ref(false)
 const currentStockRow = ref(null)
 const stockLoading = ref(false)
-const stockForm = reactive({ type: 'in', quantity: 1, reason: '' })
+const stockForm = reactive({ type: 'IN', quantity: 1, reason: '' })
 
 // 耗材列表（数据全部来自接口）
 const pagedList = ref([])
@@ -342,9 +342,8 @@ function getCategory(row, index) {
 }
 
 function isLowStock(row) {
-  const stock = Number(row.stock || 0)
-  const safetyStock = Number(row.safetyStock)
-  return Number.isFinite(safetyStock) && row.safetyStock != null ? stock <= safetyStock : stock <= 0
+  const stock = Number(row.stock)
+  return Number.isFinite(stock) && stock <= 5
 }
 
 async function loadCategoryFilters() {
@@ -369,7 +368,7 @@ function openStockDialog(row) {
 
 function resetStockForm() {
   currentStockRow.value = null
-  stockForm.type = 'in'
+  stockForm.type = 'IN'
   stockForm.quantity = 1
   stockForm.reason = ''
 }
@@ -377,11 +376,12 @@ function resetStockForm() {
 async function confirmStockChange() {
   const row = currentStockRow.value
   if (!row) return
-  if (!stockForm.reason.trim()) {
-    ElMessage.warning('请填写库存调整原因')
+  const reason = stockForm.reason.trim()
+  if (reason.length < 2) {
+    ElMessage.warning('库存调整原因至少填写2个字符')
     return
   }
-  const delta = stockForm.type === 'in' ? stockForm.quantity : -stockForm.quantity
+  const delta = stockForm.type === 'IN' ? stockForm.quantity : -stockForm.quantity
   const nextStock = Number(row.stock || 0) + delta
   if (nextStock < 0) {
     ElMessage.warning('出库数量不能大于当前库存')
@@ -389,9 +389,11 @@ async function confirmStockChange() {
   }
   stockLoading.value = true
   try {
-    // 列表响应不包含详情图片；先读取完整详情，避免调整库存时误清空图片关系。
-    const detail = await getConsumablesDetailApi(row.id)
-    await updateConsumablesApi(row.id, { ...detail, stock: nextStock })
+    await adjustConsumableStockApi(row.id, {
+      type: stockForm.type,
+      quantity: stockForm.quantity,
+      reason
+    })
     ElMessage.success('库存调整成功')
     stockDialogVisible.value = false
     await loadList()
