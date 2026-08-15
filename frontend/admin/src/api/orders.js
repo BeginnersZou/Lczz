@@ -1,5 +1,5 @@
 import request from '@/utils/request'
-import { bindFileApi, getFileId, uploadFileApi } from './files'
+import { bindFileApi, getFileId, unbindFileApi, uploadFileApi } from './files'
 import { createCsvBlob } from '@/utils/export'
 
 function normalizeOrder(item = {}) {
@@ -156,6 +156,14 @@ export function bindOrderFileApi(fileId, orderId, sortOrder) {
     businessId: Number(orderId),
     usageType: 'ATTACHMENT',
     sortOrder
+  })
+}
+
+export function unbindOrderFileApi(fileId, orderId) {
+  return unbindFileApi(fileId, {
+    businessType: 'ORDER',
+    businessId: Number(orderId),
+    usageType: 'ATTACHMENT'
   })
 }
 

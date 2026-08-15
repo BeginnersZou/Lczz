@@ -194,7 +194,7 @@ import {
 import { useRouter, useRoute } from 'vue-router'
 import {
   getOrderDetailApi, addOrderApi, updateOrderApi,
-  uploadOrderImageApi, bindOrderFileApi, getMasterListApi, cancelOrderApi
+  uploadOrderImageApi, bindOrderFileApi, unbindOrderFileApi, getMasterListApi, cancelOrderApi
 } from '@/api/orders'
 import { getRegionTreeApi } from '@/api/regions'
 import { useUnsavedChanges } from '@/composables/useUnsavedChanges'
@@ -225,6 +225,7 @@ const masterSearch = ref('')
 const masterLoading = ref(false)
 // 附件上传中计数，提交时据此拦截，避免丢图
 const uploadingCount = ref(0)
+const pendingUnbindFileIds = ref([])
 
 const cityOptions = ref([])
 const regionLoading = ref(false)
@@ -328,6 +329,7 @@ async function loadEditData() {
   loadError.value = ''
   try {
     const res = await getOrderDetailApi(orderId.value)
+    pendingUnbindFileIds.value = []
     // 回显 fileList：远程图片 url 直接作为 previewUrl，file 为 null
     const remoteFiles = res.fileList || res.images || []
     const fileList = remoteFiles.map(item => {
@@ -543,6 +545,16 @@ async function handleFileUpload(event) {
 // 删除附件图片，仅本地 blob 预览需释放内存，远程回显 url 不处理
 function deleteFileImg(idx) {
   const target = form.fileList[idx]
+  if (target?.bound && !target.id) {
+    ElMessage.error('附件缺少文件标识，暂时无法删除，请刷新页面后重试')
+    return
+  }
+  if (target?.bound && target.id) {
+    const fileId = Number(target.id)
+    if (!pendingUnbindFileIds.value.includes(fileId)) {
+      pendingUnbindFileIds.value.push(fileId)
+    }
+  }
   if (target && target.previewUrl && target.previewUrl.startsWith('blob:')) {
     URL.revokeObjectURL(target.previewUrl)
   }
@@ -591,7 +603,11 @@ async function handleSubmit() {
     }
     const savedOrderId = savedOrder?.id || orderId.value
     const unboundFiles = form.fileList.filter(file => file.id && !file.bound)
-    await Promise.all(unboundFiles.map((file, index) => bindOrderFileApi(file.id, savedOrderId, index)))
+    await Promise.all([
+      ...unboundFiles.map((file, index) => bindOrderFileApi(file.id, savedOrderId, index)),
+      ...pendingUnbindFileIds.value.map(fileId => unbindOrderFileApi(fileId, savedOrderId))
+    ])
+    pendingUnbindFileIds.value = []
     formIsDirty.value = false
     returnToOrderList()
   } catch {
