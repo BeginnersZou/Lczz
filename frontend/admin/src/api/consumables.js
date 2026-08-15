@@ -137,6 +137,24 @@ export function setConsumableEnabledApi(id, enabled) {
 }
 
 /**
+ * 原子调整耗材库存，并由后端记录调整原因与审计信息。
+ * @param {string|number} id
+ * @param {{type: 'IN'|'OUT', quantity: number, reason: string}} data
+ * @returns {Promise<Object>}
+ */
+export function adjustConsumableStockApi(id, data) {
+  return request({
+    url: `/consumables/${id}/stock-adjustment`,
+    method: 'post',
+    data: {
+      type: String(data.type || '').toUpperCase(),
+      quantity: Number(data.quantity),
+      reason: String(data.reason || '').trim()
+    }
+  }).then(normalizeProduct)
+}
+
+/**
  * 删除耗材
  * @param {string|number} id
  * @returns {Promise<void>}
