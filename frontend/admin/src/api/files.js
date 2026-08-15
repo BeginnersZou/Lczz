@@ -16,6 +16,14 @@ export function bindFileApi(fileId, data) {
   })
 }
 
+export function unbindFileApi(fileId, params) {
+  return request({
+    url: `/files/${fileId}/relations`,
+    method: 'delete',
+    params
+  })
+}
+
 export function getFileId(file) {
   if (typeof file === 'number' && Number.isFinite(file)) return file
   if (typeof file === 'string' && /^\d+$/.test(file)) return Number(file)
