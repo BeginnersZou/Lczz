@@ -98,14 +98,16 @@
           <template #default="scope"><span class="datetime-cell">{{ formatDateTime(scope.row.createTime) }}</span></template>
         </el-table-column>
         <!-- 操作 -->
-        <el-table-column label="操作" align="center" width="248" fixed="right">
+        <el-table-column label="操作" align="center" width="236" fixed="right">
           <template #default="scope">
-            <el-button text type="primary" @click="handleEdit(scope.row)">修改</el-button>
-            <el-button text :type="scope.row.enabled ? 'warning' : 'success'" @click="toggleEnabled(scope.row)">
-              {{ scope.row.enabled ? '下架' : '上架' }}
-            </el-button>
-            <el-button text type="success" @click="openStockDialog(scope.row)">调整库存</el-button>
-            <el-button text type="danger" @click="handleDelete(scope.row)">删除</el-button>
+            <div class="table-actions">
+              <el-button text type="primary" @click="handleEdit(scope.row)">修改</el-button>
+              <el-button text :type="scope.row.enabled ? 'warning' : 'success'" @click="toggleEnabled(scope.row)">
+                {{ scope.row.enabled ? '下架' : '上架' }}
+              </el-button>
+              <el-button text type="success" @click="openStockDialog(scope.row)">调整库存</el-button>
+              <el-button text type="danger" @click="handleDelete(scope.row)">删除</el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
