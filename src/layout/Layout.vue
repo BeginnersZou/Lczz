@@ -45,7 +45,7 @@
       <el-header class="header">
         <div class="header-left">
           <el-button
-            type="text"
+            link
             @click="handleSidebarToggle"
             class="collapse-btn"
             :aria-label="isMobile ? '打开导航菜单' : (isCollapse ? '展开导航菜单' : '收起导航菜单')"

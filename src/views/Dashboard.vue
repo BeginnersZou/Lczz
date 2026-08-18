@@ -290,7 +290,8 @@ function updateChart() {
       right: '4%',
       bottom: '3%',
       top: '10%',
-      containLabel: true
+      outerBoundsMode: 'same',
+      outerBoundsContain: 'axisLabel'
     },
     xAxis: {
       type: 'category',

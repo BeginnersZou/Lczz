@@ -14,7 +14,7 @@
     </div>
 
     <!-- 搜索卡片 -->
-    <el-card class="search-card" shadow="light">
+    <el-card class="search-card" shadow="never">
       <div class="search-bar">
         <div class="search-item">
           <el-input v-model="searchKeyword" placeholder="输入订单编号、订单名称检索" clearable class="search-input"
@@ -43,22 +43,22 @@
     </el-card>
 
     <!-- 备货表格主体 -->
-    <el-card shadow="light" class="table-card">
+    <el-card shadow="never" class="table-card">
       <div v-if="loadError" class="error-state">
         <span>{{ loadError }}</span>
         <el-button type="primary" link @click="loadList">重新加载</el-button>
       </div>
       <el-table v-else v-loading="tableLoading" :data="pagedList" border stripe table-layout="fixed" style="width: 100%" empty-text="暂无备货订单">
         <!-- 序号 -->
-        <el-table-column label="序号" align="center" width="70">
+        <el-table-column label="序号" align="center" width="56">
           <template #default="scope">
             {{ (currentPage - 1) * pageSize + scope.$index + 1 }}
           </template>
         </el-table-column>
         <!-- 订单名称 -->
-        <el-table-column prop="productName" label="订单名称" align="left" min-width="180" show-overflow-tooltip />
+        <el-table-column prop="productName" label="订单名称" align="left" min-width="150" show-overflow-tooltip />
         <!-- 订单编号 -->
-        <el-table-column prop="orderNo" label="订单编号" align="left" min-width="190">
+        <el-table-column prop="orderNo" label="订单编号" align="left" min-width="176" show-overflow-tooltip>
           <template #default="scope">
             <span class="table-order-id code-cell" role="button" tabindex="0" @click="copyOrderId(scope.row.orderNo || scope.row.orderId)" @keyup.enter="copyOrderId(scope.row.orderNo || scope.row.orderId)">
               {{ scope.row.orderNo || scope.row.orderId }}
@@ -69,7 +69,7 @@
           </template>
         </el-table-column>
         <!-- 备货耗材 -->
-        <el-table-column label="备货耗材" align="left" min-width="220">
+        <el-table-column label="备货耗材" align="left" min-width="180">
           <template #default="scope">
             <div class="materials-cell">
               <el-tag v-for="(m, idx) in scope.row.materials" :key="idx" size="small" effect="light"
@@ -80,7 +80,7 @@
           </template>
         </el-table-column>
         <!-- 备货状态 -->
-        <el-table-column label="备货状态" align="center" width="110">
+        <el-table-column label="备货状态" align="center" width="96">
           <template #default="scope">
             <el-tag :type="getStatusType(scope.row.status)" size="small" effect="light">
               {{ scope.row.status }}
@@ -88,11 +88,11 @@
           </template>
         </el-table-column>
         <!-- 创建时间 -->
-        <el-table-column prop="createTime" label="创建时间" align="left" width="168">
+        <el-table-column prop="createTime" label="创建时间" align="left" width="150">
           <template #default="scope"><span class="datetime-cell">{{ formatDateTime(scope.row.createTime || scope.row.createdAt) }}</span></template>
         </el-table-column>
         <!-- 操作 -->
-        <el-table-column label="操作" align="center" width="144" fixed="right">
+        <el-table-column label="操作" align="center" width="132" fixed="right">
           <template #default="scope">
             <div class="table-actions">
               <el-button text type="primary" @click="handlePrepare(scope.row)">{{ scope.row.status === '已备货' ? '查看' : '备货' }}</el-button>
