@@ -51,7 +51,7 @@
       </el-alert>
 
       <el-table v-else v-loading="loading" :data="tableData" border stripe table-layout="fixed">
-        <el-table-column label="用户" min-width="176">
+        <el-table-column label="用户" min-width="152">
           <template #default="{ row }">
             <div class="user-cell">
               <span class="primary-text">{{ row.nickname || row.username || '-' }}</span>
@@ -59,38 +59,40 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="手机号" width="140">
+        <el-table-column label="手机号" width="128">
           <template #default="{ row }">{{ formatPhone(row.phone) }}</template>
         </el-table-column>
-        <el-table-column label="性别" width="80" align="center">
+        <el-table-column label="性别" width="64" align="center">
           <template #default="{ row }">{{ getGenderText(row.gender) }}</template>
         </el-table-column>
-        <el-table-column label="角色" width="112" align="center">
+        <el-table-column label="角色" width="92" align="center">
           <template #default="{ row }">
             <el-tag :type="getRoleTagType(row.role)" size="small" effect="light">{{ getRoleText(row.role) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="账号状态" width="104" align="center">
+        <el-table-column label="账号状态" width="92" align="center">
           <template #default="{ row }">
             <el-tag :type="row.accountStatus === 'ENABLED' ? 'success' : 'info'" size="small" effect="light">
               {{ getAccountStatusText(row.accountStatus) }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="黑名单" width="96" align="center">
+        <el-table-column label="黑名单" width="84" align="center">
           <template #default="{ row }">
             <el-tag :type="row.blacklist ? 'danger' : 'success'" size="small" effect="plain">
               {{ row.blacklist ? '已拉黑' : '正常' }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="最近登录" width="168">
-          <template #default="{ row }"><span class="datetime-cell">{{ formatDateTime(row.lastLoginAt) }}</span></template>
+        <el-table-column label="时间信息" min-width="168">
+          <template #default="{ row }">
+            <div class="time-stack">
+              <span><em>登录</em>{{ formatDateTime(row.lastLoginAt) }}</span>
+              <span><em>注册</em>{{ formatDateTime(row.createdAt || row.registerTime) }}</span>
+            </div>
+          </template>
         </el-table-column>
-        <el-table-column label="注册时间" width="168">
-          <template #default="{ row }"><span class="datetime-cell">{{ formatDateTime(row.createdAt || row.registerTime) }}</span></template>
-        </el-table-column>
-        <el-table-column label="操作" width="240" fixed="right" align="center">
+        <el-table-column label="操作" width="208" fixed="right" align="center">
           <template #default="{ row }">
             <div class="table-actions">
               <el-button link type="primary" @click="openDialog('view', row)">详情</el-button>
@@ -585,6 +587,27 @@ onMounted(loadList)
   color: #475569;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+.time-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: #475569;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+
+  span {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  em {
+    color: #94a3b8;
+    font-style: normal;
+  }
 }
 
 .pagination-wrap {

@@ -208,27 +208,18 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 2px;
   white-space: nowrap;
 }
 
 .table-actions .el-button {
   min-height: 30px;
-  padding: 4px 6px;
+  padding: 4px 5px;
   margin-left: 0 !important;
 }
 
 .el-table--striped .el-table__body tr.el-table__row--striped td.el-table__cell {
   background: #fbfcfe;
-}
-
-@media (max-width: 1599px) {
-  .main-content .el-table .el-table-fixed-column--right {
-    position: static !important;
-    right: auto !important;
-    border-left-color: var(--el-table-border-color);
-    box-shadow: none;
-  }
 }
 
 .el-pagination {

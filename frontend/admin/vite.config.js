@@ -8,9 +8,30 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [vue()],
+    build: {
+      chunkSizeWarningLimit: 525,
+      rolldownOptions: {
+        output: {
+          codeSplitting: {
+            groups: [
+              {
+                name: 'echarts',
+                test: /[\\/]node_modules[\\/]echarts[\\/]/,
+                priority: 20
+              },
+              {
+                name: 'zrender',
+                test: /[\\/]node_modules[\\/]zrender[\\/]/,
+                priority: 20
+              }
+            ]
+          }
+        }
+      }
+    },
     resolve: {
       alias: {
-        '@': resolve(__dirname, 'src')
+        '@': resolve(import.meta.dirname, 'src')
       }
     },
     server: {
