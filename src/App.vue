@@ -152,11 +152,6 @@ select {
   box-shadow: var(--shadow-card) !important;
 }
 
-.main-content .table-card .el-table__body-wrapper,
-.main-content .table-card .el-scrollbar__wrap {
-  scrollbar-gutter: stable;
-}
-
 .main-content .table-card > .el-card__body {
   padding: 0 !important;
 }

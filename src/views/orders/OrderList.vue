@@ -105,8 +105,10 @@
         <!-- 操作：修改+删除 -->
         <el-table-column label="操作" align="center" width="136" fixed="right">
           <template #default="scope">
-            <el-button text type="primary" @click="handleEditOrder(scope.row)">修改</el-button>
-            <el-button v-if="!isCancelled(scope.row.status)" text type="danger" @click="handleDeleteOrder(scope.row)">作废</el-button>
+            <div class="table-actions">
+              <el-button text type="primary" @click="handleEditOrder(scope.row)">修改</el-button>
+              <el-button v-if="!isCancelled(scope.row.status)" text type="danger" @click="handleDeleteOrder(scope.row)">作废</el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
