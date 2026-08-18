@@ -17,7 +17,7 @@
     </div>
 
     <!-- 搜索卡片 -->
-    <el-card class="search-card" shadow="light">
+    <el-card class="search-card" shadow="never">
       <div class="search-bar">
         <div class="search-item">
           <el-input v-model="searchKeyword" placeholder="输入耗材名称、规格检索耗材" clearable class="search-input"
@@ -52,7 +52,7 @@
     </el-card>
 
     <!-- 耗材表格主体 -->
-    <el-card shadow="light" class="table-card">
+    <el-card shadow="never" class="table-card">
       <div v-if="loadError" class="error-state">
         <span>{{ loadError }}</span>
         <el-button type="primary" link @click="loadList">重新加载</el-button>
@@ -60,22 +60,22 @@
       <el-table v-else v-loading="tableLoading" :data="pagedList" border stripe table-layout="fixed" style="width: 100%"
         empty-text="暂无耗材，点击上方按钮发布第一条耗材">
         <!-- 序号 -->
-        <el-table-column label="序号" align="center" width="70">
+        <el-table-column label="序号" align="center" width="56">
           <template #default="scope">
             {{ (currentPage - 1) * pageSize + scope.$index + 1 }}
           </template>
         </el-table-column>
         <!-- 耗材图片 -->
-        <el-table-column label="图片" align="center" width="90">
+        <el-table-column label="图片" align="center" width="72">
           <template #default="scope">
             <el-image :src="scope.row.image" fit="cover" class="row-img" :preview-src-list="[scope.row.image]"
               preview-teleported />
           </template>
         </el-table-column>
         <!-- 耗材名称 -->
-        <el-table-column prop="name" label="耗材名称" align="left" min-width="160" show-overflow-tooltip />
+        <el-table-column prop="name" label="耗材名称" align="left" min-width="130" show-overflow-tooltip />
         <!-- 耗材分类（二级） -->
-        <el-table-column label="耗材分类" align="left" min-width="190">
+        <el-table-column label="耗材分类" align="left" min-width="150">
           <template #default="scope">
             <el-tag size="small" effect="light" type="info">{{ getCategory(scope.row, 0) }}</el-tag>
             <span class="category-arrow">/</span>
@@ -83,22 +83,22 @@
           </template>
         </el-table-column>
         <!-- 规格 -->
-        <el-table-column prop="spec" label="规格" align="left" min-width="150" show-overflow-tooltip />
+        <el-table-column prop="spec" label="规格" align="left" min-width="116" show-overflow-tooltip />
         <!-- 单位 -->
-        <el-table-column prop="unit" label="单位" align="center" width="80" />
+        <el-table-column prop="unit" label="单位" align="center" width="64" />
         <!-- 库存 -->
-        <el-table-column prop="stock" label="库存" align="center" width="90">
+        <el-table-column prop="stock" label="库存" align="center" width="72">
           <template #default="scope">
             <span :class="['stock-num', isLowStock(scope.row) ? 'low' : '']">{{ scope.row.stock }}</span>
             <div v-if="scope.row.safetyStock != null" class="secondary-cell">安全库存 {{ scope.row.safetyStock }}</div>
           </template>
         </el-table-column>
         <!-- 创建时间 -->
-        <el-table-column prop="createTime" label="创建时间" align="left" width="168">
+        <el-table-column prop="createTime" label="创建时间" align="left" width="150">
           <template #default="scope"><span class="datetime-cell">{{ formatDateTime(scope.row.createTime) }}</span></template>
         </el-table-column>
         <!-- 操作 -->
-        <el-table-column label="操作" align="center" width="236" fixed="right">
+        <el-table-column label="操作" align="center" width="196" fixed="right">
           <template #default="scope">
             <div class="table-actions">
               <el-button text type="primary" @click="handleEdit(scope.row)">修改</el-button>

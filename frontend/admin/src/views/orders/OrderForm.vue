@@ -14,7 +14,7 @@
       <el-button type="primary" link @click="loadEditData">重新加载</el-button>
     </div>
     <el-form v-else v-loading="pageLoading" ref="orderFormRef" :model="form" :rules="rules" label-width="120px" class="form-content">
-      <el-card class="form-card" shadow="light">
+      <el-card class="form-card" shadow="never">
         <template #header>
           <span class="card-title"><el-icon>
               <Document />
