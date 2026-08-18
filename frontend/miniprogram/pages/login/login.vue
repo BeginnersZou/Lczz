@@ -49,7 +49,14 @@
       </view>
 
       <view class="agreement-row">
-        <up-checkbox usedAlone v-model:checked="isAgree" shape="circle" size="18" activeColor="#0b63ce"></up-checkbox>
+        <up-checkbox
+          usedAlone
+          v-model:checked="isAgree"
+          shape="circle"
+          size="18"
+          activeColor="#0b63ce"
+          :custom-style="{ margin: '0', flexShrink: 0 }"
+        ></up-checkbox>
         <text class="agreement-text" @click="toggleAgreement">我已阅读并同意
           <text class="link-text" @click.stop="goToAgreement('user')">《用户服务协议》</text>和
           <text class="link-text" @click.stop="goToAgreement('privacy')">《隐私保护协议》</text>
@@ -254,7 +261,7 @@ const resetToWechatLogin = () => {
 .phone-auth-btn { width: 100%; height: 88rpx; line-height: 88rpx; margin: 0; padding: 0; border-radius: 22rpx; background: $primary; color: #fff; font-size: 28rpx; font-weight: 600; }
 .phone-auth-btn[disabled] { opacity: .6; }.back-text-btn { padding: 18rpx 24rpx 0; color: $text-light; font-size: 23rpx; }
 
-.agreement-row { display: flex; align-items: flex-start; margin-top: 30rpx; padding-top: 25rpx; border-top: 1rpx solid #edf1f5; }
-.agreement-text { flex: 1; min-height: 44rpx; margin-left: 9rpx; color: $text-sub; font-size: 21rpx; line-height: 1.65; }.link-text { color: $primary; }
+.agreement-row { display: flex; align-items: center; gap: 10rpx; margin-top: 30rpx; padding-top: 25rpx; border-top: 1rpx solid #edf1f5; }
+.agreement-text { display: block; flex: 1; min-width: 0; min-height: 44rpx; color: $text-sub; font-size: 21rpx; line-height: 1.55; }.link-text { color: $primary; }
 .company-footer { display: flex; flex-direction: column; align-items: center; gap: 8rpx; margin-top: auto; padding: 40rpx 20rpx 0; color: #9aa8b6; font-size: 20rpx; }
 </style>
