@@ -94,9 +94,11 @@
         <!-- 操作 -->
         <el-table-column label="操作" align="center" width="144" fixed="right">
           <template #default="scope">
-            <el-button text type="primary" @click="handlePrepare(scope.row)">{{ scope.row.status === '已备货' ? '查看' : '备货' }}</el-button>
-            <el-button text type="success" v-if="scope.row.status !== '已备货'"
-              @click="handleFinish(scope.row)">完成</el-button>
+            <div class="table-actions">
+              <el-button text type="primary" @click="handlePrepare(scope.row)">{{ scope.row.status === '已备货' ? '查看' : '备货' }}</el-button>
+              <el-button text type="success" v-if="scope.row.status !== '已备货'"
+                @click="handleFinish(scope.row)">完成</el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>

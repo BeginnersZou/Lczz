@@ -90,21 +90,23 @@
         <el-table-column label="注册时间" width="168">
           <template #default="{ row }"><span class="datetime-cell">{{ formatDateTime(row.createdAt || row.registerTime) }}</span></template>
         </el-table-column>
-        <el-table-column label="操作" width="330" fixed="right" align="center">
+        <el-table-column label="操作" width="240" fixed="right" align="center">
           <template #default="{ row }">
-            <el-button link type="primary" @click="openDialog('view', row)">详情</el-button>
-            <el-button link type="primary" @click="openDialog('edit', row)">编辑</el-button>
-            <el-button
-              link
-              :type="row.accountStatus === 'ENABLED' ? 'warning' : 'success'"
-              :loading="statusLoadingId === row.id"
-              @click="handleStatusChange(row)"
-            >
-              {{ row.accountStatus === 'ENABLED' ? '停用' : '启用' }}
-            </el-button>
-            <el-button link :type="row.blacklist ? 'primary' : 'danger'" @click="openBlacklistDialog(row)">
-              {{ row.blacklist ? '移出黑名单' : '加入黑名单' }}
-            </el-button>
+            <div class="table-actions">
+              <el-button link type="primary" @click="openDialog('view', row)">详情</el-button>
+              <el-button link type="primary" @click="openDialog('edit', row)">编辑</el-button>
+              <el-button
+                link
+                :type="row.accountStatus === 'ENABLED' ? 'warning' : 'success'"
+                :loading="statusLoadingId === row.id"
+                @click="handleStatusChange(row)"
+              >
+                {{ row.accountStatus === 'ENABLED' ? '停用' : '启用' }}
+              </el-button>
+              <el-button link :type="row.blacklist ? 'primary' : 'danger'" @click="openBlacklistDialog(row)">
+                {{ row.blacklist ? '移出黑名单' : '加入黑名单' }}
+              </el-button>
+            </div>
           </template>
         </el-table-column>
         <template #empty>
