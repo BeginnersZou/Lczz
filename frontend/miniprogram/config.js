@@ -3,8 +3,7 @@
 const viteEnv = import.meta.env || {}
 const nodeEnv = typeof process !== 'undefined' && process.env ? process.env : {}
 const configuredApiBaseUrl = viteEnv.VITE_API_BASE_URL || nodeEnv.VUE_APP_API_BASE_URL
-// 当前默认使用已确认的局域网联调地址，开发者工具和真机保持同一 Wi-Fi 即可访问。
-// 正式域名确定后通过环境变量覆盖，不在代码中提前写线上域名。
-const baseUrl = (configuredApiBaseUrl || 'http://172.20.22.132:8080/api/v1').replace(/\/+$/, '')
+// 环境变量未正确加载时仍回退到线上 API，避免开发工具或真机误连局域网地址。
+const baseUrl = (configuredApiBaseUrl || 'https://admin.whlczz.cn/api/v1').replace(/\/+$/, '')
 
 export default baseUrl
