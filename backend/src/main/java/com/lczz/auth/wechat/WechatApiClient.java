@@ -6,12 +6,16 @@ import com.lczz.common.exception.BusinessException;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 
 @Component
 public class WechatApiClient implements WechatIdentityGateway {
+    private static final Logger log = LoggerFactory.getLogger(WechatApiClient.class);
     private static final String CODE_SESSION_URL = "https://api.weixin.qq.com/sns/jscode2session";
     private static final String TOKEN_URL = "https://api.weixin.qq.com/cgi-bin/token";
     private static final String PHONE_URL = "https://api.weixin.qq.com/wxa/business/getuserphonenumber";
@@ -45,7 +49,7 @@ public class WechatApiClient implements WechatIdentityGateway {
         } catch (BusinessException exception) {
             throw exception;
         } catch (RestClientException exception) {
-            throw new BusinessException(502, "WECHAT_UNAVAILABLE", "微信服务暂不可用，请稍后重试");
+            throw unavailable("code-session", exception);
         }
     }
 
@@ -64,7 +68,7 @@ public class WechatApiClient implements WechatIdentityGateway {
         } catch (BusinessException exception) {
             throw exception;
         } catch (RestClientException exception) {
-            throw new BusinessException(502, "WECHAT_UNAVAILABLE", "微信服务暂不可用，请稍后重试");
+            throw unavailable("phone-number", exception);
         }
     }
 
@@ -95,6 +99,22 @@ public class WechatApiClient implements WechatIdentityGateway {
     private BusinessException wechatFailure(String detail) {
         String message = detail == null || detail.isBlank() ? "微信凭证无效或已过期" : "微信凭证校验失败";
         return new BusinessException(400, "WECHAT_AUTH_FAILED", message);
+    }
+
+    private BusinessException unavailable(String operation, RestClientException exception) {
+        Integer httpStatus = exception instanceof RestClientResponseException response
+                ? response.getStatusCode().value() : null;
+        log.warn("WeChat API transport failure: operation={}, exceptionType={}, causeType={}, httpStatus={}",
+                operation, exception.getClass().getSimpleName(), rootCauseType(exception), httpStatus);
+        return new BusinessException(502, "WECHAT_UNAVAILABLE", "微信服务暂不可用，请稍后重试");
+    }
+
+    private String rootCauseType(Throwable failure) {
+        Throwable root = failure;
+        while (root.getCause() != null && root.getCause() != root) {
+            root = root.getCause();
+        }
+        return root.getClass().getSimpleName();
     }
 
     private record CachedToken(String value, Instant expiresAt) { }
