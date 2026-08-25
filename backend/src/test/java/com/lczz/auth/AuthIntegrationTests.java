@@ -39,6 +39,7 @@ class AuthIntegrationTests {
 
     @BeforeEach
     void clearUsers() {
+        jdbcTemplate.update("DELETE FROM operation_audit_log");
         jdbcTemplate.update("DELETE FROM user_wechat_identity");
         jdbcTemplate.update("DELETE FROM sys_user_role");
         jdbcTemplate.update("DELETE FROM sys_user");
@@ -84,6 +85,51 @@ class AuthIntegrationTests {
         assertThat(identityMapper.selectCount(new LambdaQueryWrapper<WechatIdentityEntity>()
                 .eq(WechatIdentityEntity::getAppId, "wx-app")
                 .eq(WechatIdentityEntity::getOpenId, "open-1"))).isEqualTo(1);
+    }
+
+    @Test
+    void preCreatedInstallerBindsWechatWithoutCreatingDuplicateOrLosingRole() throws Exception {
+        bootstrapService.createIfMissing("precreate-admin", "very-secure-123", "预创建管理员");
+        String adminResponse = mockMvc.perform(post("/api/auth/login").contentType("application/json")
+                        .content("{\"username\":\"precreate-admin\",\"password\":\"very-secure-123\"}"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        String adminToken = new com.fasterxml.jackson.databind.ObjectMapper()
+                .readTree(adminResponse).at("/data/token").asText();
+
+        mockMvc.perform(post("/api/v1/users")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType("application/json")
+                        .content("""
+                                {"nickname":"预创建师傅","realName":"王安装","gender":"male",
+                                 "phone":"13800138009","role":"installer"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.role").value("INSTALLER"));
+
+        when(wechatGateway.exchangeLoginCode(anyString()))
+                .thenReturn(new WechatIdentity("wx-app", "precreated-open", "precreated-union"));
+        when(wechatGateway.exchangePhoneCode(anyString())).thenReturn("13800138009");
+
+        mockMvc.perform(post("/api/auth/wechat/login").contentType("application/json")
+                        .content("{\"code\":\"precreated-login-code\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.needPhone").value(true));
+        mockMvc.perform(post("/api/auth/wechat/bind-phone").contentType("application/json")
+                        .content("""
+                                {"code":"precreated-login-code","phoneCode":"precreated-phone-code"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.userInfo.role").value("installer"))
+                .andExpect(jsonPath("$.data.userInfo.roles[0]").value("installer"));
+
+        assertThat(userMapper.selectCount(new LambdaQueryWrapper<UserEntity>()
+                .eq(UserEntity::getPhone, "13800138009"))).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("SELECT r.role_code FROM sys_user_role ur "
+                + "JOIN sys_role r ON r.id=ur.role_id JOIN sys_user u ON u.id=ur.user_id "
+                + "WHERE u.phone='13800138009'", String.class)).isEqualTo("INSTALLER");
+        assertThat(identityMapper.selectCount(new LambdaQueryWrapper<WechatIdentityEntity>()
+                .eq(WechatIdentityEntity::getAppId, "wx-app")
+                .eq(WechatIdentityEntity::getOpenId, "precreated-open"))).isEqualTo(1);
     }
 
     @Test

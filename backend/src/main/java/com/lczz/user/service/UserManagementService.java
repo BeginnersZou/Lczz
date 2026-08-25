@@ -25,12 +25,15 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class UserManagementService {
+    private static final Pattern PHONE_PATTERN = Pattern.compile("^1\\d{10}$");
     private static final Set<String> ACCOUNT_STATUSES = Set.of("ENABLED", "DISABLED");
     private static final List<String> ROLE_PRIORITY = List.of("ADMIN", "INSTALLER", "DEALER", "CUSTOMER");
     private static final Map<String, String> GENDER_ALIASES = Map.of(
@@ -79,6 +82,48 @@ public class UserManagementService {
     public UserView detail(long id) {
         UserEntity user = requireUser(id);
         return toViews(List.of(user)).getFirst();
+    }
+
+    @Transactional
+    public UserView create(AuthenticatedUser actor, CreateCommand command, AuditContext context) {
+        RoleCode role = normalizeRole(command.role());
+        String nickname = command.nickname().trim();
+        String realName = blankToNull(command.realName());
+        String gender = normalizeGender(command.gender());
+        String phone = normalizePhone(command.phone());
+        if (userMapper.selectCount(new LambdaQueryWrapper<UserEntity>().eq(UserEntity::getPhone, phone)) > 0) {
+            throw phoneAlreadyExists();
+        }
+
+        RoleEntity roleEntity = requireEnabledRole(role);
+        UserEntity user = new UserEntity();
+        user.setNickname(nickname);
+        user.setRealName(realName);
+        user.setGender(gender);
+        user.setPhone(phone);
+        user.setAccountStatus("ENABLED");
+        user.setAuditStatus("APPROVED");
+        user.setBlacklist(false);
+        user.setVersion(0);
+        user.setDeleted(false);
+        user.setCreatedBy(actor.userId());
+        user.setUpdatedBy(actor.userId());
+        try {
+            userMapper.insert(user);
+        } catch (DuplicateKeyException exception) {
+            throw phoneAlreadyExists();
+        }
+
+        UserRoleEntity link = new UserRoleEntity();
+        link.setUserId(user.getId());
+        link.setRoleId(roleEntity.getId());
+        link.setCreatedBy(actor.userId());
+        userRoleMapper.insert(link);
+
+        UserView result = detail(user.getId());
+        auditService.recordSuccess(actor.userId(), "USER_CREATE", "USER", user.getId(),
+                context.requestId(), context.clientIp(), null, snapshot(result));
+        return result;
     }
 
     @Transactional
@@ -166,18 +211,23 @@ public class UserManagementService {
 
     private void replaceRole(long actorId, long userId, List<String> currentRoles, RoleCode nextRole) {
         if (currentRoles.size() == 1 && currentRoles.contains(nextRole.name())) return;
-        RoleEntity role = roleMapper.selectOne(new LambdaQueryWrapper<RoleEntity>()
-                .eq(RoleEntity::getRoleCode, nextRole.name())
-                .eq(RoleEntity::getEnabled, true));
-        if (role == null) {
-            throw new BusinessException(409, "ROLE_UNAVAILABLE", "目标角色当前不可用");
-        }
+        RoleEntity role = requireEnabledRole(nextRole);
         userRoleMapper.delete(new LambdaQueryWrapper<UserRoleEntity>().eq(UserRoleEntity::getUserId, userId));
         UserRoleEntity link = new UserRoleEntity();
         link.setUserId(userId);
         link.setRoleId(role.getId());
         link.setCreatedBy(actorId);
         userRoleMapper.insert(link);
+    }
+
+    private RoleEntity requireEnabledRole(RoleCode role) {
+        RoleEntity entity = roleMapper.selectOne(new LambdaQueryWrapper<RoleEntity>()
+                .eq(RoleEntity::getRoleCode, role.name())
+                .eq(RoleEntity::getEnabled, true));
+        if (entity == null) {
+            throw new BusinessException(409, "ROLE_UNAVAILABLE", "目标角色当前不可用");
+        }
+        return entity;
     }
 
     private void ensureAdminContinuity(long targetUserId) {
@@ -266,6 +316,15 @@ public class UserManagementService {
         return normalized;
     }
 
+    private String normalizePhone(String raw) {
+        String value = raw == null ? "" : raw.replaceAll("\\s+", "");
+        if (value.startsWith("+86")) value = value.substring(3);
+        if (!PHONE_PATTERN.matcher(value).matches()) {
+            throw new BusinessException("INVALID_PHONE", "手机号格式不合法");
+        }
+        return value;
+    }
+
     private String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value.trim();
     }
@@ -274,6 +333,11 @@ public class UserManagementService {
         return new BusinessException(404, "USER_NOT_FOUND", "用户不存在");
     }
 
+    private BusinessException phoneAlreadyExists() {
+        return new BusinessException(409, "PHONE_ALREADY_EXISTS", "该手机号已存在，请直接编辑已有用户");
+    }
+
+    public record CreateCommand(String nickname, String realName, String gender, String phone, String role) { }
     public record UpdateCommand(String nickname, String realName, String gender, String role) { }
     public record AuditContext(String requestId, String clientIp) { }
     public record UserPage(List<UserView> list, long total, int page, int pageSize) { }

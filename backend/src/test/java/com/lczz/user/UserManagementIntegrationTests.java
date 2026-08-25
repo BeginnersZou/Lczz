@@ -91,8 +91,63 @@ class UserManagementIntegrationTests {
 
         mockMvc.perform(get("/v3/api-docs"))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.paths['/api/v1/users']").exists())
                 .andExpect(jsonPath("$.paths['/api/v1/users/list']").exists())
                 .andExpect(jsonPath("$.paths['/api/v1/users/{id}/status']").exists());
+    }
+
+    @Test
+    void adminCanPreCreateAssignableInstallerAndDuplicatePhoneIsRejected() throws Exception {
+        mockMvc.perform(post("/api/v1/users")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .header("X-Request-Id", "user-create-request")
+                        .contentType("application/json")
+                        .content("""
+                                {"nickname":"李师傅","realName":"李安装","gender":"male",
+                                 "phone":"13860000009","role":"installer"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.nickname").value("李师傅"))
+                .andExpect(jsonPath("$.data.realName").value("李安装"))
+                .andExpect(jsonPath("$.data.gender").value("MALE"))
+                .andExpect(jsonPath("$.data.phone").value("13860000009"))
+                .andExpect(jsonPath("$.data.role").value("INSTALLER"))
+                .andExpect(jsonPath("$.data.accountStatus").value("ENABLED"))
+                .andExpect(jsonPath("$.data.auditStatus").value("APPROVED"))
+                .andExpect(jsonPath("$.data.blacklist").value(false));
+
+        mockMvc.perform(get("/api/v1/orders/masters")
+                        .param("keyword", "13860000009")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].masterName").value("李安装"))
+                .andExpect(jsonPath("$.data[0].masterPhone").value("13860000009"));
+
+        mockMvc.perform(post("/api/users")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType("application/json")
+                        .content("""
+                                {"nickname":"重复用户","realName":"重复用户","gender":"unknown",
+                                 "phone":"13860000009","role":"customer"}
+                                """))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value("PHONE_ALREADY_EXISTS"));
+
+        mockMvc.perform(post("/api/users")
+                        .header("Authorization", "Bearer " + token(customerId, RoleCode.CUSTOMER))
+                        .contentType("application/json")
+                        .content("""
+                                {"nickname":"越权用户","phone":"13860000010","role":"installer"}
+                                """))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("FORBIDDEN"));
+
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM sys_user WHERE phone='13860000009'",
+                Integer.class)).isEqualTo(1);
+        String auditJson = jdbcTemplate.queryForObject("SELECT after_json FROM operation_audit_log "
+                + "WHERE request_id='user-create-request'", String.class);
+        assertThat(auditJson).contains("INSTALLER").doesNotContain("13860000009");
     }
 
     @Test

@@ -116,6 +116,8 @@ function handleHttpError(error) {
   } else if (status === 400) {
     const msg = error.response?.data?.message || '请求参数错误（400）'
     ElMessage.error(msg)
+  } else if (status === 409) {
+    ElMessage.error(error.response?.data?.message || '数据冲突，请检查后重试')
   } else if (status === 500) {
     ElMessage.error('服务器内部错误（500），请稍后重试')
   } else if (status === 502) {

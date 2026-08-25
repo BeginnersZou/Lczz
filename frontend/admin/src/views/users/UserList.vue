@@ -5,6 +5,7 @@
         <h2 class="page-title">用户管理</h2>
         <span class="page-desc">管理后台与小程序用户，支持角色、账号状态及黑名单管控</span>
       </div>
+      <el-button type="primary" :icon="Plus" @click="openCreateDialog">新增用户</el-button>
     </div>
 
     <el-card class="search-card" shadow="never">
@@ -160,17 +161,35 @@
               <el-option label="未知" value="UNKNOWN" />
             </el-select>
           </el-form-item>
+          <el-form-item v-if="dialogType === 'create'" label="手机号" prop="phone">
+            <el-input v-model="form.phone" maxlength="11" placeholder="请输入11位手机号" inputmode="numeric" />
+          </el-form-item>
           <el-form-item label="角色" prop="role">
             <el-select v-model="form.role" placeholder="请选择角色">
               <el-option v-for="item in roleOptions" :key="item.value" :label="item.label" :value="item.value" />
             </el-select>
           </el-form-item>
-          <el-alert title="手机号、账号状态及认证材料不在资料编辑契约内，请使用对应操作入口。" type="info" show-icon :closable="false" />
+          <el-alert
+            v-if="dialogType === 'edit'"
+            title="手机号、账号状态及认证材料不在资料编辑契约内，请使用对应操作入口。"
+            type="info"
+            show-icon
+            :closable="false"
+          />
+          <el-alert
+            v-else
+            title="用户首次在小程序授权相同手机号后，将自动绑定此账号并保留当前角色。"
+            type="info"
+            show-icon
+            :closable="false"
+          />
         </el-form>
       </div>
       <template #footer>
         <el-button @click="dialogVisible = false">{{ dialogType === 'view' ? '关闭' : '取消' }}</el-button>
-        <el-button v-if="dialogType === 'edit'" type="primary" :loading="submitting" @click="submitForm">保存修改</el-button>
+        <el-button v-if="dialogType !== 'view'" type="primary" :loading="submitting" @click="submitForm">
+          {{ dialogType === 'create' ? '创建用户' : '保存修改' }}
+        </el-button>
       </template>
     </el-dialog>
 
@@ -209,10 +228,11 @@
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Refresh, Search } from '@element-plus/icons-vue'
+import { Plus, Refresh, Search } from '@element-plus/icons-vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   changeUserStatusApi,
+  createUserApi,
   getUserDetailApi,
   getUserListApi,
   toggleBlacklistApi,
@@ -276,6 +296,10 @@ const form = reactive({
 
 const formRules = {
   nickname: [{ required: true, whitespace: true, message: '请输入昵称', trigger: 'blur' }],
+  phone: [
+    { required: true, message: '请输入手机号', trigger: 'blur' },
+    { pattern: /^1\d{10}$/, message: '请输入正确的11位手机号', trigger: 'blur' }
+  ],
   role: [{ required: true, message: '请选择角色', trigger: 'change' }]
 }
 
@@ -352,6 +376,14 @@ async function openDialog(type, row) {
   }
 }
 
+function openCreateDialog() {
+  resetForm()
+  dialogType.value = 'create'
+  dialogTitle.value = '新增用户'
+  form.gender = 'UNKNOWN'
+  dialogVisible.value = true
+}
+
 function fillForm(user = {}) {
   Object.assign(form, {
     id: user.id ?? '',
@@ -383,7 +415,7 @@ async function submitForm() {
   if (submitting.value) return
   try {
     await userFormRef.value?.validate()
-    if (form.role !== originalRole.value) {
+    if (dialogType.value === 'edit' && form.role !== originalRole.value) {
       await ElMessageBox.confirm(
         `确认将该用户角色调整为“${getRoleText(form.role)}”吗？角色变更会影响其可访问功能。`,
         '确认角色变更',
@@ -391,14 +423,19 @@ async function submitForm() {
       )
     }
     submitting.value = true
-    await updateUserApi(form.id, {
+    const payload = {
       nickname: form.nickname.trim(),
       realName: form.realName.trim() || null,
       gender: form.gender || null,
       role: form.role
-    })
+    }
+    if (dialogType.value === 'create') {
+      await createUserApi({ ...payload, phone: form.phone.trim() })
+    } else {
+      await updateUserApi(form.id, payload)
+    }
     dialogVisible.value = false
-    ElMessage.success('用户资料已更新')
+    ElMessage.success(dialogType.value === 'create' ? '用户创建成功，可立即用于订单指派' : '用户资料已更新')
     await loadList()
   } catch (error) {
     if (error !== 'cancel' && error !== 'close' && !error?.fields) {
@@ -492,6 +529,10 @@ onMounted(loadList)
 }
 
 .page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
   margin-bottom: 18px;
 
   .page-title {
