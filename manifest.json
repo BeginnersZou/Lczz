@@ -60,11 +60,8 @@
         "mergeVirtualHostAttributes": true,
         "lazyCodeLoading": "requiredComponents",
         /* 保留微信隐私合规检查 */
-        "__usePrivacyCheck__": true,
+        "__usePrivacyCheck__": true
         /* 订单进度与评价会通过 chooseImage 选择图片，发布前需在微信后台完成对应隐私用途声明 */
-        "unipush": {
-            "enable": true
-        }
     },
     "mp-alipay": {
         "usingComponents": true
