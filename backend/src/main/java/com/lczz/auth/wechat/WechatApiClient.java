@@ -1,6 +1,9 @@
 package com.lczz.auth.wechat;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lczz.auth.config.WechatMiniProperties;
 import com.lczz.common.exception.BusinessException;
 import java.time.Clock;
@@ -21,12 +24,15 @@ public class WechatApiClient implements WechatIdentityGateway {
     private static final String PHONE_URL = "https://api.weixin.qq.com/wxa/business/getuserphonenumber";
 
     private final RestClient restClient;
+    private final ObjectMapper objectMapper;
     private final WechatMiniProperties properties;
     private final Clock clock;
     private volatile CachedToken cachedToken;
 
-    public WechatApiClient(RestClient restClient, WechatMiniProperties properties, Clock clock) {
+    public WechatApiClient(RestClient restClient, ObjectMapper objectMapper,
+                           WechatMiniProperties properties, Clock clock) {
         this.restClient = restClient;
+        this.objectMapper = objectMapper;
         this.properties = properties;
         this.clock = clock;
     }
@@ -35,12 +41,13 @@ public class WechatApiClient implements WechatIdentityGateway {
     public WechatIdentity exchangeLoginCode(String code) {
         requireConfiguration();
         try {
-            CodeSessionResponse response = restClient.get().uri(CODE_SESSION_URL, builder -> builder
+            String responseBody = restClient.get().uri(CODE_SESSION_URL, builder -> builder
                             .queryParam("appid", properties.appId())
                             .queryParam("secret", properties.appSecret())
                             .queryParam("js_code", code)
                             .queryParam("grant_type", "authorization_code").build())
-                    .retrieve().body(CodeSessionResponse.class);
+                    .retrieve().body(String.class);
+            CodeSessionResponse response = decode("code-session", responseBody, CodeSessionResponse.class);
             if (response == null || response.errorCode() != null && response.errorCode() != 0
                     || response.openId() == null || response.openId().isBlank()) {
                 throw wechatFailure(response == null ? null : response.errorMessage());
@@ -57,9 +64,10 @@ public class WechatApiClient implements WechatIdentityGateway {
     public String exchangePhoneCode(String phoneCode) {
         requireConfiguration();
         try {
-            PhoneResponse response = restClient.post().uri(PHONE_URL, builder -> builder
+            String responseBody = restClient.post().uri(PHONE_URL, builder -> builder
                             .queryParam("access_token", accessToken()).build())
-                    .body(Map.of("code", phoneCode)).retrieve().body(PhoneResponse.class);
+                    .body(Map.of("code", phoneCode)).retrieve().body(String.class);
+            PhoneResponse response = decode("phone-number", responseBody, PhoneResponse.class);
             if (response == null || response.errorCode() != null && response.errorCode() != 0
                     || response.phoneInfo() == null || response.phoneInfo().phoneNumber() == null) {
                 throw wechatFailure(response == null ? null : response.errorMessage());
@@ -77,11 +85,12 @@ public class WechatApiClient implements WechatIdentityGateway {
         if (cachedToken != null && cachedToken.expiresAt().isAfter(now.plusSeconds(60))) {
             return cachedToken.value();
         }
-        TokenResponse response = restClient.get().uri(TOKEN_URL, builder -> builder
+        String responseBody = restClient.get().uri(TOKEN_URL, builder -> builder
                         .queryParam("grant_type", "client_credential")
                         .queryParam("appid", properties.appId())
                         .queryParam("secret", properties.appSecret()).build())
-                .retrieve().body(TokenResponse.class);
+                .retrieve().body(String.class);
+        TokenResponse response = decode("access-token", responseBody, TokenResponse.class);
         if (response == null || response.accessToken() == null || response.accessToken().isBlank()) {
             throw wechatFailure(response == null ? null : response.errorMessage());
         }
@@ -99,6 +108,21 @@ public class WechatApiClient implements WechatIdentityGateway {
     private BusinessException wechatFailure(String detail) {
         String message = detail == null || detail.isBlank() ? "微信凭证无效或已过期" : "微信凭证校验失败";
         return new BusinessException(400, "WECHAT_AUTH_FAILED", message);
+    }
+
+    private <T> T decode(String operation, String responseBody, Class<T> responseType) {
+        if (responseBody == null || responseBody.isBlank()) {
+            return null;
+        }
+        try {
+            return objectMapper.readerFor(responseType)
+                    .without(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+                    .readValue(responseBody);
+        } catch (JsonProcessingException exception) {
+            log.warn("WeChat API returned invalid JSON: operation={}, exceptionType={}",
+                    operation, exception.getClass().getSimpleName());
+            throw new BusinessException(502, "WECHAT_UNAVAILABLE", "微信服务暂不可用，请稍后重试");
+        }
     }
 
     private BusinessException unavailable(String operation, RestClientException exception) {
