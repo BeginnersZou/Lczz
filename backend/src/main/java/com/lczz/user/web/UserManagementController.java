@@ -4,6 +4,7 @@ import com.lczz.auth.domain.AuthenticatedUser;
 import com.lczz.common.api.ApiResponse;
 import com.lczz.user.service.UserManagementService;
 import com.lczz.user.service.UserManagementService.AuditContext;
+import com.lczz.user.service.UserManagementService.CreateCommand;
 import com.lczz.user.service.UserManagementService.UpdateCommand;
 import com.lczz.user.service.UserManagementService.UserPage;
 import com.lczz.user.service.UserManagementService.UserView;
@@ -60,6 +61,14 @@ public class UserManagementController {
         return ApiResponse.success(service.detail(id), requestId(request));
     }
 
+    @PostMapping
+    @Operation(summary = "管理员按手机号预创建小程序用户")
+    ApiResponse<UserView> create(@AuthenticationPrincipal AuthenticatedUser actor,
+                                 @Valid @RequestBody CreateRequest body,
+                                 HttpServletRequest request) {
+        return ApiResponse.success(service.create(actor, body.toCommand(), context(request)), requestId(request));
+    }
+
     @PutMapping("/{id}")
     @Operation(summary = "更新用户安全资料与一期业务角色")
     ApiResponse<UserView> update(@AuthenticationPrincipal AuthenticatedUser actor,
@@ -104,6 +113,16 @@ public class UserManagementController {
                          @NotBlank @Size(max = 32) String role) {
         UpdateCommand toCommand() {
             return new UpdateCommand(nickname, realName, gender, role);
+        }
+    }
+
+    record CreateRequest(@NotBlank @Size(max = 64) String nickname,
+                         @Size(max = 64) String realName,
+                         @Size(max = 16) String gender,
+                         @NotBlank @Size(max = 20) String phone,
+                         @NotBlank @Size(max = 32) String role) {
+        CreateCommand toCommand() {
+            return new CreateCommand(nickname, realName, gender, phone, role);
         }
     }
 
