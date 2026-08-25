@@ -29,23 +29,14 @@
         <text class="panel-subtitle">登录后查看订单进度与服务记录</text>
       </view>
 
-      <view v-if="!showPhoneAuth" class="login-action">
-        <view class="wechat-login-btn" hover-class="button-pressed"
-          :class="{ 'btn-disabled': isLogging }" @click="handleWechatLogin">
+      <view class="login-action">
+        <button class="wechat-login-btn" open-type="getPhoneNumber"
+          hover-class="button-pressed" @getphonenumber="onGetPhoneNumber"
+          :disabled="isLogging || !isAgree">
           <up-icon name="weixin-fill" size="25" color="#ffffff"></up-icon>
-          <text class="btn-text">{{ isLogging ? '正在登录…' : '微信快捷登录' }}</text>
-        </view>
-        <text class="login-tip">安全便捷，不会自动发布任何内容</text>
-      </view>
-
-      <view class="phone-auth-wrap" v-else>
-        <view class="auth-icon"><up-icon name="phone-fill" size="27" color="#0b63ce"></up-icon></view>
-        <text class="auth-title">完成手机号授权</text>
-        <text class="auth-tip">首次使用需要绑定手机号，便于订单服务人员与您联系</text>
-        <button class="phone-auth-btn" open-type="getPhoneNumber" @getphonenumber="onGetPhoneNumber" :disabled="isLogging">
-          <text>{{ isLogging ? '正在提交…' : '确认授权手机号' }}</text>
+          <text class="btn-text">{{ isLogging ? '正在登录…' : '授权手机号一键登录' }}</text>
         </button>
-        <view class="back-text-btn" @click="resetToWechatLogin"><text>返回上一步</text></view>
+        <text class="login-tip">{{ isAgree ? '微信安全验证，仅用于注册登录和订单服务' : '请先阅读并勾选下方协议' }}</text>
       </view>
 
       <view class="agreement-row">
@@ -82,8 +73,6 @@ import {
 } from '@/utils/auth-session.js'
 
 const isAgree = ref(false)
-const showPhoneAuth = ref(false)
-const wxLoginCode = ref('')   // 微信登录 code，手机号绑定步骤传给后端
 const isLogging = ref(false)  // 登录中标志，防重复点击
 const toggleAgreement = () => { isAgree.value = !isAgree.value }
 
@@ -93,72 +82,58 @@ const goToAgreement = (type) => {
   })
 }
 
-// ============ 步骤一：微信快捷登录 ============
-const handleWechatLogin = async () => {
+// ============ 微信手机号一键登录（新用户自动注册为普通客户） ============
+const onGetPhoneNumber = async (e) => {
   if (isLogging.value) return
-  if (!isAgree.value) {
-    uni.showToast({ title: '请先同意用户协议', icon: 'none' })
+  const detail = (e && e.detail) || {}
+  const phoneCode = typeof detail.code === 'string' ? detail.code.trim() : ''
+  const errMsg = String(detail.errMsg || detail.err_msg || '')
+  const errno = detail.errno ?? detail.err_no
+
+  // 不记录一次性手机号 code，只输出微信返回的状态，便于真机联调定位。
+  console.info('[auth] getPhoneNumber result', {
+    success: Boolean(phoneCode),
+    errMsg,
+    errno: errno ?? ''
+  })
+
+  // 微信官方以动态令牌 code 作为成功凭证；不要依赖 errMsg 的精确文案。
+  if (!phoneCode) {
+    const denied = /deny|cancel/i.test(errMsg)
+    const normalizedErrno = Number(errno)
+    let reason = `微信未返回手机号授权凭证${errno == null ? '' : `（错误码：${errno}）`}，请稍后重试。`
+    if (normalizedErrno === 112) {
+      reason = '当前小程序尚未在微信公众平台《用户隐私保护指引》中声明手机号信息，请完成声明并等待配置生效后重试。'
+    } else if (denied) {
+      reason = '你已取消手机号授权，请重新点击并选择手机号。'
+    }
+    uni.showModal({
+      title: '手机号授权未完成',
+      content: reason,
+      showCancel: false,
+      confirmText: '知道了'
+    })
     return
   }
   isLogging.value = true
   uni.showLoading({ title: '正在登录...', mask: true })
   try {
-    // 1. 获取微信登录凭证 code
+    // 手机号由微信原生选择框授权；随后获取登录 code 完成身份识别。
     const code = await getWxCode()
-    // 2. 调后端：code 换登录态（已注册 → token；未注册 → needPhone）
-    const res = await authApi.loginWithWechat({ code })
-    if (res.code !== 200) return
-    // 3. 根据后端返回（res.data）决定下一步
-    const data = res.data || {}
-    if (data.needPhone) {
-      // 未绑定手机号 → 进入手机号授权步骤
-      wxLoginCode.value = code
-      showPhoneAuth.value = true
-      uni.showToast({ title: '请授权手机号完成注册', icon: 'none' })
-    } else {
-      // 已注册 → 直接登录成功
-      await handleLoginSuccess(data)
-    }
-  } catch (err) {
-    uni.showToast({ title: err?.msg || '微信登录失败，请重试', icon: 'none' })
-  } finally {
-    uni.hideLoading()
-    isLogging.value = false
-  }
-}
+    const loginRes = await authApi.loginWithWechat({ code })
+    if (loginRes.code !== 200) return
 
-// ============ 步骤二：手机号授权绑定（新用户注册） ============
-const onGetPhoneNumber = async (e) => {
-  if (isLogging.value) return
-  const detail = (e && e.detail) || {}
-  // 用户拒绝授权，或未拿到手机号凭证
-  if (detail.errMsg !== 'getPhoneNumber:ok' || !detail.code) {
-    uni.showToast({ title: '需要授权手机号才能登录', icon: 'none' })
-    return
-  }
-  // 微信登录 code 丢失（异常场景），回到第一步重新登录
-  if (!wxLoginCode.value) {
-    uni.showToast({ title: '登录状态已失效，请重新登录', icon: 'none' })
-    resetToWechatLogin()
-    return
-  }
-  isLogging.value = true
-  uni.showLoading({ title: '正在注册...', mask: true })
-  try {
-    const res = await authApi.bindPhone({
-      code: wxLoginCode.value,  // 步骤一拿到的微信 code
-      phoneCode: detail.code    // 手机号授权 code（新版接口）
-      // 旧版兼容：若后端用 encryptedData/iv 解密，改为传 detail.encryptedData、detail.iv
-    })
-    if (res.code === 200) {
-      await handleLoginSuccess(res.data || {})
-    } else {
-      // 后端的一次性登录挑战可能已经被消费，重新从微信 code 步骤开始最可靠。
-      resetToWechatLogin()
+    const loginData = loginRes.data || {}
+    if (!loginData.needPhone) {
+      await handleLoginSuccess(loginData)
+      return
     }
+
+    // 首次登录：任意合法微信手机号均自动注册为普通客户并签发登录态。
+    const bindRes = await authApi.bindPhone({ code, phoneCode })
+    if (bindRes.code === 200) await handleLoginSuccess(bindRes.data || {})
   } catch (err) {
-    uni.showToast({ title: err?.msg || '手机号绑定失败，请重新登录', icon: 'none' })
-    resetToWechatLogin()
+    uni.showToast({ title: err?.msg || '手机号登录失败，请重试', icon: 'none' })
   } finally {
     uni.hideLoading()
     isLogging.value = false
@@ -185,7 +160,6 @@ const handleLoginSuccess = async (data = {}) => {
     }
   } else if (session.code === 401 || session.code === 403) {
     clearAuthSession()
-    resetToWechatLogin()
     return false
   }
 
@@ -213,11 +187,6 @@ const getWxCode = () => {
   })
 }
 
-// ============ 返回微信登录步骤 ============
-const resetToWechatLogin = () => {
-  showPhoneAuth.value = false
-  wxLoginCode.value = ''
-}
 </script>
 
 <style scoped lang="scss">
@@ -251,15 +220,10 @@ const resetToWechatLogin = () => {
 .login-panel { margin: -60rpx 24rpx 0; padding: 40rpx 36rpx 34rpx; position: relative; z-index: 4; border-radius: 32rpx; background: #fff; box-shadow: 0 16rpx 50rpx rgba(20,54,84,.13); }
 .panel-heading { display: flex; flex-direction: column; }.panel-title { color: $text-main; font-size: 36rpx; font-weight: 750; }.panel-subtitle { color: $text-light; font-size: 23rpx; margin-top: 9rpx; }
 .login-action { margin-top: 34rpx; }
-.wechat-login-btn { height: 92rpx; border-radius: 22rpx; background: linear-gradient(135deg, #14b875, #08a162); display: flex; align-items: center; justify-content: center; box-shadow: 0 10rpx 24rpx rgba(15,164,101,.2); }
-.button-pressed { opacity: .84; transform: scale(.99); }.btn-text { color: #fff; font-size: 29rpx; font-weight: 650; margin-left: 12rpx; }.btn-disabled { opacity: .6; pointer-events: none; }
+.wechat-login-btn { width: 100%; height: 92rpx; margin: 0; padding: 0; border: 0; border-radius: 22rpx; background: linear-gradient(135deg, #14b875, #08a162); display: flex; align-items: center; justify-content: center; box-shadow: 0 10rpx 24rpx rgba(15,164,101,.2); }
+.wechat-login-btn::after { border: 0; }.wechat-login-btn[disabled] { opacity: .55; background: linear-gradient(135deg, #14b875, #08a162); color: #fff; }
+.button-pressed { opacity: .84; transform: scale(.99); }.btn-text { color: #fff; font-size: 29rpx; font-weight: 650; margin-left: 12rpx; }
 .login-tip { display: block; text-align: center; margin-top: 16rpx; color: #9aa8b6; font-size: 20rpx; }
-
-.phone-auth-wrap { margin-top: 32rpx; display: flex; flex-direction: column; align-items: center; }
-.auth-icon { width: 82rpx; height: 82rpx; border-radius: 24rpx; background: #eaf3ff; display: flex; align-items: center; justify-content: center; }
-.auth-title { font-size: 30rpx; font-weight: 700; color: $text-main; margin-top: 18rpx; }.auth-tip { text-align: center; font-size: 23rpx; line-height: 1.6; color: $text-sub; margin: 10rpx 24rpx 24rpx; }
-.phone-auth-btn { width: 100%; height: 88rpx; line-height: 88rpx; margin: 0; padding: 0; border-radius: 22rpx; background: $primary; color: #fff; font-size: 28rpx; font-weight: 600; }
-.phone-auth-btn[disabled] { opacity: .6; }.back-text-btn { padding: 18rpx 24rpx 0; color: $text-light; font-size: 23rpx; }
 
 .agreement-row { display: flex; align-items: center; gap: 10rpx; margin-top: 30rpx; padding-top: 25rpx; border-top: 1rpx solid #edf1f5; }
 .agreement-text { display: block; flex: 1; min-width: 0; color: $text-sub; font-size: 21rpx; line-height: 1.55; }.link-text { color: $primary; }

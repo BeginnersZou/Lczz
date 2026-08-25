@@ -318,10 +318,15 @@
 	import { getAuthToken } from '@/utils/auth-session.js'
 
 	// ===== 动态计算弹出框高度 =====
-	const sysInfo = uni.getSystemInfoSync()
-	const popupHeight = ref(Math.floor(sysInfo.windowHeight * 0.7))
+	// #ifdef MP-WEIXIN
+	const windowInfo = wx.getWindowInfo()
+	// #endif
+	// #ifndef MP-WEIXIN
+	const windowInfo = uni.getSystemInfoSync()
+	// #endif
+	const popupHeight = ref(Math.floor(windowInfo.windowHeight * 0.7))
 	// 列表高度 = 弹出框总高 - 头部(50) - 搜索(60) - 分类(50) - 底部(60)
-	const popupListHeight = ref(Math.floor(sysInfo.windowHeight * 0.7 - 220))
+	const popupListHeight = ref(Math.floor(windowInfo.windowHeight * 0.7 - 220))
 
 	// 订单 ID（onLoad 时由路由参数获取）
 	const orderId = ref('')

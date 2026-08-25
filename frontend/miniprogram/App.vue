@@ -20,16 +20,18 @@ async function restoreAuthSession() {
 
 export default {
 	onLaunch() {
-		// 获取系统信息，存到全局
-		const sysInfo = uni.getSystemInfoSync()
-		uni.$statusBarHeight = sysInfo.statusBarHeight || 20
-		// 导航栏高度 = 状态栏 + 44px（iOS标准）或 48px（Android标准）
 		// #ifdef MP-WEIXIN
+		// 微信已废弃 getSystemInfoSync，按官方建议改用细分接口。
+		const windowInfo = wx.getWindowInfo()
+		uni.$statusBarHeight = windowInfo.statusBarHeight || 20
+		// 导航栏高度 = 状态栏到胶囊的间距 * 2 + 胶囊高度
 		const menuBtn = uni.getMenuButtonBoundingClientRect()
-		uni.$navbarHeight = (menuBtn.top - sysInfo.statusBarHeight) * 2 + menuBtn.height
+		uni.$navbarHeight = (menuBtn.top - uni.$statusBarHeight) * 2 + menuBtn.height
 		uni.$menuBtn = menuBtn
 		// #endif
 		// #ifndef MP-WEIXIN
+		const sysInfo = uni.getSystemInfoSync()
+		uni.$statusBarHeight = sysInfo.statusBarHeight || 20
 		uni.$navbarHeight = 44
 		// #endif
 
