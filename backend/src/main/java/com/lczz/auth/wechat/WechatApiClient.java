@@ -11,6 +11,8 @@ import java.time.Instant;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
@@ -22,6 +24,7 @@ public class WechatApiClient implements WechatIdentityGateway {
     private static final String CODE_SESSION_URL = "https://api.weixin.qq.com/sns/jscode2session";
     private static final String TOKEN_URL = "https://api.weixin.qq.com/cgi-bin/token";
     private static final String PHONE_URL = "https://api.weixin.qq.com/wxa/business/getuserphonenumber";
+    private static final String USER_AGENT = "LCZZ-Backend/0.1";
 
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
@@ -46,6 +49,8 @@ public class WechatApiClient implements WechatIdentityGateway {
                             .queryParam("secret", properties.appSecret())
                             .queryParam("js_code", code)
                             .queryParam("grant_type", "authorization_code").build())
+                    .accept(MediaType.APPLICATION_JSON)
+                    .header(HttpHeaders.USER_AGENT, USER_AGENT)
                     .retrieve().body(String.class);
             CodeSessionResponse response = decode("code-session", responseBody, CodeSessionResponse.class);
             if (response == null || response.errorCode() != null && response.errorCode() != 0
@@ -66,6 +71,9 @@ public class WechatApiClient implements WechatIdentityGateway {
         try {
             String responseBody = restClient.post().uri(PHONE_URL, builder -> builder
                             .queryParam("access_token", accessToken()).build())
+                    .accept(MediaType.APPLICATION_JSON)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .header(HttpHeaders.USER_AGENT, USER_AGENT)
                     .body(Map.of("code", phoneCode)).retrieve().body(String.class);
             PhoneResponse response = decode("phone-number", responseBody, PhoneResponse.class);
             if (response == null || response.errorCode() != null && response.errorCode() != 0
@@ -85,18 +93,26 @@ public class WechatApiClient implements WechatIdentityGateway {
         if (cachedToken != null && cachedToken.expiresAt().isAfter(now.plusSeconds(60))) {
             return cachedToken.value();
         }
-        String responseBody = restClient.get().uri(TOKEN_URL, builder -> builder
-                        .queryParam("grant_type", "client_credential")
-                        .queryParam("appid", properties.appId())
-                        .queryParam("secret", properties.appSecret()).build())
-                .retrieve().body(String.class);
-        TokenResponse response = decode("access-token", responseBody, TokenResponse.class);
-        if (response == null || response.accessToken() == null || response.accessToken().isBlank()) {
-            throw wechatFailure(response == null ? null : response.errorMessage());
+        try {
+            String responseBody = restClient.get().uri(TOKEN_URL, builder -> builder
+                            .queryParam("grant_type", "client_credential")
+                            .queryParam("appid", properties.appId())
+                            .queryParam("secret", properties.appSecret()).build())
+                    .accept(MediaType.APPLICATION_JSON)
+                    .header(HttpHeaders.USER_AGENT, USER_AGENT)
+                    .retrieve().body(String.class);
+            TokenResponse response = decode("access-token", responseBody, TokenResponse.class);
+            if (response == null || response.accessToken() == null || response.accessToken().isBlank()) {
+                throw wechatFailure(response == null ? null : response.errorMessage());
+            }
+            long seconds = response.expiresIn() == null ? 7200 : response.expiresIn();
+            cachedToken = new CachedToken(response.accessToken(), now.plusSeconds(seconds));
+            return cachedToken.value();
+        } catch (BusinessException exception) {
+            throw exception;
+        } catch (RestClientException exception) {
+            throw unavailable("access-token", exception);
         }
-        long seconds = response.expiresIn() == null ? 7200 : response.expiresIn();
-        cachedToken = new CachedToken(response.accessToken(), now.plusSeconds(seconds));
-        return cachedToken.value();
     }
 
     private void requireConfiguration() {
