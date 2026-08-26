@@ -3,6 +3,7 @@ package com.lczz.auth.wechat;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lczz.auth.config.WechatMiniProperties;
 import com.lczz.common.exception.BusinessException;
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -87,6 +88,8 @@ class WechatApiClientTests {
                 .andExpect(method(HttpMethod.POST))
                 .andExpect(header(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE))
                 .andExpect(header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE))
+                .andExpect(header(HttpHeaders.CONTENT_LENGTH, Integer.toString(
+                        "{\"code\":\"phone-code-1\"}".getBytes(StandardCharsets.UTF_8).length)))
                 .andExpect(header(HttpHeaders.USER_AGENT, "LCZZ-Backend/0.1"))
                 .andExpect(content().json("{\"code\":\"phone-code-1\"}"))
                 .andRespond(withSuccess("""

@@ -69,12 +69,14 @@ public class WechatApiClient implements WechatIdentityGateway {
     public String exchangePhoneCode(String phoneCode) {
         requireConfiguration();
         try {
+            byte[] requestBody = encodePhoneRequest(phoneCode);
             String responseBody = restClient.post().uri(PHONE_URL, builder -> builder
                             .queryParam("access_token", accessToken()).build())
                     .accept(MediaType.APPLICATION_JSON)
                     .contentType(MediaType.APPLICATION_JSON)
+                    .contentLength(requestBody.length)
                     .header(HttpHeaders.USER_AGENT, USER_AGENT)
-                    .body(Map.of("code", phoneCode)).retrieve().body(String.class);
+                    .body(requestBody).retrieve().body(String.class);
             PhoneResponse response = decode("phone-number", responseBody, PhoneResponse.class);
             if (response == null || response.errorCode() != null && response.errorCode() != 0
                     || response.phoneInfo() == null || response.phoneInfo().phoneNumber() == null) {
@@ -112,6 +114,15 @@ public class WechatApiClient implements WechatIdentityGateway {
             throw exception;
         } catch (RestClientException exception) {
             throw unavailable("access-token", exception);
+        }
+    }
+
+    private byte[] encodePhoneRequest(String phoneCode) {
+        try {
+            return objectMapper.writeValueAsBytes(Map.of("code", phoneCode));
+        } catch (JsonProcessingException exception) {
+            log.error("Failed to encode WeChat phone-number request", exception);
+            throw new BusinessException(500, "WECHAT_REQUEST_ENCODING_FAILED", "微信手机号请求生成失败");
         }
     }
 
