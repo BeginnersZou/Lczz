@@ -20,12 +20,17 @@ public class AuthConfiguration {
 
     @Bean
     RestClient restClient(RestClient.Builder builder) {
-        HttpClient httpClient = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(10))
-                .followRedirects(HttpClient.Redirect.NORMAL)
-                .build();
+        HttpClient httpClient = wechatHttpClient();
         JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(httpClient);
         requestFactory.setReadTimeout(Duration.ofSeconds(15));
         return builder.requestFactory(requestFactory).build();
+    }
+
+    HttpClient wechatHttpClient() {
+        return HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
+                .connectTimeout(Duration.ofSeconds(10))
+                .followRedirects(HttpClient.Redirect.NORMAL)
+                .build();
     }
 }
