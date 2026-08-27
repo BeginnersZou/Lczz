@@ -141,6 +141,8 @@ const upload = (options = {}) => {
     formData = {},             // 附加参数
     header = {},
     loading = true,
+    timeout = 10 * 60 * 1000, // 大视频上传默认允许 10 分钟
+    showError = true,
     onProgress
   } = options
 
@@ -152,6 +154,7 @@ const upload = (options = {}) => {
       filePath,
       name,
       formData,
+      timeout,
       header: {
         Authorization: getToken() ? `Bearer ${getToken()}` : '',
         ...header
@@ -193,12 +196,14 @@ const upload = (options = {}) => {
           resolve(body)
           return
         }
-        uni.showToast({ title: body.msg || '上传失败', icon: 'none' })
+        if (showError) uni.showToast({ title: body.msg || '上传失败', icon: 'none' })
         resolve(body)
       },
       fail: (err) => {
-        uni.showToast({ title: '上传失败，请检查网络', icon: 'none' })
-        resolve({ code: -1, data: null, msg: '上传失败，请检查网络' })
+        const isTimeout = String(err?.errMsg || '').toLowerCase().includes('timeout')
+        const msg = isTimeout ? '视频上传超时，请保持网络稳定后重试' : '上传失败，请检查网络'
+        if (showError) uni.showToast({ title: msg, icon: 'none' })
+        resolve({ code: -1, data: null, msg })
       },
       complete: () => {
         if (loading) hideLoading()

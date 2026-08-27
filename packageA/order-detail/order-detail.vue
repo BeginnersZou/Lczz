@@ -455,6 +455,7 @@ const statusClass = computed(() => {
 				const files = res.tempFiles || []
 				let failed = 0
 				let oversized = 0
+				let lastUploadError = ''
 				for (let index = 0; index < files.length; index++) {
 					const selected = files[index]
 					const isVideo = selected.fileType === 'video' || /\.(mp4|mov|m4v)$/i.test(selected.tempFilePath || '')
@@ -466,6 +467,8 @@ const statusClass = computed(() => {
 					uploadProgress.value = `正在上传 ${index + 1}/${files.length}`
 					const uploadRes = await orderApi.uploadMedia(selected.tempFilePath, {}, {
 						loading: false,
+						timeout: 10 * 60 * 1000,
+						showError: false,
 						onProgress: event => {
 							uploadProgress.value = `正在上传 ${index + 1}/${files.length}（${event.progress}%）`
 						}
@@ -479,6 +482,7 @@ const statusClass = computed(() => {
 						})
 					} else {
 						failed++
+						lastUploadError = uploadRes.msg || '文件上传失败，请重试'
 					}
 				}
 				uploadProgress.value = ''
@@ -489,7 +493,11 @@ const statusClass = computed(() => {
 						showCancel: false
 					})
 				} else if (failed) {
-					uni.showToast({ title: `${failed}个文件上传失败，请重试`, icon: 'none' })
+					uni.showModal({
+						title: '文件上传未完成',
+						content: lastUploadError || `${failed}个文件上传失败，请重试`,
+						showCancel: false
+					})
 				}
 			},
 			fail: (err) => {

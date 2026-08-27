@@ -1,13 +1,5 @@
 <template>
 	<view class="page">
-		<!-- ═══ 顶部导航栏 ═══ -->
-		<view class="nav-bar">
-			<view class="nav-back" @click="goBack">
-				<up-icon name="arrow-left" size="20" color="#142434"></up-icon>
-			</view>
-			<text class="nav-title">{{ goods.title || '产品详情' }}</text>
-		</view>
-
 		<view class="detail-state" v-if="detailLoading">
 			<up-loading-icon mode="circle" color="#0b63ce" size="34"></up-loading-icon>
 			<text class="state-title">正在加载产品信息</text>
@@ -189,6 +181,7 @@ const loadDetail = async () => {
 		// 耗材字段已与模板对齐，res.data 直接赋值
 		goods.value = res.data || {}
 		detailImages.value = (res.data && res.data.detailImages) || []
+		uni.setNavigationBarTitle({ title: goods.value.title || '耗材详情' })
 	} catch (err) {
 		setDetailError({ code: -1, msg: '请求异常，请稍后重试' })
 	} finally {
@@ -206,14 +199,6 @@ onShareAppMessage(() => ({
 	title: goods.value.title || '鑫立创配件详情',
 	path: `/packageA/goos-details/goos-details?id=${goodsId.value}`
 }))
-
-const goBack = () => {
-	uni.navigateBack({
-		fail: () => uni.switchTab({
-			url: '/pages/index/index'
-		})
-	})
-}
 
 const goHome = () => {
 	uni.switchTab({
@@ -248,8 +233,8 @@ $text-light: #94a3b8;
 }
 
 .detail-state {
-	min-height: calc(100vh - 220rpx);
-	padding: calc(220rpx + var(--status-bar-height, 44rpx)) 48rpx 80rpx;
+	min-height: calc(100vh - 88rpx);
+	padding: 120rpx 48rpx 80rpx;
 	box-sizing: border-box;
 	display: flex;
 	flex-direction: column;
@@ -261,53 +246,11 @@ $text-light: #94a3b8;
 .state-desc { margin-top: 10rpx; font-size: 24rpx; color: $text-light; line-height: 1.6; }
 .state-action { margin-top: 28rpx; padding: 14rpx 34rpx; border-radius: 30rpx; color: $primary; background: #eaf3ff; font-size: 24rpx; }
 
-/* 导航栏 */
-.nav-bar {
-	position: fixed;
-	top: 0;
-	left: 0;
-	right: 0;
-	height: calc(88rpx + var(--status-bar-height, 44rpx));
-	padding-top: var(--status-bar-height, 44rpx);
-	background: #fff;
-	display: flex;
-	align-items: center;
-	padding-left: 24rpx;
-	padding-right: 24rpx;
-	z-index: 999;
-	box-shadow: 0 1rpx 0 rgba(0, 0, 0, 0.04);
-}
-
-.nav-back {
-	width: 64rpx;
-	height: 64rpx;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-
-	&:active {
-		opacity: 0.6;
-	}
-}
-
-.nav-title {
-	flex: 1;
-	font-size: 32rpx;
-	font-weight: 600;
-	color: $text-main;
-	text-align: center;
-	overflow: hidden;
-	white-space: nowrap;
-	text-overflow: ellipsis;
-	padding: 0 16rpx;
-}
-
 /* 封面图 */
 .cover-section {
 	position: relative;
 	width: 100%;
 	height: 420rpx;
-	margin-top: calc(88rpx + var(--status-bar-height, 44rpx));
 	overflow: hidden;
 }
 
