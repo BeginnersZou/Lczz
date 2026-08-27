@@ -204,7 +204,7 @@
 			</view>
 			<view class="upload-heading">
 				<text>{{ progressType === 'COMPLETION' ? '完工图片/视频（至少1个）' : '施工图片/视频（选填）' }}</text>
-				<text class="upload-tip">合计最多9个，单个不超过10MB</text>
+				<text class="upload-tip">合计最多9个，图片≤10MB，视频≤200MB</text>
 			</view>
 			<view class="image-grid">
 				<view class="image-item" v-for="(media, index) in progressImages" :key="media.id">
@@ -441,6 +441,8 @@ const statusClass = computed(() => {
 	}
 
 	const chooseProgressMedia = () => {
+		const MAX_IMAGE_BYTES = 10 * 1024 * 1024
+		const MAX_VIDEO_BYTES = 200 * 1024 * 1024
 		const remaining = 9 - progressImages.value.length
 		if (remaining <= 0) return
 		uni.chooseMedia({
@@ -452,10 +454,13 @@ const statusClass = computed(() => {
 			success: async (res) => {
 				const files = res.tempFiles || []
 				let failed = 0
+				let oversized = 0
 				for (let index = 0; index < files.length; index++) {
 					const selected = files[index]
-					if (Number(selected.size || 0) > 10 * 1024 * 1024) {
-						failed++
+					const isVideo = selected.fileType === 'video' || /\.(mp4|mov|m4v)$/i.test(selected.tempFilePath || '')
+					const maxBytes = isVideo ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES
+					if (Number(selected.size || 0) > maxBytes) {
+						oversized++
 						continue
 					}
 					uploadProgress.value = `正在上传 ${index + 1}/${files.length}`
@@ -477,7 +482,15 @@ const statusClass = computed(() => {
 					}
 				}
 				uploadProgress.value = ''
-				if (failed) uni.showToast({ title: `${failed}个文件上传失败或超过10MB`, icon: 'none' })
+				if (oversized) {
+					uni.showModal({
+						title: '文件过大',
+						content: `${oversized}个文件超过限制：图片不能超过10MB，视频不能超过200MB。`,
+						showCancel: false
+					})
+				} else if (failed) {
+					uni.showToast({ title: `${failed}个文件上传失败，请重试`, icon: 'none' })
+				}
 			},
 			fail: (err) => {
 				if (!String(err?.errMsg || '').includes('cancel')) {
