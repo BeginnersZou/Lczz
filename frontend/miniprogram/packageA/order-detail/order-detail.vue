@@ -97,6 +97,11 @@
 				<text class="tool-empty-text" v-if="!materialReadonly">点击“添加”选择耗材</text>
 				<text class="tool-empty-text" v-else>暂无耗材记录</text>
 			</view>
+
+			<view class="material-submit" v-if="!materialReadonly && toolList.length > 0"
+				:class="{ disabled: submitting }" @click="handleSubmit">
+				<text>{{ submitting ? '提交中...' : '提交耗材申请' }}</text>
+			</view>
 		</view>
 
 		<!-- ═══ 耗材申请备注 ═══ -->
@@ -221,13 +226,6 @@
 		</view>
 
 		<view class="bottom-space"></view>
-
-		<!-- ═══ 底部提交按钮 ═══ -->
-		<view class="submit-bar" v-if="isInstaller && !materialReadonly">
-			<view class="submit-btn" :class="{ disabled: !canSubmit }" @click="handleSubmit">
-				<text>提交耗材申请</text>
-			</view>
-		</view>
 
 		<!-- ═══ 耗材选择弹出框 ═══ -->
 		<up-popup :show="showToolPopup" mode="bottom" round="20" :closeOnClickOverlay="true" @close="closeToolPopup"
@@ -1511,32 +1509,21 @@ const statusClass = computed(() => {
 }
 
 .bottom-space {
-	height: 140rpx;
+	height: 40rpx;
 }
 
-	/* ═══ 提交按钮 ═══ */
-	.submit-bar {
-		position: fixed;
-		left: 0;
-		right: 0;
-		bottom: 0;
-		padding: 20rpx 24rpx;
-		padding-bottom: calc(20rpx + env(safe-area-inset-bottom));
-		background: #fff;
-		box-shadow: 0 -2rpx 12rpx rgba(0, 0, 0, 0.06);
-		z-index: 100;
-	}
-
-	.submit-btn {
+	/* 耗材清单内提交按钮：仅在已选择耗材时展示 */
+	.material-submit {
 		height: 88rpx;
 		border-radius: 44rpx;
 		background: linear-gradient(135deg, #3b8eea, #0b63ce);
 		display: flex;
 		align-items: center;
 		justify-content: center;
+		margin-top: 24rpx;
 
 		text {
-			font-size: 32rpx;
+			font-size: 28rpx;
 			font-weight: 600;
 			color: #fff;
 		}

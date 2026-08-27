@@ -250,7 +250,7 @@ $text-light: #94a3b8;
 
 /* ═══ 顶部品牌区 ═══ */
 .hero-section {
-	background: linear-gradient(150deg, #082f5d 0%, #0b63ce 68%, #2990df 100%);
+	background: linear-gradient(180deg, #0b63ce 0%, #126fda 68%, #f4f7fb 100%);
 	padding: 0 32rpx 52rpx;
 	overflow: hidden;
 	border-radius: 0 0 44rpx 44rpx;
