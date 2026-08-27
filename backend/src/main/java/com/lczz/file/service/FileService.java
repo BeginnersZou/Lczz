@@ -305,6 +305,14 @@ public class FileService {
         if (expected == null || !expected.equals(detected) || !detected.equals(claimed)) {
             throw new BusinessException("INVALID_FILE_TYPE", "仅支持 jpg/png/gif/webp 图片或 mp4/mov/m4v 视频，且文件类型必须真实一致");
         }
+        long typeLimit = detected.startsWith("image/")
+                ? Math.min(properties.getMaxBytes(), properties.getMaxImageBytes())
+                : properties.getMaxBytes();
+        if (content.length > typeLimit) {
+            throw new BusinessException(413, "FILE_TOO_LARGE", detected.startsWith("image/")
+                    ? "图片大小不能超过" + properties.getMaxImageBytes() + "字节"
+                    : "视频大小不能超过" + properties.getMaxBytes() + "字节");
+        }
         return new ValidatedFile(originalName, extension, detected, content);
     }
 

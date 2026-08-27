@@ -144,18 +144,18 @@
 	} from '@/utils/auth-session.js'
 
 	const userInfo = ref({})
-	const headerTopPadding = ref(72)
+	const headerTopPadding = ref(64)
 	try {
 		const windowInfo = typeof uni.getWindowInfo === 'function' ? uni.getWindowInfo() : uni.getSystemInfoSync()
 		const capsule = typeof wx !== 'undefined' && typeof wx.getMenuButtonBoundingClientRect === 'function'
 			? wx.getMenuButtonBoundingClientRect()
 			: null
 		headerTopPadding.value = Math.max(
-			Number(windowInfo.statusBarHeight || 20) + 56,
-			Number(capsule?.bottom || 0) + 18
+			Number(windowInfo.statusBarHeight || 20) + 44,
+			Number(capsule?.bottom || 0) + 8
 		)
 	} catch (error) {
-		headerTopPadding.value = 72
+		headerTopPadding.value = 64
 	}
 	const version = ref('1.0.0')
 	const cacheSize = ref('0KB')
@@ -314,7 +314,7 @@
 
 	/* ═══ 顶部渐变区域 ═══ */
 	.header-section {
-		background: linear-gradient(180deg, #0b63ce 0%, #126fda 68%, #f4f7fb 100%);
+		background: linear-gradient(180deg, #0b63ce 0%, #126fda 78%, #dbeafe 100%);
 		padding-bottom: 90rpx;
 		border-radius: 0 0 44rpx 44rpx;
 	}
