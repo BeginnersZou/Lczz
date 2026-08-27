@@ -45,7 +45,7 @@ public class FileController {
     }
 
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @Operation(summary = "上传单张图片；可同时原子绑定业务关系")
+    @Operation(summary = "上传单张图片或视频；可同时原子绑定业务关系")
     ApiResponse<FileView> upload(@AuthenticationPrincipal AuthenticatedUser actor,
                                  @RequestPart("file") MultipartFile file,
                                  @RequestParam(required = false) String businessType,

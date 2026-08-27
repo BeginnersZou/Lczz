@@ -27,7 +27,7 @@ public class OrderFileCompatibilityController {
     }
 
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @Operation(summary = "兼容现有订单页面的图片上传入口")
+    @Operation(summary = "兼容现有订单页面的图片或视频上传入口")
     ApiResponse<FileView> upload(@AuthenticationPrincipal AuthenticatedUser actor,
                                  @RequestPart("file") MultipartFile file,
                                  @RequestParam(required = false) @Min(1) Long orderId,

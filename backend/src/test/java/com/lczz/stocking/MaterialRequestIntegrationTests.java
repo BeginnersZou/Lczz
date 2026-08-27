@@ -118,6 +118,17 @@ class MaterialRequestIntegrationTests {
     }
 
     @Test
+    void rejectsRequestedQuantityAboveCurrentStock() throws Exception {
+        mockMvc.perform(post("/api/orders/" + orderId + "/materials")
+                        .header("Authorization", "Bearer " + installerToken)
+                        .contentType("application/json").content(itemsJson("11", "1")))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value("INSUFFICIENT_PRODUCT_STOCK"))
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("库存仅剩10")));
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM material_request", Long.class)).isZero();
+    }
+
+    @Test
     void adminTracksPreparationCompletionAndVoidWithoutChangingDisplayStock() throws Exception {
         JsonNode request = submit(orderId, installerToken, itemsJson("2", "1"));
         long requestId = request.path("id").asLong();

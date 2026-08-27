@@ -45,6 +45,11 @@ class FileIntegrationTests {
             (byte) 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
             0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52
     };
+    private static final byte[] MP4 = new byte[] {
+            0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70,
+            0x69, 0x73, 0x6f, 0x6d, 0x00, 0x00, 0x00, 0x00,
+            0x69, 0x73, 0x6f, 0x6d, 0x6d, 0x70, 0x34, 0x32
+    };
     @Autowired MockMvc mockMvc;
     @Autowired JdbcTemplate jdbcTemplate;
     @Autowired UserMapper userMapper;
@@ -89,6 +94,11 @@ class FileIntegrationTests {
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM business_file_relation WHERE file_id=?",
                 Long.class, fileId)).isEqualTo(1L);
 
+        mockMvc.perform(get("/api/orders/list")
+                        .header("Authorization", "Bearer " + customerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.list[0].fileList[0].id").value(fileId));
+
         mockMvc.perform(get("/api/files/" + fileId + "/url")
                         .header("Authorization", "Bearer " + customerToken))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.url").isNotEmpty());
@@ -100,6 +110,16 @@ class FileIntegrationTests {
                 .andExpect(content().bytes(PNG));
         mockMvc.perform(get(signedUrl.replace("signature=", "signature=x")))
                 .andExpect(status().isForbidden()).andExpect(jsonPath("$.error").value("INVALID_FILE_SIGNATURE"));
+    }
+
+    @Test
+    void acceptsRealMp4ProgressMedia() throws Exception {
+        MockMultipartFile video = new MockMultipartFile("file", "progress.mp4", "video/mp4", MP4);
+        mockMvc.perform(multipart("/api/orders/upload").file(video)
+                        .header("Authorization", "Bearer " + installerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.mimeType").value("video/mp4"))
+                .andExpect(jsonPath("$.data.url").isNotEmpty());
     }
 
     @Test

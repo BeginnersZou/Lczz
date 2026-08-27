@@ -1,14 +1,18 @@
-//新增十位数时间戳  1766370145 转换成正常时间 格式 公共js 导出供别的组件使用
+const pad = value => String(value).padStart(2, '0')
 
+export function formatDateTime(value) {
+	if (value === null || value === undefined || value === '') return ''
+	const numeric = Number(value)
+	const source = Number.isFinite(numeric) && /^\d+$/.test(String(value))
+		? new Date(String(value).length === 10 ? numeric * 1000 : numeric)
+		: new Date(value)
+	if (Number.isNaN(source.getTime())) {
+		return String(value).replace('T', ' ').replace(/\.\d{1,9}(?=(?:Z|[+-]\d{2}:?\d{2})?$)/, '').replace(/Z$/, '')
+	}
+	return `${source.getFullYear()}-${pad(source.getMonth() + 1)}-${pad(source.getDate())} ${pad(source.getHours())}:${pad(source.getMinutes())}`
+}
 
-//10位数时间戳转换成正常的时间
+// 兼容旧页面的十位秒级时间戳方法。
 export function timeTransFrom(time) {
-	const date = new Date(time * 1000)
-	const year = date.getFullYear()
-	const month = date.getMonth() + 1
-	const day = date.getDate()
-	const hour = date.getHours()
-	const minute = date.getMinutes()
-	const second = date.getSeconds()
-	return `${year}-${month}-${day} ${hour}:${minute}:${second}`
+	return formatDateTime(Number(time) * 1000)
 }

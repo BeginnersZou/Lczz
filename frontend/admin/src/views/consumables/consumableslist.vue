@@ -57,25 +57,25 @@
         <span>{{ loadError }}</span>
         <el-button type="primary" link @click="loadList">重新加载</el-button>
       </div>
-      <el-table v-else v-loading="tableLoading" :data="pagedList" border stripe table-layout="fixed" style="width: 100%"
+      <el-table v-else v-loading="tableLoading" :data="pagedList" border stripe table-layout="fixed" class="business-table"
         empty-text="暂无耗材，点击上方按钮发布第一条耗材">
         <!-- 序号 -->
-        <el-table-column label="序号" align="center" width="56">
+        <el-table-column label="序号" align="center" width="72">
           <template #default="scope">
             {{ (currentPage - 1) * pageSize + scope.$index + 1 }}
           </template>
         </el-table-column>
         <!-- 耗材图片 -->
-        <el-table-column label="图片" align="center" width="72">
+        <el-table-column label="图片" align="center" width="88">
           <template #default="scope">
             <el-image :src="scope.row.image" fit="cover" class="row-img" :preview-src-list="[scope.row.image]"
               preview-teleported />
           </template>
         </el-table-column>
         <!-- 耗材名称 -->
-        <el-table-column prop="name" label="耗材名称" align="left" min-width="130" show-overflow-tooltip />
+        <el-table-column prop="name" label="耗材名称" align="left" min-width="170" show-overflow-tooltip />
         <!-- 耗材分类（二级） -->
-        <el-table-column label="耗材分类" align="left" min-width="150">
+        <el-table-column label="耗材分类" align="left" min-width="220">
           <template #default="scope">
             <el-tag size="small" effect="light" type="info">{{ getCategory(scope.row, 0) }}</el-tag>
             <span class="category-arrow">/</span>
@@ -83,22 +83,22 @@
           </template>
         </el-table-column>
         <!-- 规格 -->
-        <el-table-column prop="spec" label="规格" align="left" min-width="116" show-overflow-tooltip />
+        <el-table-column prop="spec" label="规格" align="left" min-width="140" show-overflow-tooltip />
         <!-- 单位 -->
-        <el-table-column prop="unit" label="单位" align="center" width="64" />
+        <el-table-column prop="unit" label="单位" align="center" width="76" />
         <!-- 库存 -->
-        <el-table-column prop="stock" label="库存" align="center" width="72">
+        <el-table-column prop="stock" label="库存" align="center" width="96">
           <template #default="scope">
             <span :class="['stock-num', isLowStock(scope.row) ? 'low' : '']">{{ scope.row.stock }}</span>
             <div v-if="scope.row.safetyStock != null" class="secondary-cell">安全库存 {{ scope.row.safetyStock }}</div>
           </template>
         </el-table-column>
         <!-- 创建时间 -->
-        <el-table-column prop="createTime" label="创建时间" align="left" width="150">
+        <el-table-column prop="createTime" label="创建时间" align="left" width="180">
           <template #default="scope"><span class="datetime-cell">{{ formatDateTime(scope.row.createTime) }}</span></template>
         </el-table-column>
         <!-- 操作 -->
-        <el-table-column label="操作" align="center" width="196" fixed="right">
+        <el-table-column label="操作" align="center" width="280" fixed="right">
           <template #default="scope">
             <div class="table-actions">
               <el-button text type="primary" @click="handleEdit(scope.row)">修改</el-button>
@@ -502,7 +502,12 @@ onMounted(() => {
 
     :deep(.el-card__body) {
       padding: 12px;
+      overflow-x: auto;
     }
+
+    .business-table { width: 100%; min-width: 1322px; }
+    .table-actions { display: flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap; }
+    .table-actions :deep(.el-button + .el-button) { margin-left: 0; }
 
     // 行内耗材图片
     .row-img {

@@ -53,14 +53,15 @@
 					<!-- 订单头部 -->
 					<view class="order-top">
 						<view class="order-service">
-							<view class="order-img">
+							<image v-if="order.image" class="order-img order-cover" :src="order.image" mode="aspectFill" lazy-load></image>
+							<view v-else class="order-img">
 								<up-icon :name="order.status === '已完成' ? 'checkmark-circle-fill' : 'home-fill'" size="31" color="#0b63ce"></up-icon>
 							</view>
 							<view class="order-info">
 								<text class="order-name">{{ order.serviceName }}</text>
 								<text class="order-product">{{ order.productName }}</text>
 								<text class="order-spec">{{ order.productSpec }}</text>
-								<text class="order-qty">× {{ order.quantity }}</text>
+								<text class="order-qty" v-if="order.quantity != null">× {{ order.quantity }}</text>
 							</view>
 						</view>
 						<view class="order-status" :class="statusClass(order.status)">
@@ -464,6 +465,8 @@ $text-light: #94a3b8;
 	align-items: center;
 	justify-content: center;
 }
+
+.order-cover { display: block; background: #edf2f7; }
 
 .order-info {
 	margin-left: 20rpx;

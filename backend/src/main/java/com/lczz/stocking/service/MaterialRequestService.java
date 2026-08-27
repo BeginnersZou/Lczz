@@ -122,6 +122,15 @@ public class MaterialRequestService {
         if (productMap.size() != requested.size()) {
             throw new BusinessException("INVALID_MATERIAL_PRODUCT", "所选耗材不存在或已下架");
         }
+        requested.forEach((productId, quantity) -> {
+            ProductEntity product = productMap.get(productId);
+            BigDecimal stock = product.getDisplayStock() == null ? BigDecimal.ZERO : product.getDisplayStock();
+            if (quantity.compareTo(stock) > 0) {
+                throw new BusinessException(409, "INSUFFICIENT_PRODUCT_STOCK",
+                        "耗材“" + product.getProductName() + "”库存仅剩" + stock.stripTrailingZeros().toPlainString()
+                                + product.getUnit() + "，请调整申请数量");
+            }
+        });
         MaterialRequestEntity request = new MaterialRequestEntity();
         request.setRequestNo(newRequestNo());
         request.setOrderId(orderId);
