@@ -4,6 +4,8 @@ import com.lczz.common.exception.BusinessException;
 import com.lczz.file.config.FileStorageProperties;
 import jakarta.annotation.PostConstruct;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -30,10 +32,13 @@ public class LocalFileStorage implements FileStorage {
     public String storageType() { return "LOCAL"; }
 
     @Override
-    public void store(String objectKey, byte[] content) throws IOException {
+    public long store(String objectKey, InputStream content) throws IOException {
         Path target = resolve(objectKey);
         Files.createDirectories(target.getParent());
-        Files.write(target, content, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+        try (OutputStream output = Files.newOutputStream(
+                target, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
+            return content.transferTo(output);
+        }
     }
 
     @Override

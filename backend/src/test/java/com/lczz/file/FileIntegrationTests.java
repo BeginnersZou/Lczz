@@ -38,7 +38,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ActiveProfiles("test")
 @TestPropertySource(properties = {
         "lczz.file.local-root=target/test-file-storage",
-        "lczz.file.max-bytes=64"
+        "lczz.file.max-bytes=64",
+        "lczz.file.max-image-bytes=32"
 })
 class FileIntegrationTests {
     private static final byte[] PNG = new byte[] {
@@ -114,11 +115,14 @@ class FileIntegrationTests {
 
     @Test
     void acceptsRealMp4ProgressMedia() throws Exception {
-        MockMultipartFile video = new MockMultipartFile("file", "progress.mp4", "video/mp4", MP4);
+        byte[] videoBytes = new byte[40];
+        System.arraycopy(MP4, 0, videoBytes, 0, MP4.length);
+        MockMultipartFile video = new MockMultipartFile("file", "progress.mp4", "video/mp4", videoBytes);
         mockMvc.perform(multipart("/api/orders/upload").file(video)
                         .header("Authorization", "Bearer " + installerToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.mimeType").value("video/mp4"))
+                .andExpect(jsonPath("$.data.size").value(40))
                 .andExpect(jsonPath("$.data.url").isNotEmpty());
     }
 

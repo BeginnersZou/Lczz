@@ -94,7 +94,7 @@ $env:JWT_SECRET="至少32字节的随机密钥"
 
 | 方法 | 路径 | 权限 | 说明 |
 | --- | --- | --- | --- |
-| POST | `/api/v1/files/upload` | 已登录用户 | 上传单张图片，可同时绑定业务关系 |
+| POST | `/api/v1/files/upload` | 已登录用户 | 上传单个图片或视频，可同时绑定业务关系 |
 | POST | `/api/v1/files/{id}/relations` | 已登录用户 | 将本人上传的文件绑定至有权限的业务 |
 | GET | `/api/v1/files/{id}/url` | 业务相关用户 | 校验权限并签发短时访问地址 |
 | GET | `/api/v1/files/{id}` | 业务相关用户 | 携带 JWT 直接读取文件 |
@@ -102,6 +102,8 @@ $env:JWT_SECRET="至少32字节的随机密钥"
 | POST | `/api/v1/orders/upload` | 已登录用户 | 兼容现有订单页面的上传入口 |
 
 当前支持 JPEG、PNG、GIF、WebP 图片以及 MP4、MOV、M4V 视频，服务端同时校验文件魔数、扩展名、声明 MIME 和大小。默认图片上限为 10MB、视频上限为 200MB，可分别通过 `FILE_MAX_IMAGE_BYTES` 和 `FILE_MAX_BYTES` 调整；Spring multipart 层还需同步配置 `FILE_MAX_SIZE` 与 `FILE_MAX_REQUEST_SIZE`。对象键由服务端随机生成。开发默认存放在 `FILE_LOCAL_ROOT`，`FileStorage` 接口用于生产环境接入对象存储实现。私有订单、施工和评价媒体读取前会校验业务权限；签名地址默认 5 分钟失效。生产必须设置 `FILE_ACCESS_SECRET`（至少 32 字节），并确保上传目录不由 Web 服务器直接公开。
+
+生产环境使用 Nginx 时还必须在承载 `/api/` 的 `server` 或 `location` 中配置 `client_max_body_size 205m`，并把请求体、上游发送和读取超时统一提高到 600 秒。仓库提供了 `deploy/nginx-upload.conf.example`；修改配置后必须执行 `nginx -t` 并重新加载 Nginx。若生产环境仍定义旧的 `FILE_MAX_*` 环境变量，它们会覆盖代码默认值，部署时必须同步更新。
 
 ## 订单评价接口
 
