@@ -258,6 +258,21 @@ const setListError = (response) => {
 
 const retryOrders = () => fetchOrders(allOrders.value.length === 0)
 
+// 兼容尚未部署列表附件字段的后端：仅当列表没有封面时，静默读取详情首图。
+// 后端列表已返回 image/fileList 后不会产生额外请求。
+const hydrateOrderImages = async (orders) => Promise.all(orders.map(async (order) => {
+	if (order.image || !order.id) return order
+	try {
+		const detailRes = await orderApi.getDetail(order.id, { loading: false, silent: true })
+		if (detailRes.code === 200 && detailRes.data?.image) {
+			return { ...order, image: detailRes.data.image, fileList: detailRes.data.fileList || [] }
+		}
+	} catch (err) {
+		// 封面补全失败不阻断订单列表，继续使用默认图标。
+	}
+	return order
+}))
+
 // 获取订单列表
 const fetchOrders = async (isRefresh = false) => {
 	if (listLoading.value) return
@@ -283,7 +298,7 @@ const fetchOrders = async (isRefresh = false) => {
 			setListError(orderRes)
 			return false
 		}
-		const list = (orderRes.data && orderRes.data.list) || []
+		const list = await hydrateOrderImages((orderRes.data && orderRes.data.list) || [])
 		total.value = (orderRes.data && orderRes.data.total) || 0
 		allOrders.value = isRefresh ? list : [...allOrders.value, ...list]
 		page.value++

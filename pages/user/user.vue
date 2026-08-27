@@ -314,7 +314,7 @@
 
 	/* ═══ 顶部渐变区域 ═══ */
 	.header-section {
-		background: linear-gradient(145deg, #082f5d 0%, #0b63ce 70%, #258be1 100%);
+		background: linear-gradient(180deg, #0b63ce 0%, #126fda 68%, #f4f7fb 100%);
 		padding-bottom: 90rpx;
 		border-radius: 0 0 44rpx 44rpx;
 	}
