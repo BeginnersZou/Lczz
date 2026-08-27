@@ -102,8 +102,10 @@
 				{
 					"path": "goos-details/goos-details",
 					"style": {
-						"navigationBarTitleText": "商品详情",
-						"navigationStyle": "custom"
+						"navigationBarTitleText": "耗材详情",
+						"navigationBarTextStyle": "black",
+						"backgroundColorTop": "#f4f7fb",
+						"backgroundColorBottom": "#f4f7fb"
 					}
 				},
 				{
