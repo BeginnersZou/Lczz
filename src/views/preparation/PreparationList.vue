@@ -48,17 +48,17 @@
         <span>{{ loadError }}</span>
         <el-button type="primary" link @click="loadList">重新加载</el-button>
       </div>
-      <el-table v-else v-loading="tableLoading" :data="pagedList" border stripe table-layout="fixed" style="width: 100%" empty-text="暂无备货订单">
+      <el-table v-else v-loading="tableLoading" :data="pagedList" border stripe table-layout="fixed" class="business-table" empty-text="暂无备货订单">
         <!-- 序号 -->
-        <el-table-column label="序号" align="center" width="56">
+        <el-table-column label="序号" align="center" width="72">
           <template #default="scope">
             {{ (currentPage - 1) * pageSize + scope.$index + 1 }}
           </template>
         </el-table-column>
         <!-- 订单名称 -->
-        <el-table-column prop="productName" label="订单名称" align="left" min-width="150" show-overflow-tooltip />
+        <el-table-column prop="productName" label="订单名称" align="left" min-width="220" show-overflow-tooltip />
         <!-- 订单编号 -->
-        <el-table-column prop="orderNo" label="订单编号" align="left" min-width="176" show-overflow-tooltip>
+        <el-table-column prop="orderNo" label="订单编号" align="left" min-width="240" show-overflow-tooltip>
           <template #default="scope">
             <span class="table-order-id code-cell" role="button" tabindex="0" @click="copyOrderId(scope.row.orderNo || scope.row.orderId)" @keyup.enter="copyOrderId(scope.row.orderNo || scope.row.orderId)">
               {{ scope.row.orderNo || scope.row.orderId }}
@@ -69,7 +69,7 @@
           </template>
         </el-table-column>
         <!-- 备货耗材 -->
-        <el-table-column label="备货耗材" align="left" min-width="180">
+        <el-table-column label="备货耗材" align="left" min-width="320">
           <template #default="scope">
             <div class="materials-cell">
               <el-tag v-for="(m, idx) in scope.row.materials" :key="idx" size="small" effect="light"
@@ -80,7 +80,7 @@
           </template>
         </el-table-column>
         <!-- 备货状态 -->
-        <el-table-column label="备货状态" align="center" width="96">
+        <el-table-column label="备货状态" align="center" width="112">
           <template #default="scope">
             <el-tag :type="getStatusType(scope.row.status)" size="small" effect="light">
               {{ scope.row.status }}
@@ -88,11 +88,11 @@
           </template>
         </el-table-column>
         <!-- 创建时间 -->
-        <el-table-column prop="createTime" label="创建时间" align="left" width="150">
+        <el-table-column prop="createTime" label="创建时间" align="left" width="180">
           <template #default="scope"><span class="datetime-cell">{{ formatDateTime(scope.row.createTime || scope.row.createdAt) }}</span></template>
         </el-table-column>
         <!-- 操作 -->
-        <el-table-column label="操作" align="center" width="132" fixed="right">
+        <el-table-column label="操作" align="center" width="160" fixed="right">
           <template #default="scope">
             <div class="table-actions">
               <el-button text type="primary" @click="handlePrepare(scope.row)">{{ scope.row.status === '已备货' ? '查看' : '备货' }}</el-button>
@@ -511,7 +511,12 @@ onMounted(loadList)
 
     :deep(.el-card__body) {
       padding: 12px;
+      overflow-x: auto;
     }
+
+    .business-table { width: 100%; min-width: 1304px; }
+    .table-actions { display: flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap; }
+    .table-actions :deep(.el-button + .el-button) { margin-left: 0; }
 
     .table-order-id {
       font-size: 14px;

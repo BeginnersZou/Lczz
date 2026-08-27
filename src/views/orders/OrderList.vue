@@ -55,23 +55,23 @@
         <span>{{ loadError }}</span>
         <el-button type="primary" link @click="loadList">重新加载</el-button>
       </div>
-      <el-table v-else v-loading="tableLoading" :data="orders" border stripe table-layout="fixed" style="width: 100%"
+      <el-table v-else v-loading="tableLoading" :data="orders" border stripe table-layout="fixed" class="business-table"
         empty-text="暂无订单，点击上方按钮新增第一条订单">
         <!-- 序号 -->
-        <el-table-column label="序号" align="center" width="56">
+        <el-table-column label="序号" align="center" width="72">
           <template #default="scope">
             {{ (currentPage - 1) * pageSize + scope.$index + 1 }}
           </template>
         </el-table-column>
         <!-- 订单名称 -->
-        <el-table-column label="任务信息" align="left" min-width="160">
+        <el-table-column label="任务信息" align="left" min-width="240">
           <template #default="scope">
             <div class="primary-cell">{{ scope.row.productName || scope.row.taskType || '-' }}</div>
             <div class="secondary-cell">{{ scope.row.description || '暂无描述' }}</div>
           </template>
         </el-table-column>
         <!-- 订单编号 支持点击复制 -->
-        <el-table-column prop="orderNo" label="订单编号" align="left" min-width="176" show-overflow-tooltip>
+        <el-table-column prop="orderNo" label="订单编号" align="left" min-width="240" show-overflow-tooltip>
           <template #default="scope">
             <span class="table-order-id code-cell" role="button" tabindex="0" @click="copyOrderId(scope.row.orderNo || scope.row.id)" @keyup.enter="copyOrderId(scope.row.orderNo || scope.row.id)">
               {{ scope.row.orderNo || scope.row.id }}
@@ -82,28 +82,28 @@
           </template>
         </el-table-column>
         <!-- 指派师傅 -->
-        <el-table-column label="客户" align="left" min-width="128">
+        <el-table-column label="客户" align="left" min-width="160">
           <template #default="scope">
             <div class="primary-cell">{{ scope.row.customerName || '-' }}</div>
             <div class="secondary-cell">{{ formatPhone(scope.row.customerPhone) }}</div>
           </template>
         </el-table-column>
-        <el-table-column prop="assignMaster" label="指派师傅" align="left" min-width="120" show-overflow-tooltip>
+        <el-table-column prop="assignMaster" label="指派师傅" align="left" min-width="160" show-overflow-tooltip>
           <template #default="scope">{{ scope.row.assignMaster || scope.row.masterName || '待指派' }}</template>
         </el-table-column>
-        <el-table-column label="状态" align="center" width="92">
+        <el-table-column label="状态" align="center" width="104">
           <template #default="scope">
             <el-tag :type="getStatusType(scope.row.status)" size="small">{{ getStatusText(scope.row.status) }}</el-tag>
           </template>
         </el-table-column>
         <!-- 创建时间 -->
-        <el-table-column prop="createTime" label="创建时间" align="left" width="152">
+        <el-table-column prop="createTime" label="创建时间" align="left" width="180">
           <template #default="scope">
             <span class="datetime-cell">{{ formatDateTime(scope.row.createTime) }}</span>
           </template>
         </el-table-column>
         <!-- 操作：修改+删除 -->
-        <el-table-column label="操作" align="center" width="124" fixed="right">
+        <el-table-column label="操作" align="center" width="160" fixed="right">
           <template #default="scope">
             <div class="table-actions">
               <el-button text type="primary" @click="handleEditOrder(scope.row)">修改</el-button>
@@ -445,7 +445,13 @@ onMounted(loadList)
 
     :deep(.el-card__body) {
       padding: 12px;
+      overflow-x: auto;
     }
+
+    .business-table { width: 100%; min-width: 1316px; }
+
+    .table-actions { display: flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap; }
+    .table-actions :deep(.el-button + .el-button) { margin-left: 0; }
 
     // 表格订单号复制样式
     .table-order-id {
