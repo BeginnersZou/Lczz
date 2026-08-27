@@ -54,9 +54,9 @@
 			</view>
 			<view class="spec-row">
 				<text class="spec-label">库存</text>
-				<text class="spec-value">展示库存仅供参考</text>
+				<text class="spec-value">{{ goods.stock }} {{ goods.unit || '件' }}</text>
 				<text class="spec-stock" :class="{ inStock: goods.stock > 0 }">
-					{{ goods.stock > 0 ? '有货' : '缺货' }}
+					{{ goods.stock > 0 ? '库存充足' : '暂无库存' }}
 				</text>
 			</view>
 		</view>
