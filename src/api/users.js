@@ -4,6 +4,7 @@ import request from '@/utils/request'
  * 用户管理模块 API
  * 后端接口对接说明：
  *   - 列表：GET /users/list，分页 + 搜索 + 角色/账号状态/黑名单筛选
+ *   - 新增：POST /users，按手机号预创建用户
  *   - 详情：GET /users/detail/:id
  *   - 更新：PUT /users/:id
  *   - 启用/停用：PATCH /users/:id/status
@@ -40,6 +41,24 @@ export function getUserDetailApi(id) {
   return request({
     url: `/users/detail/${id}`,
     method: 'get'
+  })
+}
+
+/**
+ * 按手机号预创建用户
+ * @param {Object} data
+ * @param {string} data.nickname
+ * @param {string|null} data.realName
+ * @param {'MALE'|'FEMALE'|'UNKNOWN'|null} data.gender
+ * @param {string} data.phone
+ * @param {'ADMIN'|'INSTALLER'|'CUSTOMER'|'DEALER'} data.role
+ * @returns {Promise<Object>}
+ */
+export function createUserApi(data) {
+  return request({
+    url: '/users',
+    method: 'post',
+    data
   })
 }
 
