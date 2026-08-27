@@ -47,7 +47,7 @@
         </el-form-item>
 
         <!-- 省市区三级联动地址 -->
-        <el-form-item label="订单地址" prop="addressDetail">
+        <el-form-item label="订单地址" prop="addressDetail" required>
           <div class="city-row">
             <div class="region-control">
               <el-cascader v-model="form.addressArea" :options="cityOptions"
@@ -63,7 +63,7 @@
         </el-form-item>
 
         <!-- 订单时间 双日期框 -->
-        <el-form-item label="订单时间" prop="orderEndTime">
+        <el-form-item label="订单时间" prop="orderEndTime" required>
           <div class="time-row">
             <el-date-picker v-model="form.orderStartTime" type="datetime" placeholder="上门开始时间" class="time-input"
               format="YYYY-MM-DD HH:mm" value-format="YYYY-MM-DDTHH:mm:ss" />
@@ -261,6 +261,7 @@ const rules = {
     { pattern: /^1[3-9]\d{9}$/, message: '手机号格式不正确', trigger: 'blur' }
   ],
   addressDetail: [{
+    required: true,
     validator: (rule, value, callback) => {
       if (!Array.isArray(form.addressArea) || form.addressArea.length < 3) callback(new Error('请选择完整的省市区'))
       else if (!value?.trim()) callback(new Error('请填写详细街道门牌号'))
@@ -269,6 +270,7 @@ const rules = {
     trigger: ['blur', 'change']
   }],
   orderEndTime: [{
+    required: true,
     validator: (rule, value, callback) => {
       if (!form.orderStartTime || !value) callback(new Error('请选择完整的上门时间范围'))
       else if (new Date(value).getTime() <= new Date(form.orderStartTime).getTime()) callback(new Error('结束时间必须晚于开始时间'))
