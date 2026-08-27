@@ -1,7 +1,7 @@
 <template>
 	<view class="mine-page">
 		<!-- ═══ 顶部渐变区域 ═══ -->
-		<view class="header-section">
+		<view class="header-section" :style="{ paddingTop: `${headerTopPadding}px` }">
 			<view class="header-content">
 				<!-- 用户信息行 -->
 				<view class="user-row">
@@ -144,6 +144,19 @@
 	} from '@/utils/auth-session.js'
 
 	const userInfo = ref({})
+	const headerTopPadding = ref(72)
+	try {
+		const windowInfo = typeof uni.getWindowInfo === 'function' ? uni.getWindowInfo() : uni.getSystemInfoSync()
+		const capsule = typeof wx !== 'undefined' && typeof wx.getMenuButtonBoundingClientRect === 'function'
+			? wx.getMenuButtonBoundingClientRect()
+			: null
+		headerTopPadding.value = Math.max(
+			Number(windowInfo.statusBarHeight || 20) + 56,
+			Number(capsule?.bottom || 0) + 18
+		)
+	} catch (error) {
+		headerTopPadding.value = 72
+	}
 	const version = ref('1.0.0')
 	const cacheSize = ref('0KB')
 
@@ -302,7 +315,6 @@
 	/* ═══ 顶部渐变区域 ═══ */
 	.header-section {
 		background: linear-gradient(145deg, #082f5d 0%, #0b63ce 70%, #258be1 100%);
-		padding-top: calc(var(--status-bar-height, 44rpx) + 76rpx);
 		padding-bottom: 90rpx;
 		border-radius: 0 0 44rpx 44rpx;
 	}

@@ -42,7 +42,8 @@ import org.springframework.web.multipart.MultipartFile;
 public class FileService {
     private static final Map<String, String> EXTENSION_MIME = Map.of(
             "jpg", "image/jpeg", "jpeg", "image/jpeg", "png", "image/png",
-            "gif", "image/gif", "webp", "image/webp");
+            "gif", "image/gif", "webp", "image/webp", "mp4", "video/mp4",
+            "mov", "video/quicktime", "m4v", "video/mp4");
     private static final Set<String> BUSINESS_TYPES = Set.of("PRODUCT", "ORDER", "PROGRESS", "REVIEW");
     private static final Set<String> USAGE_TYPES = Set.of(
             "COVER", "DETAIL", "ATTACHMENT", "PROGRESS", "COMPLETION", "REVIEW");
@@ -286,9 +287,9 @@ public class FileService {
     }
 
     private ValidatedFile validate(MultipartFile multipart) {
-        if (multipart == null || multipart.isEmpty()) throw new BusinessException("EMPTY_FILE", "请选择需要上传的图片");
+        if (multipart == null || multipart.isEmpty()) throw new BusinessException("EMPTY_FILE", "请选择需要上传的图片或视频");
         if (multipart.getSize() > properties.getMaxBytes()) {
-            throw new BusinessException(413, "FILE_TOO_LARGE", "图片大小不能超过" + properties.getMaxBytes() + "字节");
+            throw new BusinessException(413, "FILE_TOO_LARGE", "文件大小不能超过" + properties.getMaxBytes() + "字节");
         }
         byte[] content;
         try { content = multipart.getBytes(); }
@@ -302,7 +303,7 @@ public class FileService {
         String expected = EXTENSION_MIME.get(extension);
         String claimed = normalizeMime(multipart.getContentType());
         if (expected == null || !expected.equals(detected) || !detected.equals(claimed)) {
-            throw new BusinessException("INVALID_FILE_TYPE", "图片真实类型、扩展名和 MIME 不一致");
+            throw new BusinessException("INVALID_FILE_TYPE", "仅支持 jpg/png/gif/webp 图片或 mp4/mov/m4v 视频，且文件类型必须真实一致");
         }
         return new ValidatedFile(originalName, extension, detected, content);
     }
@@ -320,13 +321,20 @@ public class FileService {
         }
         if (bytes.length >= 12 && "RIFF".equals(new String(bytes, 0, 4, StandardCharsets.US_ASCII))
                 && "WEBP".equals(new String(bytes, 8, 4, StandardCharsets.US_ASCII))) return "image/webp";
+        if (bytes.length >= 12 && "ftyp".equals(new String(bytes, 4, 4, StandardCharsets.US_ASCII))) {
+            String brand = new String(bytes, 8, 4, StandardCharsets.US_ASCII);
+            if ("qt  ".equals(brand)) return "video/quicktime";
+            return "video/mp4";
+        }
         return "application/octet-stream";
     }
 
     private String normalizeMime(String mime) {
         if (mime == null) return "";
         String value = mime.split(";", 2)[0].trim().toLowerCase(Locale.ROOT);
-        return "image/jpg".equals(value) ? "image/jpeg" : value;
+        if ("image/jpg".equals(value)) return "image/jpeg";
+        if ("video/x-m4v".equals(value)) return "video/mp4";
+        return value;
     }
 
     private String leafName(String raw) {

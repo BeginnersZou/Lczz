@@ -13,6 +13,24 @@
  *   if (res.code === 200) { list.value = res.data.list }
  */
 import http from '../utils/request.js'
+import baseUrl from '../config.js'
+import { formatDateTime } from '../utils/time.js'
+
+const apiOrigin = (String(baseUrl).match(/^https?:\/\/[^/]+/i) || [''])[0]
+
+export const resolveMediaUrl = (value) => {
+	const url = typeof value === 'string' ? value : (value?.url || value?.previewUrl || '')
+	if (!url) return ''
+	if (/^(?:https?:|wxfile:|blob:|data:|file:)/i.test(url)) return url
+	return url.startsWith('/') ? `${apiOrigin}${url}` : `${apiOrigin}/${url}`
+}
+
+const normalizeFile = (file = {}) => ({
+	...(typeof file === 'object' ? file : {}),
+	id: Number(file?.id || 0) || undefined,
+	mimeType: file?.mimeType || file?.type || '',
+	url: resolveMediaUrl(file)
+})
 
 const normalizeRole = (user = {}) => ({
 	...user,
@@ -35,27 +53,37 @@ const normalizeProduct = (item = {}) => ({
 	model: item.model || item.code || '',
 	category: Array.isArray(item.category) ? item.category[item.category.length - 1] : (item.category || ''),
 	tags: item.tags || [],
-	detailImages: (item.detailImages || []).map(file => typeof file === 'string' ? file : file.url).filter(Boolean)
+	stock: Number(item.stock ?? item.quantity ?? 0),
+	image: resolveMediaUrl(item.image || item.coverImage || item.thumbnail),
+	detailImages: (item.detailImages || item.images || []).map(resolveMediaUrl).filter(Boolean)
 })
 
-const normalizeOrder = (item = {}) => ({
-	...item,
-	visitTime: item.visitTime || item.orderStartTime || '',
-	quantity: item.quantity || 1,
-	status: item.status || item.statusLabel || item.statusCode || '',
-	name: item.name || item.customerName || '',
-	phone: item.phone || item.customerPhone || ''
-})
+const normalizeOrder = (item = {}) => {
+	const fileList = (item.fileList || item.attachments || item.images || []).map(normalizeFile).filter(file => file.url)
+	const firstImage = fileList.find(file => !file.mimeType || file.mimeType.startsWith('image/'))
+	return {
+		...item,
+		visitTime: formatDateTime(item.visitTime || item.orderStartTime || ''),
+		quantity: item.quantity == null ? null : Number(item.quantity),
+		status: item.status || item.statusLabel || item.statusCode || '',
+		name: item.name || item.customerName || '',
+		phone: item.phone || item.customerPhone || '',
+		fileList,
+		image: resolveMediaUrl(item.image) || firstImage?.url || ''
+	}
+}
 
-const normalizeProgress = (item = {}) => ({
-	...item,
-	typeLabel: item.type === 'COMPLETION' ? '完工记录' : '施工进度',
-	images: (item.images || []).map(file => ({
-		...file,
-		id: Number(file.id),
-		url: file.url || ''
-	})).filter(file => file.url)
-})
+const normalizeProgress = (item = {}) => {
+	const media = (item.media || item.files || item.images || []).map(normalizeFile).filter(file => file.url)
+	return {
+		...item,
+		typeLabel: item.type === 'COMPLETION' ? '完工记录' : '施工进度',
+		submittedAt: formatDateTime(item.submittedAt || item.createTime || item.createdAt),
+		media,
+		images: media.filter(file => !file.mimeType || file.mimeType.startsWith('image/')),
+		videos: media.filter(file => file.mimeType.startsWith('video/'))
+	}
+}
 
 const normalizeEvaluation = (item = {}) => ({
 	...item,
@@ -63,8 +91,8 @@ const normalizeEvaluation = (item = {}) => ({
 	liked: Boolean(item.liked),
 	content: item.content || '',
 	labels: item.labels || [],
-	images: (item.images || []).filter(Boolean),
-	createTime: item.createTime || item.createdAt || ''
+	images: (item.images || []).map(resolveMediaUrl).filter(Boolean),
+	createTime: formatDateTime(item.createTime || item.createdAt || '')
 })
 
 // ====================== 认证相关 ======================
@@ -113,7 +141,7 @@ export const orderApi = {
 	submitProgress: (id, data) => http.post(`/orders/${id}/progress`, data),
 	complete: (id, data) => http.post(`/orders/${id}/completion`, data),
 	// 上传订单附件 / 安装图片（返回 { url }）
-	uploadImage: (filePath, formData = {}, options = {}) => {
+	uploadMedia: (filePath, formData = {}, options = {}) => {
 		return http.upload({
 			url: '/orders/upload',
 			filePath,
@@ -121,7 +149,8 @@ export const orderApi = {
 			formData,
 			...options
 		})
-	}
+	},
+	uploadImage: (filePath, formData = {}, options = {}) => orderApi.uploadMedia(filePath, formData, options)
 }
 
 // ====================== 订单评价相关 ======================

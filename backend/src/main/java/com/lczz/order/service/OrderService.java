@@ -101,7 +101,8 @@ public class OrderService {
         }
         query.orderByDesc(WorkOrderEntity::getCreatedAt).orderByDesc(WorkOrderEntity::getId);
         Page<WorkOrderEntity> result = orderMapper.selectPage(new Page<>(page, pageSize), query);
-        return new OrderPage(toViews(result.getRecords()), result.getTotal(), page, pageSize);
+        return new OrderPage(toViews(result.getRecords(), loadAttachments(actor, result.getRecords())),
+                result.getTotal(), page, pageSize);
     }
 
     public OrderView detail(AuthenticatedUser actor, long id) {
@@ -302,8 +303,14 @@ public class OrderService {
         historyMapper.insert(history);
     }
 
-    private List<OrderView> toViews(List<WorkOrderEntity> orders) {
-        return toViews(orders, Map.of());
+    private Map<Long, List<FileView>> loadAttachments(AuthenticatedUser actor, List<WorkOrderEntity> orders) {
+        Map<Long, List<FileView>> result = new LinkedHashMap<>();
+        for (WorkOrderEntity order : orders) {
+            List<FileView> files = fileService.listBusinessFiles(actor,
+                    new RelationCommand("ORDER", order.getId(), "ATTACHMENT", null));
+            if (!files.isEmpty()) result.put(order.getId(), files);
+        }
+        return result;
     }
 
     private List<OrderView> toViews(List<WorkOrderEntity> orders, Map<Long, List<FileView>> files) {
