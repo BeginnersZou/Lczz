@@ -17,12 +17,13 @@
 		<view class="order-card">
 			<view class="order-top">
 				<view class="order-service">
-					<image class="order-img" :src="orderInfo.image" mode="aspectFill" lazy-load></image>
+					<image v-if="orderInfo.image" class="order-img" :src="orderInfo.image" mode="aspectFill" lazy-load></image>
+					<view v-else class="order-img order-placeholder"><up-icon name="home-fill" size="34" color="#0b63ce"></up-icon></view>
 					<view class="order-info">
 						<text class="order-name">{{ orderInfo.serviceName }}</text>
 						<text class="order-product">{{ orderInfo.productName }}</text>
 						<text class="order-spec">{{ orderInfo.productSpec }}</text>
-						<text class="order-qty">× {{ orderInfo.quantity }}</text>
+						<text class="order-qty" v-if="orderInfo.quantity != null">× {{ orderInfo.quantity }}</text>
 					</view>
 				</view>
 				<view class="order-status" :class="statusClass">
@@ -73,7 +74,7 @@
 					<view class="tool-content">
 						<text class="tool-name">{{ tool.title }}</text>
 						<view class="tool-meta">
-							<text class="tool-spec-text">规格：{{ tool.spec || '-' }}　单位：{{ tool.unit || '-' }}</text>
+							<text class="tool-spec-text">规格：{{ tool.spec || '-' }}　单位：{{ tool.unit || '-' }}　库存：{{ tool.stock ?? '-' }}</text>
 						</view>
 						<view class="tool-meta">
 							<text class="tool-qty-text">数量：</text>
@@ -131,10 +132,12 @@
 							<text class="progress-time">{{ record.submittedAt }}</text>
 						</view>
 						<text class="progress-description">{{ record.description }}</text>
-						<view class="image-grid" v-if="record.images.length">
-							<view class="image-item" v-for="(img, imageIndex) in record.images" :key="img.id">
-								<image class="preview-img" :src="img.url" mode="aspectFill"
-									@click="previewRecordImages(record.images, imageIndex)"></image>
+						<view class="image-grid" v-if="record.media.length">
+							<view class="image-item" v-for="(media, mediaIndex) in record.media" :key="media.id">
+								<video v-if="media.mimeType?.startsWith('video/')" class="preview-img" :src="media.url"
+									controls object-fit="cover" :show-center-play-btn="true"></video>
+								<image v-else class="preview-img" :src="media.url" mode="aspectFill"
+									@click="previewRecordImages(record.images, record.images.findIndex(item => item.id === media.id))"></image>
 							</view>
 						</view>
 					</view>
@@ -195,19 +198,20 @@
 				<text class="text-count">{{ progressDescription.length }}/2000</text>
 			</view>
 			<view class="upload-heading">
-				<text>{{ progressType === 'COMPLETION' ? '完工图片（至少1张）' : '施工图片（选填）' }}</text>
-				<text class="upload-tip">最多9张</text>
+				<text>{{ progressType === 'COMPLETION' ? '完工图片/视频（至少1个）' : '施工图片/视频（选填）' }}</text>
+				<text class="upload-tip">合计最多9个，单个不超过10MB</text>
 			</view>
 			<view class="image-grid">
-				<view class="image-item" v-for="(img, index) in progressImages" :key="img.id">
-					<image class="preview-img" :src="img.url" mode="aspectFill" @click="previewProgressImages(index)"></image>
+				<view class="image-item" v-for="(media, index) in progressImages" :key="media.id">
+					<video v-if="media.mimeType?.startsWith('video/')" class="preview-img" :src="media.url" controls object-fit="cover"></video>
+					<image v-else class="preview-img" :src="media.url" mode="aspectFill" @click="previewProgressImages(index)"></image>
 					<view class="image-delete" @click.stop="deleteProgressImage(index)">
 						<up-icon name="close" size="12" color="#fff"></up-icon>
 					</view>
 				</view>
-				<view class="image-add" v-if="progressImages.length < 9" @click="chooseProgressImages">
+				<view class="image-add" v-if="progressImages.length < 9" @click="chooseProgressMedia">
 					<up-icon name="plus" size="32" color="#ccc"></up-icon>
-					<text class="add-text">上传图片</text>
+					<text class="add-text">图片/视频</text>
 				</view>
 			</view>
 			<text class="upload-progress" v-if="uploadProgress">{{ uploadProgress }}</text>
@@ -265,7 +269,7 @@
 							<text class="popup-tool-name">{{ tool.title }}</text>
 						</view>
 						<view class="popup-tool-row2">
-							<text class="popup-tool-spec">{{ tool.spec }}</text>
+							<text class="popup-tool-spec">{{ tool.spec }} · 库存 {{ tool.stock }}{{ tool.unit || '' }}</text>
 							<text class="popup-tool-price">¥{{ tool.price }}</text>
 							<view class="popup-tool-action">
 								<view class="popup-qty-wrap" v-if="getToolQty(tool) > 0">
@@ -273,8 +277,8 @@
 									<text class="popup-qty-num">{{ getToolQty(tool) }}</text>
 									<view class="popup-qty-btn" @click="changePopupQty(tool, 1)"><text>+</text></view>
 								</view>
-								<view class="popup-add-btn" v-else @click="addToolToCart(tool)">
-									<text class="popup-add-label">添加</text>
+								<view class="popup-add-btn" :class="{ disabled: tool.stock <= 0 }" v-else @click="addToolToCart(tool)">
+									<text class="popup-add-label">{{ tool.stock > 0 ? '添加' : '无库存' }}</text>
 								</view>
 							</view>
 						</view>
@@ -313,7 +317,8 @@
 	orderApi,
 	consumablesApi,
 	authApi,
-	evaluationApi
+	evaluationApi,
+	resolveMediaUrl
 	} from '@/api/api.js'
 	import { getAuthToken } from '@/utils/auth-session.js'
 
@@ -368,8 +373,13 @@ const statusClass = computed(() => {
 
 	const changeQty = (index, delta) => {
 		const tool = toolList.value[index]
-		tool.qty += delta
-		if (tool.qty < 1) tool.qty = 1
+		const max = Math.max(0, Number(tool.stock || 0))
+		const next = Math.max(1, Number(tool.qty || 1) + delta)
+		if (next > max) {
+			uni.showToast({ title: `库存仅剩 ${max}${tool.unit || ''}`, icon: 'none' })
+			return
+		}
+		tool.qty = next
 	}
 
 	const deleteTool = (index) => {
@@ -398,6 +408,7 @@ const statusClass = computed(() => {
 	})
 
 	const previewRecordImages = (images, index) => {
+		if (index < 0 || images.length === 0) return
 		const urls = images.map(image => image.url)
 		uni.previewImage({ current: urls[index], urls })
 	}
@@ -431,37 +442,48 @@ const statusClass = computed(() => {
 		progressImages.value.splice(index, 1)
 	}
 
-	const chooseProgressImages = () => {
+	const chooseProgressMedia = () => {
 		const remaining = 9 - progressImages.value.length
 		if (remaining <= 0) return
-		uni.chooseImage({
+		uni.chooseMedia({
 			count: remaining,
-			sizeType: ['compressed'],
+			mediaType: ['image', 'video'],
 			sourceType: ['album', 'camera'],
+			maxDuration: 60,
+			camera: 'back',
 			success: async (res) => {
-				const paths = res.tempFilePaths || []
+				const files = res.tempFiles || []
 				let failed = 0
-				for (let index = 0; index < paths.length; index++) {
-					uploadProgress.value = `正在上传 ${index + 1}/${paths.length}`
-					const uploadRes = await orderApi.uploadImage(paths[index], {}, {
+				for (let index = 0; index < files.length; index++) {
+					const selected = files[index]
+					if (Number(selected.size || 0) > 10 * 1024 * 1024) {
+						failed++
+						continue
+					}
+					uploadProgress.value = `正在上传 ${index + 1}/${files.length}`
+					const uploadRes = await orderApi.uploadMedia(selected.tempFilePath, {}, {
 						loading: false,
 						onProgress: event => {
-							uploadProgress.value = `正在上传 ${index + 1}/${paths.length}（${event.progress}%）`
+							uploadProgress.value = `正在上传 ${index + 1}/${files.length}（${event.progress}%）`
 						}
 					})
 					const file = uploadRes.code === 200 ? uploadRes.data : null
 					if (file && file.id && file.url) {
-						progressImages.value.push({ id: Number(file.id), url: file.url })
+						progressImages.value.push({
+							id: Number(file.id),
+							url: resolveMediaUrl(file.url),
+							mimeType: file.mimeType || (selected.fileType === 'video' ? 'video/mp4' : 'image/jpeg')
+						})
 					} else {
 						failed++
 					}
 				}
 				uploadProgress.value = ''
-				if (failed) uni.showToast({ title: `${failed}张上传失败，可重新选择`, icon: 'none' })
+				if (failed) uni.showToast({ title: `${failed}个文件上传失败或超过10MB`, icon: 'none' })
 			},
 			fail: (err) => {
 				if (!String(err?.errMsg || '').includes('cancel')) {
-					uni.showToast({ title: '图片选择失败，请重试', icon: 'none' })
+					uni.showToast({ title: '图片或视频选择失败，请重试', icon: 'none' })
 				}
 			}
 		})
@@ -619,6 +641,10 @@ const statusClass = computed(() => {
 	}
 
 	const addToolToCart = (tool) => {
+		if (Number(tool.stock || 0) <= 0) {
+			uni.showToast({ title: '该耗材暂无库存', icon: 'none' })
+			return
+		}
 		popupSelected.value[getToolKey(tool)] = {
 			...tool,
 			qty: 1
@@ -632,6 +658,8 @@ const statusClass = computed(() => {
 		const newVal = current + delta
 		if (newVal <= 0) {
 			delete popupSelected.value[key]
+		} else if (newVal > Number(tool.stock || 0)) {
+			uni.showToast({ title: `库存仅剩 ${tool.stock}${tool.unit || ''}`, icon: 'none' })
 		} else {
 			popupSelected.value[key] = {
 				...tool,
@@ -664,6 +692,7 @@ const statusClass = computed(() => {
 			unit: item.unit,
 			price: item.price,
 			image: item.image,
+			stock: Number(item.stock || 0),
 			qty: item.qty
 		}))
 		showToolPopup.value = false
@@ -794,6 +823,7 @@ const statusClass = computed(() => {
 						title: item.name || '',
 						spec: item.spec || '',
 						unit: item.unit || '',
+						stock: Number(item.stock || 0),
 						qty: Number(item.count || 1),
 						price: Number(item.displayPrice || 0)
 					}))
@@ -874,6 +904,8 @@ const statusClass = computed(() => {
 		background-color: #e8f4fd;
 		flex-shrink: 0;
 	}
+
+	.order-placeholder { display: flex; align-items: center; justify-content: center; }
 
 	.order-info {
 		margin-left: 20rpx;
@@ -1734,6 +1766,11 @@ const statusClass = computed(() => {
 		font-size: 30rpx;
 		background: linear-gradient(135deg, #ff6b6b, #ee5a24);
 		min-width: 56rpx;
+
+		&.disabled {
+			background: #cbd5e1;
+			opacity: .75;
+		}
 		display: flex;
 		align-items: center;
 		justify-content: center;

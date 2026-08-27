@@ -114,18 +114,19 @@
 				<view class="product-card" hover-class="hover-card" :hover-stay-time="80"
 					v-for="(item, index) in displayList" :key="item.id || index" @click="handleCardClick(item)">
 					<view class="product-visual" :class="`visual-${item.type || 'aux'}`">
+						<image v-if="item.image" class="product-cover" :src="item.image" mode="aspectFill" lazy-load></image>
 						<view class="visual-ring ring-one"></view>
 						<view class="visual-ring ring-two"></view>
-						<up-icon :name="productIcon(item.type)" size="40" color="#ffffff"></up-icon>
+						<up-icon v-if="!item.image" :name="productIcon(item.type)" size="40" color="#ffffff"></up-icon>
 						<text class="visual-label">{{ item.category || categoryName(item.type) }}</text>
 						<view class="product-tag" :style="{ background: item.tagColor }" v-if="item.tag">{{ item.tag }}</view>
 					</view>
 					<view class="product-body">
 						<text class="product-title">{{ item.title }}</text>
-						<text class="product-spec">{{ item.spec || item.desc }}</text>
+						<text class="product-spec">库存 {{ item.stock }} {{ item.unit || '件' }} · {{ item.spec || '规格待确认' }}</text>
 						<view class="product-meta">
 							<text class="product-price">产品展示</text>
-							<text class="product-sales">{{ item.stock > 0 ? '可咨询' : '库存待确认' }}</text>
+							<text class="product-sales">{{ item.stock > 0 ? `剩余 ${item.stock}` : '暂无库存' }}</text>
 						</view>
 					</view>
 				</view>
@@ -429,6 +430,9 @@ const handleCardClick = (item) => uni.navigateTo({ url: `/packageA/goos-details/
 .product-grid { display: flex; flex-wrap: wrap; gap: 20rpx; padding: 24rpx 24rpx 0; }
 .product-card { width: calc(50% - 10rpx); border: 1rpx solid #edf1f5; border-radius: 22rpx; overflow: hidden; box-sizing: border-box; background: #fff; }
 .product-visual { height: 184rpx; position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.product-cover { position: absolute; inset: 0; width: 100%; height: 100%; }
+.product-cover ~ .visual-ring { display: none; }
+.product-cover ~ .visual-label { padding: 5rpx 10rpx; border-radius: 8rpx; background: rgba(15, 23, 42, .62); color: #fff; }
 .visual-copper { background: linear-gradient(135deg, #b66d3d, #e3a163); }.visual-bracket { background: linear-gradient(135deg, #53697d, #8da3b6); }
 .visual-cable { background: linear-gradient(135deg, #35485e, #5e7691); }.visual-refrigerant { background: linear-gradient(135deg, #087a84, #23b6ae); }
 .visual-aux { background: linear-gradient(135deg, #426aa3, #75a0d8); }
