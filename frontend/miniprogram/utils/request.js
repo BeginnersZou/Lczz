@@ -168,17 +168,26 @@ const upload = (options = {}) => {
           parsed = res.data
         }
         let body
+        const statusCode = Number(res.statusCode || 0)
+        const gatewayMessage = {
+          413: '服务器上传上限尚未放开（HTTP 413），请联系管理员配置后重试',
+          502: '上传网关暂不可用（HTTP 502），请稍后重试',
+          503: '上传服务暂不可用（HTTP 503），请稍后重试',
+          504: '上传网关等待超时（HTTP 504），请稍后重试'
+        }[statusCode]
         if (parsed && typeof parsed === 'object' && parsed.code !== undefined) {
           body = {
             code: parsed.code,
             data: parsed.data,
-            msg: parsed.message || parsed.msg || '上传失败'
+            msg: parsed.message || parsed.msg || gatewayMessage || `上传失败（HTTP ${statusCode || '未知'}）`,
+            httpStatus: statusCode
           }
         } else {
           body = {
-            code: res.statusCode === 200 ? 200 : res.statusCode,
+            code: statusCode === 200 ? 200 : statusCode,
             data: parsed,
-            msg: (parsed && (parsed.message || parsed.msg)) || '上传失败'
+            msg: gatewayMessage || `上传失败（HTTP ${statusCode || '未知'}）`,
+            httpStatus: statusCode
           }
         }
 

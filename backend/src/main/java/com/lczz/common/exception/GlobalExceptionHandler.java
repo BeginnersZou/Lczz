@@ -40,7 +40,7 @@ public class GlobalExceptionHandler {
     ResponseEntity<ApiResponse<Void>> handleUploadTooLarge(MaxUploadSizeExceededException exception,
                                                             HttpServletRequest request) {
         return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(ApiResponse.failure(
-                413, "FILE_TOO_LARGE", "上传文件超过大小限制", requestId(request)));
+                413, "FILE_TOO_LARGE", "上传文件超过大小限制：图片最大10MB，视频最大200MB", requestId(request)));
     }
 
     @ExceptionHandler(AuthorizationDeniedException.class)

@@ -11,7 +11,9 @@ import com.lczz.file.persistence.FileRelationRecord;
 import com.lczz.file.persistence.FileRelationRecordMapper;
 import com.lczz.file.storage.FileStorage;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.security.DigestInputStream;
 import java.security.GeneralSecurityException;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
@@ -80,16 +82,23 @@ public class FileService {
         if (normalized != null) authorizeBusiness(actor, normalized.businessType(), normalized.businessId(), true);
         String objectKey = newObjectKey(file.extension());
         boolean stored = false;
-        try {
-            storage.store(objectKey, file.content());
+        try (InputStream source = multipart.getInputStream()) {
+            MessageDigest digest = sha256Digest();
+            long storedSize = storage.store(objectKey, new DigestInputStream(source, digest));
             stored = true;
+            if (storedSize <= 0 || storedSize > file.maxBytes()) {
+                throw new BusinessException(413, "FILE_TOO_LARGE",
+                        file.mimeType().startsWith("image/")
+                                ? "图片大小不能超过" + properties.getMaxImageBytes() + "字节"
+                                : "视频大小不能超过" + properties.getMaxBytes() + "字节");
+            }
             FileAssetRecord record = new FileAssetRecord();
             record.setStorageType(storage.storageType());
             record.setObjectKey(objectKey);
             record.setOriginalName(file.originalName());
             record.setMimeType(file.mimeType());
-            record.setFileSize((long) file.content().length);
-            record.setSha256(sha256(file.content()));
+            record.setFileSize(storedSize);
+            record.setSha256(HexFormat.of().formatHex(digest.digest()));
             record.setUploadedBy(actor.userId());
             record.setDeleted(false);
             fileMapper.insert(record);
@@ -291,15 +300,15 @@ public class FileService {
         if (multipart.getSize() > properties.getMaxBytes()) {
             throw new BusinessException(413, "FILE_TOO_LARGE", "文件大小不能超过" + properties.getMaxBytes() + "字节");
         }
-        byte[] content;
-        try { content = multipart.getBytes(); }
+        byte[] header;
+        try (InputStream input = multipart.getInputStream()) { header = input.readNBytes(16); }
         catch (IOException exception) { throw new BusinessException(400, "FILE_READ_FAILED", "无法读取上传文件"); }
-        if (content.length == 0 || content.length > properties.getMaxBytes()) {
+        if (header.length == 0) {
             throw new BusinessException(413, "FILE_TOO_LARGE", "上传文件为空或超过大小限制");
         }
         String originalName = leafName(multipart.getOriginalFilename());
         String extension = extension(originalName);
-        String detected = detectMime(content);
+        String detected = detectMime(header);
         String expected = EXTENSION_MIME.get(extension);
         String claimed = normalizeMime(multipart.getContentType());
         if (expected == null || !expected.equals(detected) || !detected.equals(claimed)) {
@@ -308,12 +317,12 @@ public class FileService {
         long typeLimit = detected.startsWith("image/")
                 ? Math.min(properties.getMaxBytes(), properties.getMaxImageBytes())
                 : properties.getMaxBytes();
-        if (content.length > typeLimit) {
+        if (multipart.getSize() > typeLimit) {
             throw new BusinessException(413, "FILE_TOO_LARGE", detected.startsWith("image/")
                     ? "图片大小不能超过" + properties.getMaxImageBytes() + "字节"
                     : "视频大小不能超过" + properties.getMaxBytes() + "字节");
         }
-        return new ValidatedFile(originalName, extension, detected, content);
+        return new ValidatedFile(originalName, extension, detected, typeLimit);
     }
 
     private String detectMime(byte[] bytes) {
@@ -393,8 +402,8 @@ public class FileService {
         return "%04d/%02d/%s.%s".formatted(today.getYear(), today.getMonthValue(), UUID.randomUUID(), extension);
     }
 
-    private String sha256(byte[] content) {
-        try { return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(content)); }
+    private MessageDigest sha256Digest() {
+        try { return MessageDigest.getInstance("SHA-256"); }
         catch (GeneralSecurityException exception) { throw new IllegalStateException(exception); }
     }
 
@@ -439,7 +448,7 @@ public class FileService {
         return generated;
     }
 
-    private record ValidatedFile(String originalName, String extension, String mimeType, byte[] content) { }
+    private record ValidatedFile(String originalName, String extension, String mimeType, long maxBytes) { }
     public record RelationCommand(String businessType, Long businessId, String usageType, Integer sortOrder) { }
     public record FileView(long id, String originalName, String mimeType, long size, String sha256,
                            String url, java.time.LocalDateTime createdAt) { }
