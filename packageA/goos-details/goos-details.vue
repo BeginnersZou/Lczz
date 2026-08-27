@@ -22,9 +22,15 @@
 
 		<template v-else>
 
-		<!-- ═══ 封面图片 ═══ -->
+		<!-- ═══ 耗材图片轮播 ═══ -->
 		<view class="cover-section">
-			<image v-if="!isPlaceholderImage(goods.image)" class="cover-img" :src="goods.image" mode="aspectFill"></image>
+			<swiper v-if="carouselImages.length" class="cover-swiper" circular :autoplay="carouselImages.length > 1"
+				:indicator-dots="carouselImages.length > 1" :interval="4000" :duration="400"
+				indicator-color="rgba(255,255,255,.45)" indicator-active-color="#ffffff">
+				<swiper-item v-for="(imageUrl, index) in carouselImages" :key="`${imageUrl}-${index}`">
+					<image class="cover-img" :src="imageUrl" mode="aspectFill"></image>
+				</swiper-item>
+			</swiper>
 			<view v-else class="cover-visual" :class="`visual-${goods.type || 'aux'}`">
 				<view class="cover-ring ring-large"></view>
 				<view class="cover-ring ring-small"></view>
@@ -140,7 +146,11 @@ const goods = ref({
 })
 
 const detailImages = ref([])
-const displayDetailImages = computed(() => detailImages.value.filter(img => !isPlaceholderImage(img)))
+const carouselImages = computed(() => {
+	const images = [goods.value.image, ...detailImages.value.slice(0, 2)]
+	return [...new Set(images.filter(img => !isPlaceholderImage(img)))]
+})
+const displayDetailImages = computed(() => detailImages.value.slice(2).filter(img => !isPlaceholderImage(img)))
 const detailLoading = ref(true)
 const detailError = ref(null)
 
@@ -299,6 +309,11 @@ $text-light: #94a3b8;
 	height: 420rpx;
 	margin-top: calc(88rpx + var(--status-bar-height, 44rpx));
 	overflow: hidden;
+}
+
+.cover-swiper {
+	width: 100%;
+	height: 100%;
 }
 
 .cover-visual { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; overflow: hidden; gap: 14rpx; color: rgba(255,255,255,.78); font-size: 24rpx; }

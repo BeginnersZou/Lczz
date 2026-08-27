@@ -120,8 +120,8 @@ export const orderApi = {
 		return res
 	},
 	// 订单详情
-	getDetail: async (id) => {
-		const res = await http.get(`/orders/detail/${id}`)
+	getDetail: async (id, options = {}) => {
+		const res = await http.get(`/orders/detail/${id}`, {}, options)
 		if (res.code === 200) res.data = normalizeOrder(res.data)
 		return res
 	},
