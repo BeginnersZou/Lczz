@@ -57,33 +57,33 @@
           <span class="unit-suffix">{{ form.unit || '单位' }}</span>
         </el-form-item>
 
-        <!-- 耗材图片（仅1张） -->
-        <el-form-item label="耗材图片" prop="image">
+        <!-- 耗材图片（最多3张，小程序详情页轮播展示） -->
+        <el-form-item label="耗材图片" prop="productImages" required>
           <div class="upload-tip">
             <el-icon>
               <InfoFilled />
             </el-icon>
-            <span>仅支持上传1张图片（jpg/png/gif/webp），不超过5MB</span>
+            <span>上传1~3张图片（jpg/png/gif/webp），小程序详情页将按顺序轮播，不超过5MB/张，已选 {{ form.productImages.length }}/3 张</span>
           </div>
           <div class="upload-wrap">
-            <!-- 已上传图片：hover 显示删除遮罩 -->
-            <div class="img-card" v-if="form.image" @click="handleImagePreview">
-              <img :src="form.image" alt="耗材图片" class="preview-img" />
-              <div v-if="mainImageUploading" class="uploading-mask"><el-icon class="is-loading"><Loading /></el-icon><span>上传中</span></div>
-              <div v-else class="img-mask" @click.stop="removeImage">
+            <div class="img-card" v-for="(fileItem, idx) in form.productImages" :key="fileItem.uid"
+              @click="handleImagePreview(fileItem.previewUrl)">
+              <img :src="fileItem.previewUrl" alt="耗材图片" class="preview-img" />
+              <div v-if="fileItem.uploading" class="uploading-mask"><el-icon class="is-loading"><Loading /></el-icon><span>上传中</span></div>
+              <div v-else class="img-mask" @click.stop="removeProductImage(idx)">
                 <el-icon class="mask-icon">
                   <Delete />
                 </el-icon>
                 <span class="mask-text">删除</span>
               </div>
             </div>
-            <!-- 上传按钮：已有图片则隐藏 -->
-            <div class="upload-add file-upload-box" v-if="!form.image" role="button" tabindex="0" @click="triggerUpload" @keyup.enter="triggerUpload">
+            <div class="upload-add file-upload-box" v-if="form.productImages.length < MAX_PRODUCT_IMAGE_COUNT"
+              role="button" tabindex="0" @click="triggerUpload" @keyup.enter="triggerUpload">
               <el-icon :size="26" class="upload-icon">
                 <Plus />
               </el-icon>
               <span>上传图片</span>
-              <input ref="fileInputRef" type="file" class="upload-input"
+              <input ref="fileInputRef" type="file" multiple class="upload-input"
                 accept="image/jpeg,image/jpg,image/png,image/gif,image/webp" @change="handleUpload" />
             </div>
           </div>
@@ -96,12 +96,12 @@
         </el-form-item>
 
         <!-- 耗材详情（最多9张图片，小程序详情页展示） -->
-        <el-form-item label="耗材详情">
+        <el-form-item label="耗材详情" prop="detailImages" required>
           <div class="upload-tip">
             <el-icon>
               <InfoFilled />
             </el-icon>
-            <span>上传耗材详情图片（jpg/png/gif/webp），最多9张，不超过5MB/张，已选 {{ form.detailImages.length }}/9 张</span>
+            <span>上传耗材详情图片（jpg/png/gif/webp），至少1张，不超过5MB/张，已选 {{ form.detailImages.length }}/{{ maxDetailImageCount }} 张</span>
           </div>
           <div class="upload-wrap">
             <!-- 已上传图片卡片：hover 显示删除遮罩 -->
@@ -116,7 +116,7 @@
               </div>
             </div>
             <!-- 上传按钮：达到9张自动隐藏 -->
-            <div class="upload-add file-upload-box" v-if="form.detailImages.length < 9" role="button" tabindex="0" @click="triggerDetailUpload" @keyup.enter="triggerDetailUpload">
+            <div class="upload-add file-upload-box" v-if="form.detailImages.length < maxDetailImageCount" role="button" tabindex="0" @click="triggerDetailUpload" @keyup.enter="triggerDetailUpload">
               <el-icon :size="26" class="upload-icon">
                 <Plus />
               </el-icon>
@@ -141,13 +141,13 @@
 
     <!-- 图片预览弹窗 -->
     <el-dialog v-model="previewVisible" title="图片预览" width="480px">
-      <img :src="form.image" alt="耗材图片" style="width: 100%; border-radius: 8px" />
+      <img :src="previewImageUrl" alt="耗材图片" style="width: 100%; border-radius: 8px" />
     </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
   ArrowLeft, Plus, Box, Check, Delete, InfoFilled, Loading
@@ -176,11 +176,11 @@ const pageLoading = ref(false)
 const loadError = ref('')
 const formIsDirty = ref(false)
 const previewVisible = ref(false)
-const mainImageUploading = ref(false)
+const previewImageUrl = ref('')
 const categoryLoading = ref(false)
 const categoryError = ref('')
 // 详情图片唯一 uid 生成器（编辑回显与新增上传共用，避免冲突）
-let detailUid = 1
+let imageUid = 1
 
 // 单位选项
 const unitOptions = ['米', '瓶', '个', '把', '套', '卷', '台', '件']
@@ -199,10 +199,9 @@ const form = reactive({
   price: 0,
   enabled: true,
   sortOrder: 0,
-  image: '',
-  coverFileId: null,
+  productImages: [], // 轮播图片，最多3张；第1张映射为封面，其余图片前置到详情文件
   remark: '',
-  detailImages: [] // 耗材详情图片，最多9张，{uid, file, previewUrl}
+  detailImages: [] // 耗材详情图片，最多9张，{uid, file, previewUrl, uploading}
 })
 
 // 校验规则
@@ -216,7 +215,22 @@ const rules = {
   ],
   spec: [{ required: true, message: '请输入耗材规格', trigger: 'blur' }],
   unit: [{ required: true, message: '请选择单位', trigger: 'change' }],
-  stock: [{ required: true, message: '请输入库存数量', trigger: 'blur' }]
+  stock: [{ required: true, message: '请输入库存数量', trigger: 'blur' }],
+  productImages: [{
+    validator: (_rule, value, callback) => {
+      if (!Array.isArray(value) || value.length === 0) callback(new Error('请至少上传1张耗材图片'))
+      else if (value.length > 3) callback(new Error('耗材图片最多上传3张'))
+      else callback()
+    },
+    trigger: 'change'
+  }],
+  detailImages: [{
+    validator: (_rule, value, callback) => {
+      if (!Array.isArray(value) || value.length === 0) callback(new Error('请至少上传1张耗材详情图片'))
+      else callback()
+    },
+    trigger: 'change'
+  }]
 }
 
 watch(form, () => {
@@ -272,6 +286,21 @@ async function loadEditData() {
   loadError.value = ''
   try {
     const data = await getConsumablesDetailApi(consumablesId.value)
+    const allDetailImages = (data.detailImages || []).map(item => ({
+      uid: imageUid++,
+      id: item.id || null,
+      file: null,
+      previewUrl: typeof item === 'string' ? item : (item.url || ''),
+      uploading: false
+    })).filter(item => item.previewUrl)
+    const carouselExtras = allDetailImages.slice(0, 2)
+    const coverImage = data.image ? [{
+      uid: imageUid++,
+      id: data.coverFileId || null,
+      file: null,
+      previewUrl: data.image,
+      uploading: false
+    }] : []
     Object.assign(form, {
       name: data.name || '',
       category: Array.isArray(data.category) ? [...data.category] : [],
@@ -282,16 +311,10 @@ async function loadEditData() {
       price: data.price != null ? data.price : 0,
       enabled: data.enabled !== false,
       sortOrder: data.sortOrder || 0,
-      image: data.image || '',
-      coverFileId: data.coverFileId || null,
+      productImages: [...coverImage, ...carouselExtras],
       remark: data.remark || '',
-      // 远程 url 直接作为 previewUrl，file 为 null
-      detailImages: (data.detailImages || []).map(item => ({
-        uid: detailUid++,
-        id: item.id || null,
-        file: null,
-        previewUrl: typeof item === 'string' ? item : (item.url || '')
-      }))
+      // 后端没有独立的轮播数组：前两张详情文件用于轮播，其余才是详情长图。
+      detailImages: allDetailImages.slice(carouselExtras.length)
     })
     const selectedId = categoryIdByName.get(form.category[form.category.length - 1])
     if (selectedId) form.categoryId = selectedId
@@ -303,71 +326,76 @@ async function loadEditData() {
   }
 }
 
-// ====================== 图片上传（仅1张） ======================
+// ====================== 耗材轮播图片上传（最多3张） ======================
 const ALLOW_IMG_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']
 const MAX_IMG_SIZE = 5 * 1024 * 1024 // 5MB
+const MAX_PRODUCT_IMAGE_COUNT = 3
+const MAX_DETAIL_FILE_COUNT = 9
+// 后端 detailFileIds 最多9个；轮播的第2、3张也占用该数组名额。
+const maxDetailImageCount = computed(() => MAX_DETAIL_FILE_COUNT - Math.max(0, form.productImages.length - 1))
+const maxAllowedProductImageCount = computed(() => Math.min(
+  MAX_PRODUCT_IMAGE_COUNT,
+  MAX_DETAIL_FILE_COUNT - form.detailImages.length + 1
+))
 
 function triggerUpload() {
   fileInputRef.value.click()
 }
 
 async function handleUpload(event) {
-  const file = event.target.files[0]
+  const files = Array.from(event.target.files || [])
   event.target.value = ''
-  if (!file) return
-  // 1. 类型校验
-  if (!ALLOW_IMG_TYPES.includes(file.type)) {
-    ElMessage.warning('仅支持 jpg/png/gif/webp 格式图片')
-    return
-  }
-  // 2. 大小校验
-  if (file.size > MAX_IMG_SIZE) {
-    ElMessage.warning('图片大小不可超过5MB')
-    return
-  }
-  // 3. 若已有旧图是本地 blob，先释放
-  if (form.image && form.image.startsWith('blob:')) {
-    URL.revokeObjectURL(form.image)
-  }
-  // 4. 生成 blob 即时预览
-  const blobUrl = URL.createObjectURL(file)
-  form.image = blobUrl
-  formIsDirty.value = true
-  mainImageUploading.value = true
-  // 5. 立即上传获取真实 url
-  try {
-    const formData = new FormData()
-    formData.append('file', file)
-    const res = await uploadConsumablesImageApi(formData)
-    // 用返回 url 替换 blob 并释放临时 blob
-    if (form.image === blobUrl) {
-      form.image = res.url
-      form.coverFileId = res.id
+  if (!files.length) return
+  const remaining = maxAllowedProductImageCount.value - form.productImages.length
+  if (remaining <= 0) return ElMessage.warning(`耗材图片最多上传${MAX_PRODUCT_IMAGE_COUNT}张`)
+  const validFiles = []
+  for (const file of files) {
+    if (!ALLOW_IMG_TYPES.includes(file.type)) {
+      ElMessage.warning(`文件${file.name}不是支持的图片格式`)
+      continue
     }
-    URL.revokeObjectURL(blobUrl)
-  } catch (err) {
-    // 上传失败：移除该项并提示（错误已由拦截器提示，这里做清理）
-    if (form.image === blobUrl) {
-      form.image = ''
+    if (file.size > MAX_IMG_SIZE) {
+      ElMessage.warning(`图片${file.name}超过5MB，禁止上传`)
+      continue
     }
-    URL.revokeObjectURL(blobUrl)
-  } finally {
-    mainImageUploading.value = false
+    if (form.productImages.length + validFiles.length >= maxAllowedProductImageCount.value) {
+      ElMessage.warning('受详情图片总数限制，当前无法再添加更多耗材图片')
+      break
+    }
+    validFiles.push(file)
+  }
+  for (const file of validFiles) {
+    const uid = imageUid++
+    const blobUrl = URL.createObjectURL(file)
+    form.productImages.push({ uid, file, previewUrl: blobUrl, uploading: true })
+    formIsDirty.value = true
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const res = await uploadConsumablesImageApi(formData)
+      const index = form.productImages.findIndex(item => item.uid === uid)
+      if (index !== -1) {
+        Object.assign(form.productImages[index], { id: res.id, file: null, previewUrl: res.url, uploading: false })
+      }
+    } catch {
+      const index = form.productImages.findIndex(item => item.uid === uid)
+      if (index !== -1) form.productImages.splice(index, 1)
+    } finally {
+      URL.revokeObjectURL(blobUrl)
+      formRef.value?.validateField('productImages').catch(() => {})
+    }
   }
 }
 
-function removeImage() {
-  if (form.image && form.image.startsWith('blob:')) {
-    URL.revokeObjectURL(form.image)
-  }
-  form.image = ''
-  form.coverFileId = null
+function removeProductImage(index) {
+  const target = form.productImages[index]
+  if (target?.previewUrl?.startsWith('blob:')) URL.revokeObjectURL(target.previewUrl)
+  form.productImages.splice(index, 1)
   formIsDirty.value = true
+  formRef.value?.validateField('productImages').catch(() => {})
 }
 
 // ====================== 耗材详情图片上传（最多9张，去重、预览、删除、释放内存） ======================
-const MAX_DETAIL_COUNT = 9
-
 function triggerDetailUpload() {
   detailFileInputRef.value.click()
 }
@@ -375,9 +403,9 @@ function triggerDetailUpload() {
 async function handleDetailUpload(event) {
   const files = Array.from(event.target.files)
   event.target.value = ''
-  const remaining = MAX_DETAIL_COUNT - form.detailImages.length
+  const remaining = maxDetailImageCount.value - form.detailImages.length
   if (remaining <= 0) {
-    ElMessage.warning(`最多只能上传${MAX_DETAIL_COUNT}张图片`)
+    ElMessage.warning(`当前最多只能上传${maxDetailImageCount.value}张详情图片`)
     return
   }
   // 收集本轮通过校验的文件（保留原有 9 张上限、去重、类型/大小校验逻辑）
@@ -400,8 +428,8 @@ async function handleDetailUpload(event) {
       continue
     }
     // 4. 超过9张上限拦截
-    if (form.detailImages.length + toUpload.length >= MAX_DETAIL_COUNT) {
-      ElMessage.warning(`最多只能上传${MAX_DETAIL_COUNT}张图片，超出部分已忽略`)
+    if (form.detailImages.length + toUpload.length >= maxDetailImageCount.value) {
+      ElMessage.warning(`当前最多只能上传${maxDetailImageCount.value}张详情图片，超出部分已忽略`)
       break
     }
     toUpload.push(file)
@@ -410,7 +438,7 @@ async function handleDetailUpload(event) {
   formIsDirty.value = true
   // 逐个上传：先加入列表用 blob 即时预览，上传成功后用远程 url 替换并释放临时 blob
   for (const file of toUpload) {
-    const uid = detailUid++
+    const uid = imageUid++
     const blobUrl = URL.createObjectURL(file)
     form.detailImages.push({ uid, file, previewUrl: blobUrl, uploading: true })
     try {
@@ -435,6 +463,7 @@ async function handleDetailUpload(event) {
       URL.revokeObjectURL(blobUrl)
     }
   }
+  formRef.value?.validateField('detailImages').catch(() => {})
 }
 
 // 删除详情图片，仅本地 blob 预览需释放内存，远程回显 url 不处理
@@ -445,9 +474,11 @@ function removeDetailImage(idx) {
   }
   form.detailImages.splice(idx, 1)
   formIsDirty.value = true
+  formRef.value?.validateField('detailImages').catch(() => {})
 }
 
-function handleImagePreview() {
+function handleImagePreview(url) {
+  previewImageUrl.value = url
   previewVisible.value = true
 }
 
@@ -457,7 +488,7 @@ async function handleSubmit() {
   await formRef.value.validate(async valid => {
     if (!valid) return
     // 图片上传完成校验：避免提交尚未上传完成的 blob url
-    if (form.image && form.image.startsWith('blob:')) {
+    if (form.productImages.some(i => i.uploading || i.previewUrl?.startsWith('blob:'))) {
       ElMessage.warning('耗材图片正在上传，请稍候')
       return
     }
@@ -472,6 +503,8 @@ async function handleSubmit() {
         ElMessage.warning('请选择后端已启用的耗材分类')
         return
       }
+      const [coverImage, ...carouselExtras] = form.productImages
+      const storedDetailImages = [...carouselExtras, ...form.detailImages]
       const submitData = {
         name: form.name,
         category: form.category,
@@ -479,12 +512,12 @@ async function handleSubmit() {
         unit: form.unit,
         stock: form.stock,
         price: form.price,
-        image: form.image,
-        coverFileId: form.coverFileId,
+        image: coverImage.previewUrl,
+        coverFileId: coverImage.id,
         remark: form.remark,
         // detailImages 转为 url 数组
-        detailImages: form.detailImages.map(item => ({ id: item.id, url: item.previewUrl })),
-        detailFileIds: form.detailImages.map(item => item.id).filter(Boolean),
+        detailImages: storedDetailImages.map(item => ({ id: item.id, url: item.previewUrl })),
+        detailFileIds: storedDetailImages.map(item => item.id).filter(Boolean),
         categoryId,
         enabled: form.enabled,
         sortOrder: form.sortOrder
