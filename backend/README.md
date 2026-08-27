@@ -101,7 +101,7 @@ $env:JWT_SECRET="至少32字节的随机密钥"
 | GET | `/api/v1/files/access/{id}` | 短时签名 | 图片组件通过签名地址读取文件 |
 | POST | `/api/v1/orders/upload` | 已登录用户 | 兼容现有订单页面的上传入口 |
 
-当前支持 JPEG、PNG、GIF 和 WebP，服务端同时校验文件魔数、扩展名、声明 MIME 和大小；对象键由服务端随机生成。开发默认存放在 `FILE_LOCAL_ROOT`，`FileStorage` 接口用于生产环境接入对象存储实现。私有订单、施工和评价图片读取前会校验业务权限；签名地址默认 5 分钟失效。生产必须设置 `FILE_ACCESS_SECRET`（至少 32 字节），并确保上传目录不由 Web 服务器直接公开。
+当前支持 JPEG、PNG、GIF、WebP 图片以及 MP4、MOV、M4V 视频，服务端同时校验文件魔数、扩展名、声明 MIME 和大小。默认图片上限为 10MB、视频上限为 200MB，可分别通过 `FILE_MAX_IMAGE_BYTES` 和 `FILE_MAX_BYTES` 调整；Spring multipart 层还需同步配置 `FILE_MAX_SIZE` 与 `FILE_MAX_REQUEST_SIZE`。对象键由服务端随机生成。开发默认存放在 `FILE_LOCAL_ROOT`，`FileStorage` 接口用于生产环境接入对象存储实现。私有订单、施工和评价媒体读取前会校验业务权限；签名地址默认 5 分钟失效。生产必须设置 `FILE_ACCESS_SECRET`（至少 32 字节），并确保上传目录不由 Web 服务器直接公开。
 
 ## 订单评价接口
 
