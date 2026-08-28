@@ -161,11 +161,8 @@ export const evaluationApi = {
 		return res
 	},
 	getReviewedIds: () => http.get('/orders/evaluation/ids'),
-	submit: async (data) => {
-		const res = await http.post('/orders/evaluation', data)
-		if (res.code === 200 && res.data) res.data = normalizeEvaluation(res.data)
-		return res
-	}
+	// 提交成功仅返回提交凭证；评价正文、评分、标签和图片仅管理员查询接口可见。
+	submit: (data) => http.post('/orders/evaluation', data)
 }
 
 // ====================== 耗材相关 ======================

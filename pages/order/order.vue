@@ -92,8 +92,14 @@
 				<text class="info-value highlight">{{ order.visitTime }}</text>
 			</view>
 			<view class="action-row" v-if="canReview(order) || isReviewed(order)">
-				<view class="evaluate-btn" v-if="canReview(order)" @click.stop="goEvaluate(order)">
-					<text>去评价</text>
+				<view class="review-entry" v-if="canReview(order)">
+					<view class="review-entry-copy">
+						<text class="review-entry-title">请对该师傅做出真实的评价</text>
+						<text class="review-entry-tip">评价内容仅管理员可见，安装师傅不可见</text>
+					</view>
+					<view class="evaluate-btn" @click.stop="goEvaluate(order)">
+						<text>去评价</text>
+					</view>
 				</view>
 				<view class="reviewed-label" v-else>
 					<up-icon name="checkmark-circle" size="16" color="#16a34a"></up-icon>
@@ -590,9 +596,38 @@ $text-light: #94a3b8;
 .action-row {
 	display: flex;
 	justify-content: flex-end;
+	align-items: center;
 	padding-top: 20rpx;
 	margin-top: 16rpx;
 	border-top: 1rpx solid #f0f0f0;
+}
+
+.review-entry {
+	width: 100%;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 18rpx;
+}
+
+.review-entry-copy {
+	display: flex;
+	flex: 1;
+	min-width: 0;
+	flex-direction: column;
+}
+
+.review-entry-title {
+	font-size: 23rpx;
+	font-weight: 600;
+	color: $text-main;
+}
+
+.review-entry-tip {
+	font-size: 19rpx;
+	line-height: 1.45;
+	color: $text-light;
+	margin-top: 6rpx;
 }
 
 .evaluate-btn {
@@ -600,6 +635,7 @@ $text-light: #94a3b8;
 	border-radius: 28rpx;
 	border: 2rpx solid $primary;
 	background: #fff;
+	flex-shrink: 0;
 
 	text {
 		font-size: 26rpx;

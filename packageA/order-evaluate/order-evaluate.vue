@@ -19,27 +19,26 @@
 			</view>
 		</view>
 
-		<template v-if="existingEvaluation">
-			<view class="section-card">
-				<view class="section-title">评价已提交</view>
-				<view class="star-row readonly">
-					<up-icon v-for="index in 5" :key="index" :name="index <= existingEvaluation.score ? 'star-fill' : 'star'"
-						size="34" :color="index <= existingEvaluation.score ? '#f59e0b' : '#cbd5e1'"></up-icon>
+		<template v-if="submitted">
+			<view class="section-card submission-success">
+				<view class="success-icon"><up-icon name="checkmark" size="34" color="#16a34a"></up-icon></view>
+				<text class="success-title">评价已提交</text>
+				<text class="success-desc">感谢您的真实反馈，评价内容已交由管理员查看</text>
+				<view class="success-privacy">
+					<up-icon name="lock" size="16" color="#64748b"></up-icon>
+					<text>评价内容仅管理员可见，安装师傅不可见</text>
 				</view>
-				<view class="label-list" v-if="existingEvaluation.labels.length">
-					<text class="label-item active" v-for="label in existingEvaluation.labels" :key="label">{{ label }}</text>
-				</view>
-				<text class="review-content">{{ existingEvaluation.content }}</text>
-				<view class="image-grid" v-if="existingEvaluation.images.length">
-					<view class="image-item" v-for="(image, index) in existingEvaluation.images" :key="image">
-						<image class="preview-img" :src="image" mode="aspectFill" @click="previewExisting(index)"></image>
-					</view>
-				</view>
-				<text class="review-time">提交时间：{{ existingEvaluation.createTime }}</text>
 			</view>
 		</template>
 
 		<template v-else>
+			<view class="privacy-notice">
+				<view class="privacy-icon"><up-icon name="lock" size="20" color="#0b63ce"></up-icon></view>
+				<view class="privacy-copy">
+					<text class="privacy-title">请对该师傅做出真实的评价</text>
+					<text class="privacy-desc">评价内容仅管理员可见，安装师傅不可见</text>
+				</view>
+			</view>
 			<view class="section-card">
 				<view class="section-title required-title">服务评分</view>
 				<view class="star-row">
@@ -112,7 +111,7 @@ import { getAuthToken } from '@/utils/auth-session.js'
 
 const orderId = ref('')
 const orderInfo = ref({})
-const existingEvaluation = ref(null)
+const submitted = ref(false)
 const score = ref(5)
 const liked = ref(true)
 const content = ref('')
@@ -144,10 +143,6 @@ const toggleLabel = (label) => {
 const previewImages = (index) => {
 	const urls = images.value.map(image => image.url)
 	uni.previewImage({ current: urls[index], urls })
-}
-
-const previewExisting = (index) => {
-	uni.previewImage({ current: existingEvaluation.value.images[index], urls: existingEvaluation.value.images })
 }
 
 const removeImage = (index) => images.value.splice(index, 1)
@@ -189,7 +184,7 @@ const submitEvaluation = () => {
 	}
 	uni.showModal({
 		title: '确认提交评价',
-		content: '评价提交后不能修改或重复提交，请确认内容无误。',
+		content: '评价提交后不能修改或重复提交。评价内容仅管理员可见，安装师傅不可见。',
 		success: async ({ confirm }) => {
 			if (!confirm) return
 			submitting.value = true
@@ -203,7 +198,7 @@ const submitEvaluation = () => {
 					fileIds: images.value.map(image => image.id)
 				})
 				if (result.code !== 200) return
-				existingEvaluation.value = result.data
+				submitted.value = true
 				allowLeave.value = true
 				uni.showToast({ title: '评价成功', icon: 'success' })
 			} finally {
@@ -214,7 +209,7 @@ const submitEvaluation = () => {
 }
 
 onBackPress(() => {
-	if (allowLeave.value || existingEvaluation.value || !hasDraft.value || submitting.value) return false
+	if (allowLeave.value || submitted.value || !hasDraft.value || submitting.value) return false
 	uni.showModal({
 		title: '离开评价页面？',
 		content: '尚未提交的评分、文字和图片将不会保存。',
@@ -231,19 +226,22 @@ const loadPage = async () => {
 	loading.value = true
 	loadFailed.value = false
 	try {
-		const [orderResult, userResult, evaluationResult] = await Promise.all([
+		const [orderResult, userResult] = await Promise.all([
 			orderApi.getDetail(orderId.value),
-			authApi.getUserInfo(),
-			evaluationApi.getByOrder(orderId.value, { loading: false })
+			authApi.getUserInfo()
 		])
-		if (orderResult.code !== 200 || userResult.code !== 200 || evaluationResult.code !== 200) {
+		if (orderResult.code !== 200 || userResult.code !== 200) {
 			loadFailed.value = true
 			return
 		}
 		orderInfo.value = orderResult.data || {}
-		existingEvaluation.value = evaluationResult.data || null
-		if (existingEvaluation.value) return
 		const role = userResult.data?.role || ''
+		if (orderInfo.value.statusCode === 'REVIEWED') {
+			allowLeave.value = true
+			uni.showToast({ title: '评价已提交，仅管理员可见', icon: 'none' })
+			setTimeout(() => uni.navigateBack(), 1200)
+			return
+		}
 		if (!['customer', 'dealer'].includes(role) || orderInfo.value.statusCode !== 'PENDING_REVIEW') {
 			allowLeave.value = true
 			uni.showToast({ title: '当前订单不可评价', icon: 'none' })
@@ -286,6 +284,11 @@ $text-light: #94a3b8;
 .order-name { font-size: 29rpx; font-weight: 650; color: $text-main; }
 .order-product { font-size: 25rpx; color: $text-sub; margin-top: 7rpx; }
 .order-no { font-size: 22rpx; color: $text-light; margin-top: 8rpx; }
+.privacy-notice { display: flex; align-items: center; margin: 18rpx 24rpx 0; padding: 22rpx 24rpx; border-radius: 18rpx; background: #eef6ff; border: 1rpx solid #d7e9ff; }
+.privacy-icon { width: 58rpx; height: 58rpx; border-radius: 16rpx; background: #fff; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.privacy-copy { display: flex; flex-direction: column; min-width: 0; margin-left: 16rpx; }
+.privacy-title { font-size: 25rpx; font-weight: 600; color: $text-main; }
+.privacy-desc { font-size: 21rpx; color: $text-sub; margin-top: 7rpx; }
 .section-title-wrap { display: flex; align-items: center; justify-content: space-between; margin-bottom: 22rpx; }
 .section-title { font-size: 30rpx; font-weight: 650; color: $text-main; margin-bottom: 22rpx; }
 .section-title-wrap .section-title { margin-bottom: 0; }
@@ -311,8 +314,11 @@ $text-light: #94a3b8;
 .image-add text { margin-top: 8rpx; }
 .image-delete { position: absolute; top: 0; right: 0; width: 42rpx; height: 42rpx; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; border-radius: 0 0 0 12rpx; }
 .upload-progress { display: block; margin-top: 14rpx; font-size: 23rpx; color: $primary; }
-.review-content { display: block; margin-top: 22rpx; font-size: 27rpx; line-height: 1.7; color: $text-main; }
-.review-time { display: block; margin-top: 22rpx; font-size: 22rpx; color: $text-light; }
+.submission-success { display: flex; flex-direction: column; align-items: center; padding: 54rpx 32rpx; text-align: center; }
+.success-icon { width: 88rpx; height: 88rpx; border-radius: 50%; background: #dcfce7; display: flex; align-items: center; justify-content: center; }
+.success-title { margin-top: 22rpx; font-size: 31rpx; font-weight: 650; color: $text-main; }
+.success-desc { margin-top: 12rpx; font-size: 24rpx; line-height: 1.6; color: $text-sub; }
+.success-privacy { display: flex; align-items: center; gap: 8rpx; margin-top: 24rpx; padding: 12rpx 20rpx; border-radius: 24rpx; background: #f1f5f9; font-size: 22rpx; color: $text-sub; }
 .bottom-space { height: 130rpx; }
 .submit-bar { position: fixed; left: 0; right: 0; bottom: 0; padding: 18rpx 24rpx calc(18rpx + env(safe-area-inset-bottom)); background: #fff; box-shadow: 0 -4rpx 18rpx rgba(15,23,42,.06); }
 .submit-btn { height: 88rpx; border-radius: 44rpx; background: linear-gradient(135deg,#3b8eea,#0b63ce); display: flex; align-items: center; justify-content: center; }

@@ -54,20 +54,30 @@
 			</view>
 		</view>
 
-		<!-- ═══ 安装师傅耗材申请 ═══ -->
-		<view class="section-card" v-if="isInstaller">
+		<!-- ═══ 安装师傅耗材申请：清单与备注属于同一业务模块 ═══ -->
+		<view class="section-card material-request-card" v-if="isInstaller">
 			<view class="section-header">
 				<view class="section-title-wrap">
-					<text class="required" v-if="!materialReadonly">*</text>
-					<text class="section-title">耗材清单</text>
+					<view class="section-title-icon"><up-icon name="bag-fill" size="18" color="#0b63ce"></up-icon></view>
+					<view class="section-title-copy">
+						<text class="section-title">耗材申请</text>
+						<text class="section-subtitle">填写本次施工所需耗材及申请说明</text>
+					</view>
 				</view>
 				<view class="add-btn" @click="openToolPopup" v-if="!materialReadonly">
 					<up-icon name="plus" size="14" color="#fff"></up-icon>
-					<text>添加</text>
+					<text>添加耗材</text>
 				</view>
-				<text v-else-if="materialRequest" class="tool-qty-text">{{ materialRequest.statusLabel || materialRequest.status }}</text>
+				<text v-else-if="materialRequest" class="material-status">{{ materialRequest.statusLabel || materialRequest.status }}</text>
 			</view>
 
+			<view class="material-subheader">
+				<view class="material-subtitle-wrap">
+					<text class="required" v-if="!materialReadonly">*</text>
+					<text class="material-subtitle">耗材清单</text>
+				</view>
+				<text class="material-count" v-if="toolList.length">共 {{ toolList.length }} 种</text>
+			</view>
 			<view class="tool-list" v-if="toolList.length > 0">
 				<view class="tool-item" v-for="(tool, index) in toolList" :key="index">
 					<view class="tool-index">{{ index + 1 }}</view>
@@ -98,26 +108,23 @@
 				<text class="tool-empty-text" v-else>暂无耗材记录</text>
 			</view>
 
-			<view class="material-submit" v-if="!materialReadonly && toolList.length > 0"
-				:class="{ disabled: submitting }" @click="handleSubmit">
-				<text>{{ submitting ? '提交中...' : '提交耗材申请' }}</text>
-			</view>
-		</view>
-
-		<!-- ═══ 耗材申请备注 ═══ -->
-		<view class="section-card" v-if="isInstaller">
-			<view class="section-header">
-				<view class="section-title-wrap">
-					<text class="section-title">申请备注</text>
-				</view>
+			<view class="material-divider"></view>
+			<view class="material-subheader material-remark-header">
+				<text class="material-subtitle">申请备注</text>
+				<text class="material-optional">选填</text>
 			</view>
 			<view class="textarea-wrap" v-if="!materialReadonly">
-				<textarea class="complete-textarea" v-model="materialRemark" placeholder="选填：请填写耗材申请说明"
+				<textarea class="complete-textarea material-remark-input" v-model="materialRemark" placeholder="补充用途、施工位置或其他申请说明"
 					placeholder-class="placeholder-style" maxlength="500"></textarea>
 				<text class="text-count">{{ materialRemark.length }}/500</text>
 			</view>
-			<view class="complete-readonly" v-else>
+			<view class="complete-readonly material-remark-readonly" v-else>
 				<text class="complete-text">{{ materialRemark || '暂无申请备注' }}</text>
+			</view>
+
+			<view class="material-submit" v-if="!materialReadonly && toolList.length > 0"
+				:class="{ disabled: submitting }" @click="handleSubmit">
+				<text>{{ submitting ? '提交中...' : '提交耗材申请' }}</text>
 			</view>
 		</view>
 
@@ -154,36 +161,33 @@
 			</view>
 		</view>
 
-		<!-- ═══ 客户评价 ═══ -->
-		<view class="section-card">
+		<!-- ═══ 客户评价：内容仅后台管理员可见 ═══ -->
+		<view class="section-card review-private-card" v-if="isReviewer && (canReview || hasReviewed)">
 			<view class="section-header">
-				<view class="section-title-wrap"><text class="section-title">客户评价</text></view>
+				<view class="section-title-wrap"><text class="section-title">服务评价</text></view>
 				<view class="review-action" v-if="canReview" @click="goEvaluate"><text>去评价</text></view>
 			</view>
-			<view class="review-content" v-if="evaluation">
-				<view class="review-score">
-					<up-icon v-for="index in 5" :key="index" :name="index <= evaluation.score ? 'star-fill' : 'star'"
-						size="20" :color="index <= evaluation.score ? '#f59e0b' : '#cbd5e1'"></up-icon>
-					<text>{{ evaluation.score }}.0</text>
-					<text class="review-time">{{ evaluation.createTime }}</text>
-				</view>
-				<view class="review-labels" v-if="evaluation.labels.length">
-					<text v-for="label in evaluation.labels" :key="label">{{ label }}</text>
-				</view>
-				<text class="review-text">{{ evaluation.content }}</text>
-				<view class="image-grid" v-if="evaluation.images.length">
-					<view class="image-item" v-for="(image, index) in evaluation.images" :key="image">
-						<image class="preview-img" :src="image" mode="aspectFill" @click="previewEvaluationImages(index)"></image>
+			<view class="review-private-content" v-if="canReview">
+				<view class="review-private-icon"><up-icon name="edit-pen" size="26" color="#0b63ce"></up-icon></view>
+				<view class="review-private-copy">
+					<text class="review-private-title">服务已完成，期待您的评价</text>
+					<text class="review-private-desc">请对该师傅做出真实的评价</text>
+					<view class="review-privacy-tip">
+						<up-icon name="lock" size="14" color="#64748b"></up-icon>
+						<text>评价内容仅管理员可见，安装师傅不可见</text>
 					</view>
 				</view>
 			</view>
-			<view class="tool-empty review-empty" v-else-if="canReview">
-				<up-icon name="edit-pen" size="42" color="#94a3b8"></up-icon>
-				<text class="tool-empty-text">服务已完成，期待您的评价</text>
-			</view>
-			<view class="tool-empty review-empty" v-else>
-				<up-icon name="chat" size="42" color="#cbd5e1"></up-icon>
-				<text class="tool-empty-text">暂无评价</text>
+			<view class="review-private-content submitted" v-else-if="hasReviewed">
+				<view class="review-private-icon success"><up-icon name="checkmark" size="24" color="#16a34a"></up-icon></view>
+				<view class="review-private-copy">
+					<text class="review-private-title">评价已提交</text>
+					<text class="review-private-desc">感谢您的真实反馈，评价内容已交由管理员查看</text>
+					<view class="review-privacy-tip">
+						<up-icon name="lock" size="14" color="#64748b"></up-icon>
+						<text>评价内容不会向安装师傅展示</text>
+					</view>
+				</view>
 			</view>
 		</view>
 
@@ -202,24 +206,59 @@
 					placeholder-class="placeholder-style" maxlength="2000"></textarea>
 				<text class="text-count">{{ progressDescription.length }}/2000</text>
 			</view>
-			<view class="upload-heading">
-				<text>{{ progressType === 'COMPLETION' ? '完工图片/视频（至少1个）' : '施工图片/视频（选填）' }}</text>
-				<text class="upload-tip">合计最多9个，图片≤10MB，视频≤200MB</text>
-			</view>
-			<view class="image-grid">
-				<view class="image-item" v-for="(media, index) in progressImages" :key="media.id">
-					<video v-if="media.mimeType?.startsWith('video/')" class="preview-img" :src="media.url" controls object-fit="cover"></video>
-					<image v-else class="preview-img" :src="media.url" mode="aspectFill" @click="previewProgressImages(index)"></image>
-					<view class="image-delete" @click.stop="deleteProgressImage(index)">
-						<up-icon name="close" size="12" color="#fff"></up-icon>
+			<view class="upload-panel">
+				<view class="upload-heading">
+					<view class="upload-title-group">
+						<view class="upload-title-icon"><up-icon name="camera-fill" size="20" color="#0b63ce"></up-icon></view>
+						<view class="upload-title-copy">
+							<view class="upload-title-line">
+								<text class="upload-title">施工附件</text>
+								<text class="upload-required" v-if="progressType === 'COMPLETION'">至少上传1个</text>
+								<text class="upload-optional" v-else>选填</text>
+							</view>
+							<text class="upload-subtitle">图片与视频合计最多9个，可全选图片或全选视频</text>
+						</view>
+					</view>
+					<text class="upload-count">{{ progressImages.length }}/9</text>
+				</view>
+				<view class="upload-limit-row">
+					<text class="upload-limit-pill">图片 ≤ 10MB</text>
+					<text class="upload-limit-pill">视频 ≤ 200MB</text>
+					<text class="upload-limit-pill">最多 9 个</text>
+				</view>
+				<view class="upload-media-grid">
+					<view class="upload-media-item" v-for="(media, index) in progressImages" :key="media.uid || media.id">
+						<video v-if="media.mimeType?.startsWith('video/')" class="preview-img" :src="media.localPath || media.url"
+							controls object-fit="cover" :show-center-play-btn="media.status === 'success'"></video>
+						<image v-else class="preview-img" :src="media.localPath || media.url" mode="aspectFill"
+							@click="previewProgressImage(media)"></image>
+						<view class="media-status-mask" v-if="media.status === 'queued' || media.status === 'uploading'">
+							<up-loading-icon mode="circle" color="#ffffff" size="22"></up-loading-icon>
+							<text>{{ media.status === 'queued' ? '等待上传' : `${media.progress || 0}%` }}</text>
+						</view>
+						<view class="media-status-mask failed" v-else-if="media.status === 'failed'" @click.stop="retryProgressMedia(media)">
+							<up-icon name="reload" size="22" color="#ffffff"></up-icon>
+							<text>点击重试</text>
+						</view>
+						<view class="media-type-badge" v-if="media.mimeType?.startsWith('video/')">视频</view>
+						<view class="image-delete" @click.stop="deleteProgressImage(index)">
+							<up-icon name="close" size="12" color="#fff"></up-icon>
+						</view>
+					</view>
+					<view class="upload-add-card" v-if="progressImages.length < 9" :class="{ disabled: isUploadingProgressMedia }" @click="chooseProgressMedia">
+						<view class="upload-add-icon"><up-icon name="plus" size="28" color="#0b63ce"></up-icon></view>
+						<text class="add-text">添加附件</text>
+						<text class="add-remain">还可添加 {{ 9 - progressImages.length }} 个</text>
 					</view>
 				</view>
-				<view class="image-add" v-if="progressImages.length < 9" @click="chooseProgressMedia">
-					<up-icon name="plus" size="32" color="#ccc"></up-icon>
-					<text class="add-text">图片/视频</text>
+				<view class="upload-summary" v-if="uploadProgress || failedProgressMediaCount">
+					<up-icon :name="failedProgressMediaCount ? 'error-circle' : 'clock'" size="16"
+						:color="failedProgressMediaCount ? '#dc2626' : '#0b63ce'"></up-icon>
+					<text :class="{ error: failedProgressMediaCount }">
+						{{ failedProgressMediaCount ? `${failedProgressMediaCount}个附件上传失败，请点击缩略图重试或删除` : uploadProgress }}
+					</text>
 				</view>
 			</view>
-			<text class="upload-progress" v-if="uploadProgress">{{ uploadProgress }}</text>
 			<view class="inline-submit" :class="{ disabled: !canSubmitProgress || submittingProgress }" @click="handleProgressSubmit">
 				<text>{{ submittingProgress ? '提交中...' : (progressType === 'COMPLETION' ? '确认完工' : '提交进度') }}</text>
 			</view>
@@ -315,7 +354,6 @@
 	orderApi,
 	consumablesApi,
 	authApi,
-	evaluationApi,
 	resolveMediaUrl
 	} from '@/api/api.js'
 	import { getAuthToken } from '@/utils/auth-session.js'
@@ -353,9 +391,10 @@
 	const materialRequest = ref(null)
 	// 耗材申请仅允许指派师傅提交一次；重复提交由服务端幂等/冲突规则兜底。
 	const userRole = ref('')
-	const evaluation = ref(null)
 	const isInstaller = computed(() => userRole.value === 'installer')
-	const canReview = computed(() => ['customer', 'dealer'].includes(userRole.value) && orderInfo.value.statusCode === 'PENDING_REVIEW' && !evaluation.value)
+	const isReviewer = computed(() => ['customer', 'dealer'].includes(userRole.value))
+	const canReview = computed(() => isReviewer.value && orderInfo.value.statusCode === 'PENDING_REVIEW')
+	const hasReviewed = computed(() => isReviewer.value && orderInfo.value.statusCode === 'REVIEWED')
 	const materialReadonly = computed(() => !isInstaller.value || !['待上门', '处理中'].includes(orderInfo.value.status) || Boolean(materialRequest.value))
 
 const statusClass = computed(() => {
@@ -397,12 +436,17 @@ const statusClass = computed(() => {
 	const progressImages = ref([])
 	const uploadProgress = ref('')
 	const submittingProgress = ref(false)
+	let progressMediaUid = 0
 	const allowLeave = ref(false)
 	const canOperateProgress = computed(() => isInstaller.value && ['待上门', '处理中'].includes(orderInfo.value.status))
 	const hasMaterialDraft = computed(() => !materialReadonly.value && (toolList.value.length > 0 || Boolean(materialRemark.value.trim())))
+	const uploadedProgressMediaCount = computed(() => progressImages.value.filter(media => media.status === 'success' && media.id).length)
+	const failedProgressMediaCount = computed(() => progressImages.value.filter(media => media.status === 'failed').length)
+	const isUploadingProgressMedia = computed(() => progressImages.value.some(media => media.status === 'queued' || media.status === 'uploading'))
 	const canSubmitProgress = computed(() => {
 		if (!progressDescription.value.trim()) return false
-		return progressType.value !== 'COMPLETION' || progressImages.value.length > 0
+		if (isUploadingProgressMedia.value || failedProgressMediaCount.value > 0) return false
+		return progressType.value !== 'COMPLETION' || uploadedProgressMediaCount.value > 0
 	})
 
 	const previewRecordImages = (images, index) => {
@@ -411,38 +455,94 @@ const statusClass = computed(() => {
 		uni.previewImage({ current: urls[index], urls })
 	}
 
-	const previewEvaluationImages = (index) => {
-		uni.previewImage({ current: evaluation.value.images[index], urls: evaluation.value.images })
-	}
-
 	const goEvaluate = () => {
 		uni.navigateTo({ url: `/packageA/order-evaluate/order-evaluate?id=${orderId.value}` })
 	}
 
-	const refreshOrderEvaluation = async () => {
+	const refreshOrderStatus = async () => {
 		if (!orderId.value) return
-		const [orderRes, evaluationRes] = await Promise.all([
-			orderApi.getDetail(orderId.value),
-			evaluationApi.getByOrder(orderId.value, { loading: false })
-		])
+		const orderRes = await orderApi.getDetail(orderId.value, { loading: false })
 		if (orderRes.code === 200) orderInfo.value = orderRes.data || {}
-		if (evaluationRes.code === 200) evaluation.value = evaluationRes.data || null
 	}
 
-	onShow(() => refreshOrderEvaluation())
+	onShow(() => refreshOrderStatus())
 
-	const previewProgressImages = (index) => {
-		const urls = progressImages.value.map(image => image.url)
-		uni.previewImage({ current: urls[index], urls })
+	const previewProgressImage = (media) => {
+		if (media.mimeType?.startsWith('video/')) return
+		const imageItems = progressImages.value.filter(item => !item.mimeType?.startsWith('video/') && item.status !== 'failed')
+		const urls = imageItems.map(item => item.localPath || item.url).filter(Boolean)
+		const current = media.localPath || media.url
+		if (current && urls.includes(current)) uni.previewImage({ current, urls })
 	}
 
 	const deleteProgressImage = (index) => {
 		progressImages.value.splice(index, 1)
 	}
 
+	const createProgressMediaDraft = (selected) => {
+		const localPath = selected.tempFilePath || selected.path || ''
+		const isVideo = selected.fileType === 'video' || /\.(mp4|mov|m4v)$/i.test(localPath)
+		progressMediaUid += 1
+		return {
+			uid: `progress-media-${Date.now()}-${progressMediaUid}`,
+			id: null,
+			url: localPath,
+			localPath,
+			mimeType: isVideo ? 'video/mp4' : 'image/jpeg',
+			status: 'queued',
+			progress: 0,
+			error: ''
+		}
+	}
+
+	const uploadProgressMedia = async (media) => {
+		const target = progressImages.value.find(item => item.uid === media.uid)
+		if (!target) return false
+		target.status = 'uploading'
+		target.progress = 0
+		target.error = ''
+		const uploadRes = await orderApi.uploadMedia(target.localPath, {}, {
+			loading: false,
+			timeout: 10 * 60 * 1000,
+			showError: false,
+			onProgress: event => {
+				const current = progressImages.value.find(item => item.uid === media.uid)
+				if (!current) return
+				current.progress = Math.max(0, Math.min(100, Number(event.progress || 0)))
+				uploadProgress.value = `正在上传附件（${uploadedProgressMediaCount.value}/${progressImages.value.length} 已完成）`
+			}
+		})
+		const current = progressImages.value.find(item => item.uid === media.uid)
+		if (!current) return false
+		const file = uploadRes.code === 200 ? uploadRes.data : null
+		if (file && file.id && file.url) {
+			current.id = Number(file.id)
+			current.url = resolveMediaUrl(file.url)
+			current.mimeType = file.mimeType || current.mimeType
+			current.status = 'success'
+			current.progress = 100
+			current.error = ''
+			return true
+		}
+		current.status = 'failed'
+		current.error = uploadRes.msg || '文件上传失败，请重试'
+		return false
+	}
+
+	const retryProgressMedia = async (media) => {
+		if (isUploadingProgressMedia.value || media.status !== 'failed') return
+		uploadProgress.value = '正在重新上传附件'
+		await uploadProgressMedia(media)
+		uploadProgress.value = ''
+	}
+
 	const chooseProgressMedia = () => {
 		const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 		const MAX_VIDEO_BYTES = 200 * 1024 * 1024
+		if (isUploadingProgressMedia.value) {
+			uni.showToast({ title: '请等待当前附件上传完成', icon: 'none' })
+			return
+		}
 		const remaining = 9 - progressImages.value.length
 		if (remaining <= 0) return
 		uni.chooseMedia({
@@ -453,49 +553,28 @@ const statusClass = computed(() => {
 			camera: 'back',
 			success: async (res) => {
 				const files = res.tempFiles || []
-				let failed = 0
 				let oversized = 0
-				let lastUploadError = ''
-				for (let index = 0; index < files.length; index++) {
-					const selected = files[index]
-					const isVideo = selected.fileType === 'video' || /\.(mp4|mov|m4v)$/i.test(selected.tempFilePath || '')
+				const accepted = []
+				for (const selected of files) {
+					const localPath = selected.tempFilePath || selected.path || ''
+					const isVideo = selected.fileType === 'video' || /\.(mp4|mov|m4v)$/i.test(localPath)
 					const maxBytes = isVideo ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES
 					if (Number(selected.size || 0) > maxBytes) {
 						oversized++
 						continue
 					}
-					uploadProgress.value = `正在上传 ${index + 1}/${files.length}`
-					const uploadRes = await orderApi.uploadMedia(selected.tempFilePath, {}, {
-						loading: false,
-						timeout: 10 * 60 * 1000,
-						showError: false,
-						onProgress: event => {
-							uploadProgress.value = `正在上传 ${index + 1}/${files.length}（${event.progress}%）`
-						}
-					})
-					const file = uploadRes.code === 200 ? uploadRes.data : null
-					if (file && file.id && file.url) {
-						progressImages.value.push({
-							id: Number(file.id),
-							url: resolveMediaUrl(file.url),
-							mimeType: file.mimeType || (selected.fileType === 'video' ? 'video/mp4' : 'image/jpeg')
-						})
-					} else {
-						failed++
-						lastUploadError = uploadRes.msg || '文件上传失败，请重试'
-					}
+					if (localPath) accepted.push(createProgressMediaDraft(selected))
+				}
+				progressImages.value.push(...accepted)
+				for (let index = 0; index < accepted.length; index++) {
+					uploadProgress.value = `正在上传 ${index + 1}/${accepted.length}`
+					await uploadProgressMedia(accepted[index])
 				}
 				uploadProgress.value = ''
 				if (oversized) {
 					uni.showModal({
 						title: '文件过大',
 						content: `${oversized}个文件超过限制：图片不能超过10MB，视频不能超过200MB。`,
-						showCancel: false
-					})
-				} else if (failed) {
-					uni.showModal({
-						title: '文件上传未完成',
-						content: lastUploadError || `${failed}个文件上传失败，请重试`,
 						showCancel: false
 					})
 				}
@@ -518,9 +597,17 @@ const statusClass = computed(() => {
 			uni.showToast({ title: '请先提交或清空耗材申请', icon: 'none' })
 			return
 		}
+		if (isUploadingProgressMedia.value) {
+			uni.showToast({ title: '附件仍在上传，请稍候', icon: 'none' })
+			return
+		}
+		if (failedProgressMediaCount.value) {
+			uni.showToast({ title: '请重试或删除上传失败的附件', icon: 'none' })
+			return
+		}
 		if (!canSubmitProgress.value || submittingProgress.value) {
 			uni.showToast({
-				title: progressType.value === 'COMPLETION' && !progressImages.value.length ? '完工至少上传一张图片' : '请填写施工说明',
+				title: progressType.value === 'COMPLETION' && !uploadedProgressMediaCount.value ? '完工至少上传一个附件' : '请填写施工说明',
 				icon: 'none'
 			})
 			return
@@ -534,7 +621,7 @@ const statusClass = computed(() => {
 				try {
 					const payload = {
 						description: progressDescription.value.trim(),
-						fileIds: progressImages.value.map(image => image.id)
+						fileIds: progressImages.value.filter(media => media.status === 'success' && media.id).map(media => media.id)
 					}
 					const res = progressType.value === 'COMPLETION'
 						? await orderApi.complete(orderId.value, payload)
@@ -808,13 +895,12 @@ const statusClass = computed(() => {
 		detailError.value = null
 		try {
 			// 并行获取订单详情与当前用户角色
-			const [orderRes, userRes, progressRes, evaluationRes] = await Promise.all([
+			const [orderRes, userRes, progressRes] = await Promise.all([
 				orderApi.getDetail(orderId.value),
 				authApi.getUserInfo(),
-				orderApi.getProgress(orderId.value, { loading: false }),
-				evaluationApi.getByOrder(orderId.value, { loading: false })
+				orderApi.getProgress(orderId.value, { loading: false })
 			])
-			const failedResponse = [orderRes, userRes, progressRes, evaluationRes].find(res => res.code !== 200)
+			const failedResponse = [orderRes, userRes, progressRes].find(res => res.code !== 200)
 			if (failedResponse) {
 				setDetailError(failedResponse)
 				return
@@ -826,7 +912,6 @@ const statusClass = computed(() => {
 			const data = orderRes.data || {}
 			orderInfo.value = data
 			if (progressRes.code === 200) progressRecords.value = progressRes.data || []
-			if (evaluationRes.code === 200) evaluation.value = evaluationRes.data || null
 			if (userRole.value === 'installer') {
 				const materialsRes = await orderApi.getMaterials(orderId.value, { loading: false, silent: true })
 				// 后端以 404 表示该订单尚未提交耗材申请，此时应展示可填写的空表单。
@@ -1043,6 +1128,7 @@ const statusClass = computed(() => {
 	.section-title-wrap {
 		display: flex;
 		align-items: center;
+		min-width: 0;
 	}
 
 	.required {
@@ -1055,6 +1141,100 @@ const statusClass = computed(() => {
 		font-size: 30rpx;
 		font-weight: 600;
 		color: $text-main;
+	}
+
+	.material-request-card {
+		padding: 28rpx;
+
+		.section-header {
+			padding-bottom: 24rpx;
+			margin-bottom: 24rpx;
+			border-bottom: 1rpx solid #edf2f7;
+		}
+	}
+
+	.section-title-icon {
+		width: 58rpx;
+		height: 58rpx;
+		border-radius: 16rpx;
+		background: #eaf3ff;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+		margin-right: 16rpx;
+	}
+
+	.section-title-copy {
+		display: flex;
+		flex-direction: column;
+		min-width: 0;
+	}
+
+	.section-subtitle {
+		font-size: 21rpx;
+		line-height: 1.4;
+		color: $text-light;
+		margin-top: 5rpx;
+	}
+
+	.material-status {
+		padding: 8rpx 18rpx;
+		border-radius: 24rpx;
+		background: #fff7e6;
+		color: #d97706;
+		font-size: 23rpx;
+		font-weight: 500;
+		white-space: nowrap;
+	}
+
+	.material-subheader {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		margin-bottom: 18rpx;
+	}
+
+	.material-subtitle-wrap {
+		display: flex;
+		align-items: center;
+	}
+
+	.material-subtitle {
+		font-size: 27rpx;
+		font-weight: 600;
+		color: $text-main;
+	}
+
+	.material-count,
+	.material-optional {
+		font-size: 21rpx;
+		color: $text-light;
+		background: #f1f5f9;
+		padding: 6rpx 14rpx;
+		border-radius: 20rpx;
+	}
+
+	.material-divider {
+		height: 1rpx;
+		background: #edf2f7;
+		margin: 28rpx 0 24rpx;
+	}
+
+	.material-remark-header {
+		margin-bottom: 16rpx;
+	}
+
+	.material-remark-input {
+		height: 168rpx;
+		background: #f8fafc;
+		border: 1rpx solid #edf2f7;
+	}
+
+	.material-remark-readonly {
+		min-height: 96rpx;
+		background: #f8fafc;
+		border: 1rpx solid #edf2f7;
 	}
 
 	.upload-tip {
@@ -1350,26 +1530,204 @@ const statusClass = computed(() => {
 	.upload-heading {
 		display: flex;
 		align-items: center;
-		margin: 24rpx 0 16rpx;
-		font-size: 26rpx;
+		justify-content: space-between;
+		gap: 18rpx;
+	}
+
+	.upload-panel {
+		margin-top: 24rpx;
+		padding: 22rpx;
+		border: 2rpx solid #e2edf9;
+		border-radius: 20rpx;
+		background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+	}
+
+	.upload-title-group,
+	.upload-title-line,
+	.upload-limit-row,
+	.upload-summary {
+		display: flex;
+		align-items: center;
+	}
+
+	.upload-title-group {
+		min-width: 0;
+		gap: 14rpx;
+	}
+
+	.upload-title-icon {
+		width: 62rpx;
+		height: 62rpx;
+		border-radius: 18rpx;
+		background: #e7f2ff;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+	}
+
+	.upload-title-copy {
+		display: flex;
+		flex-direction: column;
+		min-width: 0;
+		gap: 4rpx;
+	}
+
+	.upload-title-line {
+		gap: 10rpx;
+		flex-wrap: wrap;
+	}
+
+	.upload-title {
+		font-size: 28rpx;
+		font-weight: 650;
 		color: $text-main;
 	}
 
-	.upload-progress {
-		display: block;
-		font-size: 24rpx;
+	.upload-required,
+	.upload-optional {
+		padding: 4rpx 12rpx;
+		border-radius: 18rpx;
+		font-size: 20rpx;
+	}
+
+	.upload-required {
+		background: #fff1f2;
+		color: #e11d48;
+	}
+
+	.upload-optional {
+		background: #eef2f7;
+		color: $text-sub;
+	}
+
+	.upload-subtitle {
+		font-size: 22rpx;
+		color: $text-light;
+	}
+
+	.upload-count {
+		padding: 8rpx 16rpx;
+		border-radius: 22rpx;
+		background: #e7f2ff;
+		font-size: 23rpx;
+		font-weight: 600;
 		color: $primary;
-		margin-top: 14rpx;
+		white-space: nowrap;
+	}
+
+	.upload-limit-row {
+		gap: 10rpx;
+		flex-wrap: wrap;
+		margin: 18rpx 0 20rpx;
+	}
+
+	.upload-limit-pill {
+		padding: 7rpx 13rpx;
+		border: 1rpx solid #dce8f5;
+		border-radius: 20rpx;
+		background: #fff;
+		font-size: 21rpx;
+		color: $text-sub;
+	}
+
+	.upload-media-grid {
+		display: grid;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		gap: 14rpx;
+	}
+
+	.upload-media-item,
+	.upload-add-card {
+		position: relative;
+		height: 184rpx;
+		border-radius: 16rpx;
+		overflow: hidden;
+		box-sizing: border-box;
+	}
+
+	.upload-media-item {
+		background: #e8eef5;
+		box-shadow: 0 4rpx 14rpx rgba(20, 54, 84, .08);
+	}
+
+	.upload-add-card {
+		border: 2rpx dashed #b7d2ef;
+		background: #f4f9ff;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 7rpx;
+
+		&.disabled {
+			opacity: .55;
+		}
+	}
+
+	.upload-add-icon {
+		width: 54rpx;
+		height: 54rpx;
+		border-radius: 50%;
+		background: #e2f0ff;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.add-remain {
+		font-size: 19rpx;
+		color: $text-light;
+	}
+
+	.media-status-mask {
+		position: absolute;
+		inset: 0;
+		background: rgba(15, 35, 55, .58);
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 9rpx;
+		font-size: 21rpx;
+		color: #fff;
+
+		&.failed {
+			background: rgba(153, 27, 27, .72);
+		}
+	}
+
+	.media-type-badge {
+		position: absolute;
+		left: 8rpx;
+		bottom: 8rpx;
+		padding: 4rpx 10rpx;
+		border-radius: 14rpx;
+		background: rgba(15, 23, 42, .68);
+		font-size: 19rpx;
+		color: #fff;
+	}
+
+	.upload-summary {
+		gap: 8rpx;
+		margin-top: 16rpx;
+		font-size: 22rpx;
+		color: $primary;
+
+		text.error {
+			color: #dc2626;
+		}
 	}
 
 	.inline-submit {
-		height: 80rpx;
-		border-radius: 40rpx;
+		height: 88rpx;
+		border-radius: 44rpx;
 		background: linear-gradient(135deg, #3b8eea, #0b63ce);
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		margin-top: 24rpx;
+		margin-top: 40rpx;
+		box-shadow: 0 10rpx 24rpx rgba(11, 99, 206, 0.18);
 
 		text {
 			font-size: 28rpx;
@@ -1379,6 +1737,11 @@ const statusClass = computed(() => {
 
 		&.disabled {
 			opacity: 0.5;
+			box-shadow: none;
+		}
+
+		&:active {
+			opacity: 0.86;
 		}
 	}
 
@@ -1390,48 +1753,72 @@ const statusClass = computed(() => {
 		color: $primary;
 	}
 
-	.review-score {
-		display: flex;
-		align-items: center;
-		gap: 6rpx;
-		font-size: 25rpx;
-		font-weight: 600;
-		color: #d97706;
-		margin-bottom: 18rpx;
-	}
-
-	.review-time {
-		margin-left: auto;
-		font-size: 22rpx;
-		font-weight: 400;
-		color: $text-light;
-	}
-
-	.review-labels {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 12rpx;
-		margin-bottom: 16rpx;
-
-		text {
-			padding: 7rpx 16rpx;
-			border-radius: 22rpx;
-			background: #eef6ff;
-			font-size: 23rpx;
-			color: $primary;
+	.review-private-card {
+		.section-header {
+			margin-bottom: 18rpx;
 		}
 	}
 
-	.review-text {
-		display: block;
-		font-size: 27rpx;
-		line-height: 1.7;
-		color: $text-main;
-		margin-bottom: 18rpx;
+	.review-private-content {
+		display: flex;
+		align-items: center;
+		padding: 22rpx;
+		border-radius: 16rpx;
+		background: linear-gradient(135deg, #f4f9ff 0%, #f8fbff 100%);
+		border: 1rpx solid #dcecff;
+
+		&.submitted {
+			background: #f6fbf8;
+			border-color: #d9f2e2;
+		}
 	}
 
-	.review-empty {
-		padding: 38rpx 0 44rpx;
+	.review-private-icon {
+		width: 66rpx;
+		height: 66rpx;
+		border-radius: 18rpx;
+		background: #e5f1ff;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+
+		&.success {
+			background: #dcfce7;
+		}
+	}
+
+	.review-private-copy {
+		min-width: 0;
+		margin-left: 18rpx;
+		display: flex;
+		flex: 1;
+		flex-direction: column;
+	}
+
+	.review-private-title {
+		font-size: 27rpx;
+		font-weight: 600;
+		color: $text-main;
+	}
+
+	.review-private-desc {
+		font-size: 23rpx;
+		color: $text-sub;
+		margin-top: 8rpx;
+	}
+
+	.review-privacy-tip {
+		display: flex;
+		align-items: center;
+		gap: 7rpx;
+		margin-top: 12rpx;
+
+		text {
+			font-size: 21rpx;
+			line-height: 1.45;
+			color: $text-sub;
+		}
 	}
 
 	/* ═══ 图片上传 ═══ */
@@ -1485,10 +1872,10 @@ const statusClass = computed(() => {
 	}
 
 	.add-text {
-	font-size: 22rpx;
-	color: $text-light;
-	margin-top: 10rpx;
-}
+		font-size: 22rpx;
+		font-weight: 600;
+		color: $primary;
+	}
 
 /* ═══ 用户评价展示 ═══ */
 .evaluation-content {
@@ -1541,7 +1928,8 @@ const statusClass = computed(() => {
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		margin-top: 24rpx;
+		margin-top: 32rpx;
+		box-shadow: 0 8rpx 20rpx rgba(11, 99, 206, 0.16);
 
 		text {
 			font-size: 28rpx;
@@ -1551,6 +1939,7 @@ const statusClass = computed(() => {
 
 		&.disabled {
 			opacity: 0.5;
+			box-shadow: none;
 		}
 
 		&:active {
