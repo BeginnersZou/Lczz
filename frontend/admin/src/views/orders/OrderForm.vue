@@ -153,9 +153,16 @@
         <el-table-column prop="gender" width="80" label="性别" align="center" />
         <el-table-column prop="age" width="80" label="年龄" align="center" />
         <el-table-column prop="masterPhone" width="140" label="手机号" align="center" />
-        <el-table-column prop="taskInfo" label="任务" align="left">
+        <el-table-column prop="unfinishedOrders" label="任务" align="left">
           <template #default="scope">
-            <div class="task-info">{{ scope.row.taskInfo || '暂无任务' }}</div>
+            <div v-if="scope.row.unfinishedOrderCount > 0" class="task-info">
+              <div v-for="task in scope.row.unfinishedOrders" :key="task.orderId" class="task-item"
+                :title="`订单号：${task.orderNo}；状态：${task.status}`">
+                <span class="task-name">{{ task.taskType }}</span>
+                <span class="task-time">{{ formatMasterTaskTime(task.orderStartTime) }}</span>
+              </div>
+            </div>
+            <div v-else class="task-info task-info--empty">暂无任务</div>
           </template>
         </el-table-column>
       </el-table>
@@ -381,6 +388,20 @@ function getMasterKey(master) {
   return master && master.id != null ? master.id : master.masterName + '_' + master.masterPhone
 }
 
+function normalizeMaster(master = {}) {
+  const unfinishedOrders = Array.isArray(master.unfinishedOrders) ? master.unfinishedOrders : []
+  return {
+    ...master,
+    unfinishedOrders,
+    unfinishedOrderCount: Number(master.unfinishedOrderCount || unfinishedOrders.length || 0)
+  }
+}
+
+function formatMasterTaskTime(value) {
+  if (!value) return '未设置上门时间'
+  return String(value).replace('T', ' ').replace(/Z$/, '').slice(0, 19)
+}
+
 // 打开指派师傅弹窗，拉取师傅列表并回显已选
 async function openMasterDialog() {
   masterDialogVisible.value = true
@@ -390,7 +411,7 @@ async function openMasterDialog() {
   masterLoading.value = true
   try {
     const res = await getMasterListApi()
-    allMasterList.value = Array.isArray(res) ? res : (res.list || [])
+    allMasterList.value = (Array.isArray(res) ? res : (res.list || [])).map(normalizeMaster)
   } catch {
     allMasterList.value = []
   } finally {
@@ -1063,6 +1084,27 @@ function returnToOrderList() {
     line-height: 1.8;
     font-size: 13px;
     color: #4b5563;
+
+    .task-item {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      min-width: 250px;
+    }
+
+    .task-name {
+      color: #374151;
+      white-space: nowrap;
+    }
+
+    .task-time {
+      color: #6b7280;
+      white-space: nowrap;
+    }
+
+    &--empty {
+      color: #9ca3af;
+    }
   }
 
   :deep(.el-form-item__label) {

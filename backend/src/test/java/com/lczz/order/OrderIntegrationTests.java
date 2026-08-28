@@ -131,12 +131,48 @@ class OrderIntegrationTests {
                 .isEqualTo(2L);
     }
 
+    @Test
+    void masterListShowsAllUnfinishedAssignedTasks() throws Exception {
+        JsonNode pendingVisit = createOrder("13800138000", installerId);
+        JsonNode inProgress = createOrder("13800138000", installerId);
+        updateStatus(inProgress.path("id").asLong(), "IN_PROGRESS");
+
+        JsonNode pendingReview = createOrder("13800138000", installerId);
+        updateStatus(pendingReview.path("id").asLong(), "IN_PROGRESS");
+        updateStatus(pendingReview.path("id").asLong(), "PENDING_REVIEW");
+
+        JsonNode cancelled = createOrder("13800138000", installerId);
+        updateStatus(cancelled.path("id").asLong(), "CANCELLED");
+
+        String response = mockMvc.perform(get("/api/orders/masters")
+                        .param("keyword", "13900000002")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].unfinishedOrderCount").value(3))
+                .andReturn().getResponse().getContentAsString();
+
+        JsonNode unfinishedOrders = objectMapper.readTree(response).at("/data/0/unfinishedOrders");
+        assertThat(unfinishedOrders.toString()).contains(
+                        pendingVisit.path("orderNo").asText(),
+                        inProgress.path("orderNo").asText(),
+                        pendingReview.path("orderNo").asText())
+                .doesNotContain(cancelled.path("orderNo").asText());
+    }
+
     private JsonNode createOrder(String phone, long masterId) throws Exception {
         String response = mockMvc.perform(post("/api/orders").header("Authorization", "Bearer " + adminToken)
                         .contentType("application/json").content(orderJson(phone, "[" + masterId + "]")))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.orderNo").isNotEmpty())
                 .andReturn().getResponse().getContentAsString();
         return objectMapper.readTree(response).path("data");
+    }
+
+    private void updateStatus(long orderId, String statusCode) throws Exception {
+        mockMvc.perform(patch("/api/orders/" + orderId + "/status")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType("application/json").content("{\"status\":\"" + statusCode + "\"}"))
+                .andExpect(status().isOk());
     }
 
     private String orderJson(String phone, String masterIds) {
