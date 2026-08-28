@@ -51,6 +51,7 @@ public class OrderService {
             "PENDING_REVIEW", "已完成",
             "REVIEWED", "已完成",
             "CANCELLED", "已作废");
+    private static final Set<String> FINISHED_ORDER_STATUSES = Set.of("REVIEWED", "CANCELLED");
     private static final Map<String, Set<String>> ALLOWED_TRANSITIONS = Map.of(
             "PENDING_VISIT", Set.of("IN_PROGRESS", "CANCELLED"),
             "IN_PROGRESS", Set.of("PENDING_REVIEW", "CANCELLED"),
@@ -114,7 +115,7 @@ public class OrderService {
 
     public List<InstallerView> installers(String keyword) {
         String value = keyword == null ? "" : keyword.trim().toLowerCase(Locale.ROOT);
-        return userMapper.selectList(new LambdaQueryWrapper<UserEntity>()
+        List<InstallerView> installers = userMapper.selectList(new LambdaQueryWrapper<UserEntity>()
                         .eq(UserEntity::getDeleted, false)
                         .eq(UserEntity::getAccountStatus, "ENABLED")
                         .eq(UserEntity::getAuditStatus, "APPROVED")
@@ -125,6 +126,22 @@ public class OrderService {
                 .filter(user -> value.isBlank() || (user.masterName() + " " + nullToEmpty(user.masterPhone()))
                         .toLowerCase(Locale.ROOT).contains(value))
                 .toList();
+        if (installers.isEmpty()) return installers;
+
+        Set<Long> installerIds = installers.stream().map(InstallerView::id).collect(Collectors.toSet());
+        Map<Long, List<WorkOrderEntity>> unfinishedOrdersByInstaller = orderMapper.selectList(
+                        new LambdaQueryWrapper<WorkOrderEntity>()
+                                .eq(WorkOrderEntity::getDeleted, false)
+                                .in(WorkOrderEntity::getInstallerUserId, installerIds)
+                                .notIn(WorkOrderEntity::getOrderStatus, FINISHED_ORDER_STATUSES)
+                                .orderByAsc(WorkOrderEntity::getRequiredStartAt)
+                                .orderByAsc(WorkOrderEntity::getId))
+                .stream().collect(Collectors.groupingBy(WorkOrderEntity::getInstallerUserId));
+        return installers.stream().map(installer -> {
+            List<InstallerTaskView> unfinishedOrders = unfinishedOrdersByInstaller
+                    .getOrDefault(installer.id(), List.of()).stream().map(InstallerTaskView::from).toList();
+            return installer.withUnfinishedOrders(unfinishedOrders);
+        }).toList();
     }
 
     @Transactional
@@ -326,7 +343,7 @@ public class OrderService {
     private OrderView toView(WorkOrderEntity order, Map<Long, UserEntity> users, List<FileView> fileList) {
         UserEntity installer = users.get(order.getInstallerUserId());
         InstallerView master = installer == null
-                ? new InstallerView(order.getInstallerUserId(), "安装师傅", null)
+                ? new InstallerView(order.getInstallerUserId(), "安装师傅", null, 0, List.of())
                 : InstallerView.from(installer);
         List<String> area = java.util.stream.Stream.of(
                         order.getProvinceName(), order.getCityName(), order.getDistrictName())
@@ -423,6 +440,7 @@ public class OrderService {
     }
 
     private static String statusLabel(String code) { return STATUS_LABELS.getOrDefault(code, code); }
+
     private static String blankToNull(String value) { return value == null || value.isBlank() ? null : value.trim(); }
     private static String nullToEmpty(String value) { return value == null ? "" : value; }
     private BusinessException notFound() { return new BusinessException(404, "ORDER_NOT_FOUND", "订单不存在"); }
@@ -431,13 +449,26 @@ public class OrderService {
                                List<String> addressArea, String addressDetail, String orderStartTime,
                                String orderEndTime, List<Long> masterIds, String adminRemark) { }
     public record OrderPage(List<OrderView> list, long total, int page, int pageSize) { }
-    public record InstallerView(long id, String masterName, String masterPhone) {
+    public record InstallerView(long id, String masterName, String masterPhone,
+                                int unfinishedOrderCount, List<InstallerTaskView> unfinishedOrders) {
         static InstallerView from(UserEntity user) {
             String name = user.getRealName();
             if (name == null || name.isBlank()) name = user.getNickname();
             if (name == null || name.isBlank()) name = user.getUsername();
             if (name == null || name.isBlank()) name = "安装师傅" + user.getId();
-            return new InstallerView(user.getId(), name, user.getPhone());
+            return new InstallerView(user.getId(), name, user.getPhone(), 0, List.of());
+        }
+
+        InstallerView withUnfinishedOrders(List<InstallerTaskView> unfinishedOrders) {
+            return new InstallerView(id, masterName, masterPhone, unfinishedOrders.size(), unfinishedOrders);
+        }
+    }
+    public record InstallerTaskView(long orderId, String orderNo, String taskType, LocalDateTime orderStartTime,
+                                    String status, String statusCode) {
+        static InstallerTaskView from(WorkOrderEntity order) {
+            return new InstallerTaskView(order.getId(), order.getOrderNo(),
+                    TASK_LABELS.getOrDefault(order.getTaskType(), order.getTaskType()), order.getRequiredStartAt(),
+                    statusLabel(order.getOrderStatus()), order.getOrderStatus());
         }
     }
     public record OrderView(long id, String orderNo, String taskType, String taskTypeCode, String description,
