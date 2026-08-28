@@ -103,6 +103,33 @@ class WorkProgressIntegrationTests {
     }
 
     @Test
+    void progressBindsAndReturnsAllSelectedFilesInOrder() throws Exception {
+        long firstFileId = uploadImage("progress-1.png");
+        long secondFileId = uploadImage("progress-2.png");
+        long thirdFileId = uploadImage("progress-3.png");
+        String body = "{\"description\":\"一次提交三张施工照片\",\"fileIds\":["
+                + firstFileId + "," + secondFileId + "," + thirdFileId + "]}";
+
+        mockMvc.perform(post("/api/orders/" + orderId + "/progress")
+                        .header("Authorization", "Bearer " + installerToken)
+                        .contentType("application/json").content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.images.length()").value(3))
+                .andExpect(jsonPath("$.data.images[0].id").value(firstFileId))
+                .andExpect(jsonPath("$.data.images[1].id").value(secondFileId))
+                .andExpect(jsonPath("$.data.images[2].id").value(thirdFileId));
+
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM business_file_relation "
+                + "WHERE business_type='PROGRESS' AND usage_type='PROGRESS'", Long.class)).isEqualTo(3L);
+        mockMvc.perform(get("/api/orders/" + orderId + "/progress")
+                        .header("Authorization", "Bearer " + customerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].images.length()").value(3))
+                .andExpect(jsonPath("$.data[0].images[0].id").value(firstFileId))
+                .andExpect(jsonPath("$.data[0].images[2].id").value(thirdFileId));
+    }
+
+    @Test
     void completionRequiresImageTransitionsOnceAndReturnsSignedImages() throws Exception {
         mockMvc.perform(post("/api/orders/" + orderId + "/completion")
                         .header("Authorization", "Bearer " + installerToken).contentType("application/json")
@@ -144,7 +171,11 @@ class WorkProgressIntegrationTests {
     }
 
     private long uploadImage() throws Exception {
-        MockMultipartFile image = new MockMultipartFile("file", "completion.png", "image/png", PNG);
+        return uploadImage("completion.png");
+    }
+
+    private long uploadImage(String fileName) throws Exception {
+        MockMultipartFile image = new MockMultipartFile("file", fileName, "image/png", PNG);
         String response = mockMvc.perform(multipart("/api/files/upload").file(image)
                         .header("Authorization", "Bearer " + installerToken))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
