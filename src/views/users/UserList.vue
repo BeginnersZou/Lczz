@@ -169,9 +169,32 @@
               <el-option v-for="item in roleOptions" :key="item.value" :label="item.label" :value="item.value" />
             </el-select>
           </el-form-item>
+          <div v-if="canChangeOwnPassword" class="password-section">
+            <div class="password-section-header">
+              <div>
+                <p>修改登录密码</p>
+                <span>仅当前登录管理员可修改自己的密码；不修改时请保持三项为空。</span>
+              </div>
+              <el-tag type="warning" effect="light">仅限本人</el-tag>
+            </div>
+            <el-form-item label="原始密码" prop="originalPassword">
+              <el-input v-model="form.originalPassword" type="password" show-password maxlength="72"
+                autocomplete="current-password" placeholder="请输入当前登录密码" />
+            </el-form-item>
+            <el-form-item label="新密码" prop="newPassword">
+              <el-input v-model="form.newPassword" type="password" show-password maxlength="72"
+                autocomplete="new-password" placeholder="请输入 8-72 位新密码" />
+            </el-form-item>
+            <el-form-item label="确认密码" prop="confirmPassword">
+              <el-input v-model="form.confirmPassword" type="password" show-password maxlength="72"
+                autocomplete="new-password" placeholder="请再次输入新密码" />
+            </el-form-item>
+          </div>
           <el-alert
             v-if="dialogType === 'edit'"
-            title="手机号、账号状态及认证材料不在资料编辑契约内，请使用对应操作入口。"
+            :title="canChangeOwnPassword
+              ? '手机号、账号状态及认证材料请使用对应操作入口；密码修改将校验原始密码。'
+              : '手机号、账号状态及认证材料不在资料编辑契约内，请使用对应操作入口。'"
             type="info"
             show-icon
             :closable="false"
@@ -226,7 +249,7 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Refresh, Search } from '@element-plus/icons-vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -239,9 +262,11 @@ import {
   updateUserApi
 } from '@/api/users'
 import { formatDateTime, formatPhone } from '@/utils/format'
+import { useUserStore } from '@/stores/user'
 
 const route = useRoute()
 const router = useRouter()
+const userStore = useUserStore()
 
 const roleOptions = [
   { label: '管理员', value: 'ADMIN' },
@@ -291,8 +316,42 @@ const form = reactive({
   blacklist: false,
   installerStatus: '',
   lastLoginAt: '',
-  createdAt: ''
+  createdAt: '',
+  originalPassword: '',
+  newPassword: '',
+  confirmPassword: ''
 })
+
+const canChangeOwnPassword = computed(() => dialogType.value === 'edit'
+  && userStore.isAdmin
+  && Number(form.id) === Number(userStore.user?.id)
+  && originalRole.value === 'ADMIN')
+
+function passwordChangeRequested() {
+  return canChangeOwnPassword.value
+    && Boolean(form.originalPassword || form.newPassword || form.confirmPassword)
+}
+
+function validateOriginalPassword(rule, value, callback) {
+  if (!passwordChangeRequested()) return callback()
+  if (!value) return callback(new Error('请输入原始密码'))
+  callback()
+}
+
+function validateNewPassword(rule, value, callback) {
+  if (!passwordChangeRequested()) return callback()
+  if (!value) return callback(new Error('请输入新密码'))
+  if (value.length < 8 || value.length > 72) return callback(new Error('新密码长度应为 8-72 个字符'))
+  if (value === form.originalPassword) return callback(new Error('新密码不能与原始密码相同'))
+  callback()
+}
+
+function validateConfirmPassword(rule, value, callback) {
+  if (!passwordChangeRequested()) return callback()
+  if (!value) return callback(new Error('请再次输入新密码'))
+  if (value !== form.newPassword) return callback(new Error('两次输入的新密码不一致'))
+  callback()
+}
 
 const formRules = {
   nickname: [{ required: true, whitespace: true, message: '请输入昵称', trigger: 'blur' }],
@@ -300,7 +359,10 @@ const formRules = {
     { required: true, message: '请输入手机号', trigger: 'blur' },
     { pattern: /^1\d{10}$/, message: '请输入正确的11位手机号', trigger: 'blur' }
   ],
-  role: [{ required: true, message: '请选择角色', trigger: 'change' }]
+  role: [{ required: true, message: '请选择角色', trigger: 'change' }],
+  originalPassword: [{ validator: validateOriginalPassword, trigger: 'blur' }],
+  newPassword: [{ validator: validateNewPassword, trigger: 'blur' }],
+  confirmPassword: [{ validator: validateConfirmPassword, trigger: ['blur', 'change'] }]
 }
 
 async function loadList() {
@@ -397,7 +459,10 @@ function fillForm(user = {}) {
     blacklist: Boolean(user.blacklist),
     installerStatus: user.installerStatus ?? '',
     lastLoginAt: user.lastLoginAt ?? '',
-    createdAt: user.createdAt || user.registerTime || ''
+    createdAt: user.createdAt || user.registerTime || '',
+    originalPassword: '',
+    newPassword: '',
+    confirmPassword: ''
   })
   originalRole.value = form.role
 }
@@ -406,7 +471,8 @@ function resetForm() {
   userFormRef.value?.clearValidate()
   Object.assign(form, {
     id: '', username: '', nickname: '', realName: '', gender: '', phone: '', role: '',
-    accountStatus: '', blacklist: false, installerStatus: '', lastLoginAt: '', createdAt: ''
+    accountStatus: '', blacklist: false, installerStatus: '', lastLoginAt: '', createdAt: '',
+    originalPassword: '', newPassword: '', confirmPassword: ''
   })
   originalRole.value = ''
 }
@@ -429,13 +495,23 @@ async function submitForm() {
       gender: form.gender || null,
       role: form.role
     }
+    const changingPassword = passwordChangeRequested()
+    if (changingPassword) {
+      Object.assign(payload, {
+        originalPassword: form.originalPassword,
+        newPassword: form.newPassword,
+        confirmPassword: form.confirmPassword
+      })
+    }
     if (dialogType.value === 'create') {
       await createUserApi({ ...payload, phone: form.phone.trim() })
     } else {
       await updateUserApi(form.id, payload)
     }
     dialogVisible.value = false
-    ElMessage.success(dialogType.value === 'create' ? '用户创建成功，可立即用于订单指派' : '用户资料已更新')
+    ElMessage.success(dialogType.value === 'create'
+      ? '用户创建成功，可立即用于订单指派'
+      : changingPassword ? '用户资料及登录密码已更新' : '用户资料已更新')
     await loadList()
   } catch (error) {
     if (error !== 'cancel' && error !== 'close' && !error?.fields) {
@@ -668,6 +744,37 @@ onMounted(loadList)
 
   :deep(.el-select) {
     width: 100%;
+  }
+}
+
+.password-section {
+  margin: 18px 0;
+  padding: 18px 18px 2px;
+  border: 1px solid #fde3b0;
+  border-radius: 10px;
+  background: #fffbf2;
+}
+
+.password-section-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+
+  p {
+    margin: 0;
+    color: #92400e;
+    font-size: 15px;
+    font-weight: 600;
+  }
+
+  span {
+    display: block;
+    margin-top: 5px;
+    color: #a16207;
+    font-size: 12px;
+    line-height: 1.5;
   }
 }
 

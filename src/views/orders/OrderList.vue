@@ -103,9 +103,10 @@
           </template>
         </el-table-column>
         <!-- 操作：修改+删除 -->
-        <el-table-column label="操作" align="center" width="160" fixed="right">
+        <el-table-column label="操作" align="center" width="240" fixed="right">
           <template #default="scope">
             <div class="table-actions">
+              <el-button v-if="isReviewedStatus(scope.row.status)" text type="success" @click="handleViewReview(scope.row)">查看评价</el-button>
               <el-button text type="primary" @click="handleEditOrder(scope.row)">修改</el-button>
               <el-button v-if="!isCancelled(scope.row.status)" text type="danger" @click="handleDeleteOrder(scope.row)">作废</el-button>
             </div>
@@ -128,6 +129,37 @@
         <el-button type="danger" :loading="cancelLoading" @click="confirmDelete">确认作废</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="reviewDialogVisible" title="客户评价" width="640px" destroy-on-close>
+      <div v-loading="reviewLoading" class="review-dialog-body">
+        <template v-if="reviewData">
+          <div class="review-order-summary">
+            <div>
+              <p class="review-order-title">{{ reviewOrder?.productName || reviewOrder?.taskType || '服务订单' }}</p>
+              <p class="review-order-no">订单编号：{{ reviewOrder?.orderNo || reviewOrder?.id }}</p>
+            </div>
+            <span class="review-private-badge">仅管理员可见</span>
+          </div>
+          <div class="review-score-row">
+            <el-rate :model-value="Number(reviewData.score || 0)" disabled />
+            <strong>{{ Number(reviewData.score || 0) }}.0</strong>
+            <span>{{ formatDateTime(reviewData.createTime) }}</span>
+          </div>
+          <div v-if="reviewData.labels?.length" class="review-label-list">
+            <el-tag v-for="label in reviewData.labels" :key="label" type="primary" effect="light">{{ label }}</el-tag>
+          </div>
+          <div class="review-content-box">{{ reviewData.content || '用户未填写文字评价' }}</div>
+          <div v-if="reviewData.images?.length" class="review-image-list">
+            <el-image v-for="(image, index) in reviewData.images" :key="image" :src="image" fit="cover"
+              :preview-src-list="reviewData.images" :initial-index="index" preview-teleported />
+          </div>
+        </template>
+        <el-empty v-else-if="!reviewLoading" description="该订单暂无评价内容" :image-size="80" />
+      </div>
+      <template #footer>
+        <el-button @click="reviewDialogVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -138,7 +170,7 @@ import {
   Plus, Search, Refresh, Download, DocumentCopy
 } from '@element-plus/icons-vue'
 import { useRouter, useRoute } from 'vue-router'
-import { getOrderListApi, cancelOrderApi, exportOrdersApi } from '@/api/orders'
+import { getOrderListApi, cancelOrderApi, exportOrdersApi, getOrderEvaluationApi } from '@/api/orders'
 import { formatDateTime, formatPhone } from '@/utils/format'
 
 const router = useRouter()
@@ -162,6 +194,12 @@ const deleteDialogVisible = ref(false)
 const currentDeleteRow = ref(null)
 const cancelReason = ref('')
 const cancelLoading = ref(false)
+
+// 管理员查看客户评价
+const reviewDialogVisible = ref(false)
+const reviewLoading = ref(false)
+const reviewData = ref(null)
+const reviewOrder = ref(null)
 
 // 订单列表（数据全部来自接口）
 const orders = ref([])
@@ -256,6 +294,20 @@ function handleEditOrder(order) {
   router.push({ name: 'OrderEdit', params: { id: order.id } })
 }
 
+async function handleViewReview(order) {
+  reviewOrder.value = order
+  reviewData.value = null
+  reviewDialogVisible.value = true
+  reviewLoading.value = true
+  try {
+    reviewData.value = await getOrderEvaluationApi(order.id)
+  } catch {
+    reviewDialogVisible.value = false
+  } finally {
+    reviewLoading.value = false
+  }
+}
+
 /**
  * 打开删除弹窗
  */
@@ -343,6 +395,10 @@ function getStatusType(status) {
 
 function isCancelled(status) {
   return status === 'cancelled' || status === 'canceled' || status === '已作废' || status === 'CANCELLED'
+}
+
+function isReviewedStatus(status) {
+  return status === 'REVIEWED' || status === '已评价'
 }
 // 页面初始化自动请求
 onMounted(loadList)
@@ -448,7 +504,7 @@ onMounted(loadList)
       overflow-x: auto;
     }
 
-    .business-table { width: 100%; min-width: 1316px; }
+    .business-table { width: 100%; min-width: 1396px; }
 
     .table-actions { display: flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap; }
     .table-actions :deep(.el-button + .el-button) { margin-left: 0; }
@@ -489,6 +545,95 @@ onMounted(loadList)
     :deep(.el-table th) {
       background-color: #f8fafc;
       color: #1f2937;
+    }
+  }
+
+  .review-dialog-body {
+    min-height: 160px;
+  }
+
+  .review-order-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    padding: 16px;
+    border-radius: 10px;
+    background: #f8fafc;
+    border: 1px solid #e5eaf1;
+  }
+
+  .review-order-title {
+    margin: 0;
+    color: #172033;
+    font-size: 16px;
+    font-weight: 600;
+  }
+
+  .review-order-no {
+    margin: 6px 0 0;
+    color: #8492a6;
+    font-size: 13px;
+  }
+
+  .review-private-badge {
+    flex-shrink: 0;
+    padding: 6px 12px;
+    border-radius: 16px;
+    color: #2563eb;
+    background: #eaf3ff;
+    font-size: 12px;
+  }
+
+  .review-score-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 22px;
+
+    strong {
+      color: #d97706;
+      font-size: 18px;
+    }
+
+    span {
+      margin-left: auto;
+      color: #94a3b8;
+      font-size: 13px;
+    }
+  }
+
+  .review-label-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 18px;
+  }
+
+  .review-content-box {
+    min-height: 96px;
+    margin-top: 18px;
+    padding: 16px;
+    border-radius: 10px;
+    background: #f8fafc;
+    color: #334155;
+    font-size: 14px;
+    line-height: 1.75;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .review-image-list {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-top: 18px;
+
+    :deep(.el-image) {
+      width: 100%;
+      aspect-ratio: 1;
+      border-radius: 8px;
+      background: #f1f5f9;
     }
   }
 
