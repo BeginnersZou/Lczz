@@ -30,13 +30,12 @@
       </view>
 
       <view class="login-action">
-        <button class="wechat-login-btn" open-type="getPhoneNumber"
+        <button class="phone-login-btn" open-type="getPhoneNumber"
           hover-class="button-pressed" @getphonenumber="onGetPhoneNumber"
           :disabled="isLogging || !isAgree">
-          <up-icon name="weixin-fill" size="25" color="#ffffff"></up-icon>
-          <text class="btn-text">{{ isLogging ? '正在登录…' : '授权手机号一键登录' }}</text>
+          <text class="btn-text">{{ isLogging ? '正在登录…' : '手机号快捷登录' }}</text>
         </button>
-        <text class="login-tip">{{ isAgree ? '微信安全验证，仅用于注册登录和订单服务' : '请先阅读并勾选下方协议' }}</text>
+        <text class="login-tip">{{ isAgree ? '手机号仅用于注册登录和订单服务' : '请先阅读并勾选下方协议' }}</text>
       </view>
 
       <view class="agreement-row">
@@ -101,9 +100,9 @@ const onGetPhoneNumber = async (e) => {
   if (!phoneCode) {
     const denied = /deny|cancel/i.test(errMsg)
     const normalizedErrno = Number(errno)
-    let reason = `微信未返回手机号授权凭证${errno == null ? '' : `（错误码：${errno}）`}，请稍后重试。`
+    let reason = `未获取到手机号授权凭证${errno == null ? '' : `（错误码：${errno}）`}，请稍后重试。`
     if (normalizedErrno === 112) {
-      reason = '当前小程序尚未在微信公众平台《用户隐私保护指引》中声明手机号信息，请完成声明并等待配置生效后重试。'
+      reason = '当前小程序尚未完成手机号信息用途声明，请完善《用户隐私保护指引》并等待配置生效后重试。'
     } else if (denied) {
       reason = '你已取消手机号授权，请重新点击并选择手机号。'
     }
@@ -179,10 +178,10 @@ const getWxCode = () => {
         if (res.code) {
           resolve(res.code)
         } else {
-          reject({ msg: '获取微信登录凭证失败' })
+          reject({ msg: '获取登录凭证失败' })
         }
       },
-      fail: () => reject({ msg: '微信登录失败，请重试' })
+      fail: () => reject({ msg: '登录服务暂不可用，请重试' })
     })
   })
 }
@@ -220,9 +219,9 @@ const getWxCode = () => {
 .login-panel { margin: -60rpx 24rpx 0; padding: 40rpx 36rpx 34rpx; position: relative; z-index: 4; border-radius: 32rpx; background: #fff; box-shadow: 0 16rpx 50rpx rgba(20,54,84,.13); }
 .panel-heading { display: flex; flex-direction: column; }.panel-title { color: $text-main; font-size: 36rpx; font-weight: 750; }.panel-subtitle { color: $text-light; font-size: 23rpx; margin-top: 9rpx; }
 .login-action { margin-top: 34rpx; }
-.wechat-login-btn { width: 100%; height: 92rpx; margin: 0; padding: 0; border: 0; border-radius: 22rpx; background: linear-gradient(135deg, #14b875, #08a162); display: flex; align-items: center; justify-content: center; box-shadow: 0 10rpx 24rpx rgba(15,164,101,.2); }
-.wechat-login-btn::after { border: 0; }.wechat-login-btn[disabled] { opacity: .55; background: linear-gradient(135deg, #14b875, #08a162); color: #fff; }
-.button-pressed { opacity: .84; transform: scale(.99); }.btn-text { color: #fff; font-size: 29rpx; font-weight: 650; margin-left: 12rpx; }
+.phone-login-btn { width: 100%; height: 92rpx; margin: 0; padding: 0; border: 0; border-radius: 22rpx; background: linear-gradient(135deg, #0b63ce, #2088e2); display: flex; align-items: center; justify-content: center; box-shadow: 0 10rpx 24rpx rgba(11,99,206,.22); }
+.phone-login-btn::after { border: 0; }.phone-login-btn[disabled] { opacity: .55; background: linear-gradient(135deg, #0b63ce, #2088e2); color: #fff; }
+.button-pressed { opacity: .84; transform: scale(.99); }.btn-text { color: #fff; font-size: 29rpx; font-weight: 650; }
 .login-tip { display: block; text-align: center; margin-top: 16rpx; color: #9aa8b6; font-size: 20rpx; }
 
 .agreement-row { display: flex; align-items: center; gap: 10rpx; margin-top: 30rpx; padding-top: 25rpx; border-top: 1rpx solid #edf1f5; }
