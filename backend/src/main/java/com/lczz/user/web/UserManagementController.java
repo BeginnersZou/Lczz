@@ -5,6 +5,7 @@ import com.lczz.common.api.ApiResponse;
 import com.lczz.user.service.UserManagementService;
 import com.lczz.user.service.UserManagementService.AuditContext;
 import com.lczz.user.service.UserManagementService.CreateCommand;
+import com.lczz.user.service.UserManagementService.PasswordChangeCommand;
 import com.lczz.user.service.UserManagementService.UpdateCommand;
 import com.lczz.user.service.UserManagementService.UserPage;
 import com.lczz.user.service.UserManagementService.UserView;
@@ -75,7 +76,8 @@ public class UserManagementController {
                                  @PathVariable @Min(1) long id,
                                  @Valid @RequestBody UpdateRequest body,
                                  HttpServletRequest request) {
-        return ApiResponse.success(service.update(actor, id, body.toCommand(), context(request)), requestId(request));
+        return ApiResponse.success(service.update(actor, id, body.toCommand(), body.toPasswordCommand(),
+                context(request)), requestId(request));
     }
 
     @PatchMapping("/{id}/status")
@@ -110,9 +112,21 @@ public class UserManagementController {
     record UpdateRequest(@NotBlank @Size(max = 64) String nickname,
                          @Size(max = 64) String realName,
                          @Size(max = 16) String gender,
-                         @NotBlank @Size(max = 32) String role) {
+                         @NotBlank @Size(max = 32) String role,
+                         @Size(max = 72) String originalPassword,
+                         @Size(max = 72) String newPassword,
+                         @Size(max = 72) String confirmPassword) {
         UpdateCommand toCommand() {
             return new UpdateCommand(nickname, realName, gender, role);
+        }
+
+        PasswordChangeCommand toPasswordCommand() {
+            if (isEmpty(originalPassword) && isEmpty(newPassword) && isEmpty(confirmPassword)) return null;
+            return new PasswordChangeCommand(originalPassword, newPassword, confirmPassword);
+        }
+
+        private boolean isEmpty(String value) {
+            return value == null || value.isEmpty();
         }
     }
 

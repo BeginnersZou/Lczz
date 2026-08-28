@@ -28,6 +28,7 @@ import java.util.function.Function;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -43,13 +44,15 @@ public class UserManagementService {
     private final RoleMapper roleMapper;
     private final UserRoleMapper userRoleMapper;
     private final OperationAuditService auditService;
+    private final PasswordEncoder passwordEncoder;
 
     public UserManagementService(UserMapper userMapper, RoleMapper roleMapper, UserRoleMapper userRoleMapper,
-                                 OperationAuditService auditService) {
+                                 OperationAuditService auditService, PasswordEncoder passwordEncoder) {
         this.userMapper = userMapper;
         this.roleMapper = roleMapper;
         this.userRoleMapper = userRoleMapper;
         this.auditService = auditService;
+        this.passwordEncoder = passwordEncoder;
     }
 
     @Transactional(readOnly = true)
@@ -128,6 +131,12 @@ public class UserManagementService {
 
     @Transactional
     public UserView update(AuthenticatedUser actor, long id, UpdateCommand command, AuditContext context) {
+        return update(actor, id, command, null, context);
+    }
+
+    @Transactional
+    public UserView update(AuthenticatedUser actor, long id, UpdateCommand command,
+                           PasswordChangeCommand passwordCommand, AuditContext context) {
         RoleCode nextRole = normalizeRole(command.role());
         requireUser(id);
         List<String> currentRoles = roleMapper.selectRoleCodesByUserId(id);
@@ -140,21 +149,60 @@ public class UserManagementService {
         UserEntity current = lockUser(id);
         currentRoles = normalizedRoles(roleMapper.selectRoleCodesByUserId(id));
         AuditSnapshot before = snapshot(current, currentRoles);
+        String nextPasswordHash = passwordCommand == null
+                ? null : validateAndEncodePassword(actor, id, current, currentRoles, passwordCommand);
         String nickname = command.nickname().trim();
         String realName = blankToNull(command.realName());
         String gender = normalizeGender(command.gender());
-        userMapper.update(new LambdaUpdateWrapper<UserEntity>()
+        LambdaUpdateWrapper<UserEntity> update = new LambdaUpdateWrapper<UserEntity>()
                 .eq(UserEntity::getId, id)
                 .set(UserEntity::getNickname, nickname)
                 .set(UserEntity::getRealName, realName)
                 .set(UserEntity::getGender, gender)
                 .set(UserEntity::getUpdatedBy, actor.userId())
-                .setSql("version = version + 1"));
+                .setSql("version = version + 1");
+        if (nextPasswordHash != null) update.set(UserEntity::getPasswordHash, nextPasswordHash);
+        userMapper.update(update);
         replaceRole(actor.userId(), id, currentRoles, nextRole);
         UserView result = detail(id);
         auditService.recordSuccess(actor.userId(), "USER_UPDATE", "USER", id,
                 context.requestId(), context.clientIp(), before, snapshot(result));
+        if (nextPasswordHash != null) {
+            auditService.recordSuccess(actor.userId(), "ADMIN_PASSWORD_CHANGE", "USER", id,
+                    context.requestId(), context.clientIp(), Map.of("passwordChanged", false),
+                    Map.of("passwordChanged", true));
+        }
         return result;
+    }
+
+    private String validateAndEncodePassword(AuthenticatedUser actor, long targetId, UserEntity current,
+                                             List<String> currentRoles, PasswordChangeCommand command) {
+        if (!actor.hasRole(RoleCode.ADMIN) || actor.userId() != targetId
+                || !currentRoles.contains(RoleCode.ADMIN.name())) {
+            throw new BusinessException(403, "PASSWORD_CHANGE_FORBIDDEN", "仅管理员可以修改自己的登录密码");
+        }
+        String originalPassword = command.originalPassword();
+        String newPassword = command.newPassword();
+        String confirmPassword = command.confirmPassword();
+        if (originalPassword == null || originalPassword.isBlank()
+                || newPassword == null || newPassword.isBlank()
+                || confirmPassword == null || confirmPassword.isBlank()) {
+            throw new BusinessException("PASSWORD_FIELDS_REQUIRED", "原始密码、新密码和确认密码均不能为空");
+        }
+        if (newPassword.length() < 8 || newPassword.length() > 72) {
+            throw new BusinessException("INVALID_NEW_PASSWORD", "新密码长度应为 8-72 个字符");
+        }
+        if (!Objects.equals(newPassword, confirmPassword)) {
+            throw new BusinessException("PASSWORD_CONFIRM_MISMATCH", "两次输入的新密码不一致");
+        }
+        if (current.getPasswordHash() == null
+                || !passwordEncoder.matches(originalPassword, current.getPasswordHash())) {
+            throw new BusinessException("ORIGINAL_PASSWORD_INCORRECT", "原始密码不正确");
+        }
+        if (passwordEncoder.matches(newPassword, current.getPasswordHash())) {
+            throw new BusinessException(409, "PASSWORD_UNCHANGED", "新密码不能与原始密码相同");
+        }
+        return passwordEncoder.encode(newPassword);
     }
 
     @Transactional
@@ -339,6 +387,7 @@ public class UserManagementService {
 
     public record CreateCommand(String nickname, String realName, String gender, String phone, String role) { }
     public record UpdateCommand(String nickname, String realName, String gender, String role) { }
+    public record PasswordChangeCommand(String originalPassword, String newPassword, String confirmPassword) { }
     public record AuditContext(String requestId, String clientIp) { }
     public record UserPage(List<UserView> list, long total, int page, int pageSize) { }
     public record UserView(long id, String username, String nickname, String realName, String gender, String phone,

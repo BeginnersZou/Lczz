@@ -22,6 +22,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -38,11 +39,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 class UserManagementIntegrationTests {
+    private static final String ORIGINAL_PASSWORD = "OldPass@2026";
+    private static final String NEW_PASSWORD = "NewPass@2026";
     @Autowired MockMvc mockMvc;
     @Autowired JdbcTemplate jdbcTemplate;
     @Autowired UserMapper userMapper;
     @Autowired JwtService jwtService;
     @Autowired UserManagementService service;
+    @Autowired PasswordEncoder passwordEncoder;
 
     private long adminId;
     private long customerId;
@@ -247,6 +251,60 @@ class UserManagementIntegrationTests {
     }
 
     @Test
+    void onlyAdminCanChangeOwnPasswordWithOriginalPassword() throws Exception {
+        String base = """
+                {"nickname":"系统管理员","realName":"系统管理员","gender":"UNKNOWN","role":"ADMIN",
+                 "originalPassword":"%s","newPassword":"%s","confirmPassword":"%s"}
+                """;
+
+        mockMvc.perform(put("/api/v1/users/{id}", adminId)
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType("application/json")
+                        .content(base.formatted(ORIGINAL_PASSWORD, NEW_PASSWORD, "Different@2026")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("PASSWORD_CONFIRM_MISMATCH"));
+
+        mockMvc.perform(put("/api/v1/users/{id}", adminId)
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType("application/json")
+                        .content(base.formatted("WrongPass@2026", NEW_PASSWORD, NEW_PASSWORD)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("ORIGINAL_PASSWORD_INCORRECT"));
+
+        mockMvc.perform(put("/api/v1/users/{id}", customerId)
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType("application/json")
+                        .content("""
+                                {"nickname":"普通客户","realName":"普通客户","gender":"UNKNOWN","role":"CUSTOMER",
+                                 "originalPassword":"OldPass@2026","newPassword":"OtherPass@2026",
+                                 "confirmPassword":"OtherPass@2026"}
+                                """))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("PASSWORD_CHANGE_FORBIDDEN"));
+
+        mockMvc.perform(put("/api/v1/users/{id}", adminId)
+                        .header("Authorization", "Bearer " + adminToken)
+                        .header("X-Request-Id", "password-change-request")
+                        .contentType("application/json")
+                        .content(base.formatted(ORIGINAL_PASSWORD, NEW_PASSWORD, NEW_PASSWORD)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value(adminId))
+                .andExpect(jsonPath("$.data.passwordHash").doesNotExist());
+
+        String updatedHash = userMapper.selectById(adminId).getPasswordHash();
+        assertThat(passwordEncoder.matches(NEW_PASSWORD, updatedHash)).isTrue();
+        assertThat(passwordEncoder.matches(ORIGINAL_PASSWORD, updatedHash)).isFalse();
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM operation_audit_log "
+                + "WHERE request_id='password-change-request' AND operation_type='ADMIN_PASSWORD_CHANGE'",
+                Integer.class)).isEqualTo(1);
+        String auditAfter = jdbcTemplate.queryForObject("SELECT after_json FROM operation_audit_log "
+                + "WHERE request_id='password-change-request' AND operation_type='ADMIN_PASSWORD_CHANGE'",
+                String.class);
+        assertThat(auditAfter).contains("passwordChanged").doesNotContain(ORIGINAL_PASSWORD)
+                .doesNotContain(NEW_PASSWORD);
+    }
+
+    @Test
     void concurrentRoleChangesCannotRemoveEveryActiveAdmin() throws Exception {
         long secondAdminId = createUser("users-admin-two", "第二管理员", "13960000002", RoleCode.ADMIN);
         AuthenticatedUser firstActor = actor(adminId, RoleCode.ADMIN);
@@ -307,6 +365,7 @@ class UserManagementIntegrationTests {
         user.setRealName(name);
         user.setGender("UNKNOWN");
         user.setPhone(phone);
+        user.setPasswordHash(passwordEncoder.encode(ORIGINAL_PASSWORD));
         user.setAccountStatus("ENABLED");
         user.setAuditStatus("APPROVED");
         user.setBlacklist(false);
