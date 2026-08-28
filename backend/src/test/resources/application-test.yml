@@ -1,0 +1,18 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:lczz_test;MODE=MySQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+  flyway:
+    enabled: false
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema-auth-h2.sql,classpath:schema-product-h2.sql,classpath:schema-order-h2.sql
+
+lczz:
+  jwt:
+    secret: test-only-secret-that-is-long-enough-for-tests
+  file:
+    access-secret: test-only-file-access-secret-long-enough
+    signed-url-minutes: 5

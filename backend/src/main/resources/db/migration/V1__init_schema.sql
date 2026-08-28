@@ -1,0 +1,377 @@
+CREATE TABLE sys_user (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '用户主键',
+    username VARCHAR(64) NULL COMMENT '后台登录用户名',
+    password_hash VARCHAR(100) NULL COMMENT 'BCrypt 密码散列，小程序用户可为空',
+    nickname VARCHAR(64) NULL COMMENT '微信昵称或展示名',
+    real_name VARCHAR(64) NULL COMMENT '真实姓名',
+    gender VARCHAR(16) NULL COMMENT '性别编码',
+    phone VARCHAR(20) NULL COMMENT '标准化手机号',
+    avatar_file_id BIGINT UNSIGNED NULL COMMENT '头像文件 ID',
+    account_status VARCHAR(32) NOT NULL DEFAULT 'ENABLED' COMMENT 'ENABLED/DISABLED',
+    audit_status VARCHAR(32) NOT NULL DEFAULT 'APPROVED' COMMENT 'PENDING/APPROVED/REJECTED',
+    audit_reason VARCHAR(500) NULL COMMENT '审核说明',
+    audited_by BIGINT UNSIGNED NULL COMMENT '审核管理员',
+    audited_at DATETIME(3) NULL COMMENT '审核时间',
+    blacklist TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否黑名单',
+    installer_status VARCHAR(32) NULL COMMENT '师傅工作状态',
+    installer_remark VARCHAR(500) NULL COMMENT '师傅状态备注',
+    last_login_at DATETIME(3) NULL COMMENT '最后登录时间',
+    last_login_ip VARCHAR(64) NULL COMMENT '最后登录 IP',
+    version INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '乐观锁版本',
+    deleted TINYINT(1) NOT NULL DEFAULT 0 COMMENT '逻辑删除',
+    deleted_at DATETIME(3) NULL COMMENT '删除时间',
+    created_by BIGINT UNSIGNED NULL COMMENT '创建人',
+    created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    updated_by BIGINT UNSIGNED NULL COMMENT '修改人',
+    updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_sys_user_username (username),
+    UNIQUE KEY uk_sys_user_phone (phone),
+    KEY idx_sys_user_status (account_status, deleted),
+    KEY idx_sys_user_audit_status (audit_status),
+    CONSTRAINT chk_sys_user_blacklist CHECK (blacklist IN (0, 1)),
+    CONSTRAINT chk_sys_user_deleted CHECK (deleted IN (0, 1))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='系统用户';
+
+CREATE TABLE sys_role (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    role_code VARCHAR(32) NOT NULL COMMENT 'ADMIN/CUSTOMER/INSTALLER/DEALER',
+    role_name VARCHAR(64) NOT NULL,
+    enabled TINYINT(1) NOT NULL DEFAULT 1,
+    created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_sys_role_code (role_code),
+    CONSTRAINT chk_sys_role_enabled CHECK (enabled IN (0, 1))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='角色';
+
+CREATE TABLE sys_user_role (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    user_id BIGINT UNSIGNED NOT NULL,
+    role_id BIGINT UNSIGNED NOT NULL,
+    created_by BIGINT UNSIGNED NULL,
+    created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_sys_user_role (user_id, role_id),
+    KEY idx_sys_user_role_role (role_id),
+    CONSTRAINT fk_sys_user_role_user FOREIGN KEY (user_id) REFERENCES sys_user (id),
+    CONSTRAINT fk_sys_user_role_role FOREIGN KEY (role_id) REFERENCES sys_role (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='用户角色关系';
+
+CREATE TABLE user_wechat_identity (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    user_id BIGINT UNSIGNED NOT NULL,
+    app_id VARCHAR(64) NOT NULL,
+    open_id VARCHAR(128) NOT NULL,
+    union_id VARCHAR(128) NULL,
+    session_version INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '会话失效版本',
+    last_login_at DATETIME(3) NULL,
+    created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_wechat_app_open (app_id, open_id),
+    KEY idx_wechat_user (user_id),
+    KEY idx_wechat_union (union_id),
+    CONSTRAINT fk_wechat_user FOREIGN KEY (user_id) REFERENCES sys_user (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='微信身份';
+
+CREATE TABLE sys_dict_type (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    dict_code VARCHAR(64) NOT NULL,
+    dict_name VARCHAR(128) NOT NULL,
+    enabled TINYINT(1) NOT NULL DEFAULT 1,
+    created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_sys_dict_type_code (dict_code)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='字典类型';
+
+CREATE TABLE sys_dict_item (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    dict_type_id BIGINT UNSIGNED NOT NULL,
+    item_code VARCHAR(64) NOT NULL,
+    item_name VARCHAR(128) NOT NULL,
+    sort_order INT NOT NULL DEFAULT 0,
+    enabled TINYINT(1) NOT NULL DEFAULT 1,
+    extension_json JSON NULL,
+    created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_sys_dict_item_code (dict_type_id, item_code),
+    KEY idx_sys_dict_item_sort (dict_type_id, enabled, sort_order),
+    CONSTRAINT fk_sys_dict_item_type FOREIGN KEY (dict_type_id) REFERENCES sys_dict_type (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='字典项';
+
+CREATE TABLE file_asset (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    storage_type VARCHAR(32) NOT NULL DEFAULT 'LOCAL' COMMENT 'LOCAL/OBJECT_STORAGE',
+    object_key VARCHAR(512) NOT NULL COMMENT '存储对象键',
+    original_name VARCHAR(255) NOT NULL,
+    mime_type VARCHAR(128) NOT NULL,
+    file_size BIGINT UNSIGNED NOT NULL,
+    sha256 CHAR(64) NULL,
+    access_url VARCHAR(1000) NULL COMMENT '可访问地址或相对路径',
+    uploaded_by BIGINT UNSIGNED NULL,
+    created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    deleted TINYINT(1) NOT NULL DEFAULT 0,
+    deleted_at DATETIME(3) NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_file_asset_object_key (storage_type, object_key),
+    KEY idx_file_asset_uploader (uploaded_by),
+    CONSTRAINT fk_file_asset_uploader FOREIGN KEY (uploaded_by) REFERENCES sys_user (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='文件资产';
+
+ALTER TABLE sys_user
+    ADD CONSTRAINT fk_sys_user_avatar FOREIGN KEY (avatar_file_id) REFERENCES file_asset (id),
+    ADD CONSTRAINT fk_sys_user_auditor FOREIGN KEY (audited_by) REFERENCES sys_user (id);
+
+CREATE TABLE product_category (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    category_code VARCHAR(64) NOT NULL,
+    category_name VARCHAR(128) NOT NULL,
+    parent_id BIGINT UNSIGNED NULL,
+    category_level TINYINT UNSIGNED NOT NULL DEFAULT 1,
+    sort_order INT NOT NULL DEFAULT 0,
+    enabled TINYINT(1) NOT NULL DEFAULT 1,
+    deleted TINYINT(1) NOT NULL DEFAULT 0,
+    created_by BIGINT UNSIGNED NULL,
+    created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    updated_by BIGINT UNSIGNED NULL,
+    updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_product_category_code (category_code),
+    KEY idx_product_category_parent (parent_id, enabled, sort_order),
+    CONSTRAINT fk_product_category_parent FOREIGN KEY (parent_id) REFERENCES product_category (id),
+    CONSTRAINT chk_product_category_level CHECK (category_level IN (1, 2))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='产品分类';
+
+CREATE TABLE product (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    product_code VARCHAR(64) NOT NULL,
+    product_name VARCHAR(255) NOT NULL,
+    category_id BIGINT UNSIGNED NOT NULL,
+    model_spec VARCHAR(255) NULL,
+    unit VARCHAR(32) NOT NULL,
+    display_price DECIMAL(10,2) NULL COMMENT '仅展示，不用于线上交易',
+    display_stock DECIMAL(12,3) NULL COMMENT '展示库存，不自动扣减',
+    description TEXT NULL,
+    cover_file_id BIGINT UNSIGNED NULL,
+    enabled TINYINT(1) NOT NULL DEFAULT 1,
+    sort_order INT NOT NULL DEFAULT 0,
+    version INT UNSIGNED NOT NULL DEFAULT 0,
+    deleted TINYINT(1) NOT NULL DEFAULT 0,
+    deleted_at DATETIME(3) NULL,
+    created_by BIGINT UNSIGNED NULL,
+    created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    updated_by BIGINT UNSIGNED NULL,
+    updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_product_code (product_code),
+    KEY idx_product_category (category_id, enabled, deleted, sort_order),
+    KEY idx_product_name (product_name),
+    CONSTRAINT fk_product_category FOREIGN KEY (category_id) REFERENCES product_category (id),
+    CONSTRAINT fk_product_cover FOREIGN KEY (cover_file_id) REFERENCES file_asset (id),
+    CONSTRAINT chk_product_price CHECK (display_price IS NULL OR display_price >= 0),
+    CONSTRAINT chk_product_stock CHECK (display_stock IS NULL OR display_stock >= 0)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='产品耗材';
+
+CREATE TABLE work_order (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    order_no VARCHAR(32) NOT NULL,
+    task_type VARCHAR(64) NOT NULL COMMENT 'ORDER_TASK_TYPE 字典编码',
+    order_status VARCHAR(32) NOT NULL DEFAULT 'PENDING_VISIT',
+    description VARCHAR(1000) NULL,
+    customer_user_id BIGINT UNSIGNED NULL COMMENT '手机号匹配后绑定',
+    customer_name VARCHAR(64) NOT NULL COMMENT '订单客户快照',
+    customer_phone VARCHAR(20) NOT NULL COMMENT '标准化手机号快照',
+    installer_user_id BIGINT UNSIGNED NOT NULL COMMENT '当前唯一主责师傅',
+    province_code VARCHAR(32) NULL,
+    province_name VARCHAR(64) NULL,
+    city_code VARCHAR(32) NULL,
+    city_name VARCHAR(64) NULL,
+    district_code VARCHAR(32) NULL,
+    district_name VARCHAR(64) NULL,
+    detailed_address VARCHAR(500) NOT NULL,
+    required_start_at DATETIME(3) NULL,
+    expected_end_at DATETIME(3) NULL,
+    admin_remark VARCHAR(1000) NULL,
+    cancelled_by BIGINT UNSIGNED NULL,
+    cancelled_at DATETIME(3) NULL,
+    cancel_reason VARCHAR(500) NULL,
+    version INT UNSIGNED NOT NULL DEFAULT 0,
+    deleted TINYINT(1) NOT NULL DEFAULT 0,
+    deleted_at DATETIME(3) NULL,
+    created_by BIGINT UNSIGNED NOT NULL,
+    created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    updated_by BIGINT UNSIGNED NULL,
+    updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_work_order_no (order_no),
+    KEY idx_work_order_status_time (order_status, created_at),
+    KEY idx_work_order_customer_user (customer_user_id, order_status),
+    KEY idx_work_order_customer_phone (customer_phone),
+    KEY idx_work_order_installer (installer_user_id, order_status),
+    KEY idx_work_order_required_time (required_start_at, expected_end_at),
+    CONSTRAINT fk_work_order_customer FOREIGN KEY (customer_user_id) REFERENCES sys_user (id),
+    CONSTRAINT fk_work_order_installer FOREIGN KEY (installer_user_id) REFERENCES sys_user (id),
+    CONSTRAINT fk_work_order_canceller FOREIGN KEY (cancelled_by) REFERENCES sys_user (id),
+    CONSTRAINT fk_work_order_creator FOREIGN KEY (created_by) REFERENCES sys_user (id),
+    CONSTRAINT chk_work_order_status CHECK (order_status IN ('PENDING_VISIT', 'IN_PROGRESS', 'PENDING_REVIEW', 'REVIEWED', 'CANCELLED'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='安装服务订单';
+
+CREATE TABLE work_order_assignment (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    order_id BIGINT UNSIGNED NOT NULL,
+    installer_user_id BIGINT UNSIGNED NOT NULL,
+    assigned_by BIGINT UNSIGNED NOT NULL,
+    assigned_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    unassigned_at DATETIME(3) NULL,
+    is_active TINYINT(1) NOT NULL DEFAULT 1 COMMENT '一期同一订单只允许一条有效记录',
+    active_order_id BIGINT UNSIGNED GENERATED ALWAYS AS (CASE WHEN is_active = 1 THEN order_id ELSE NULL END) STORED COMMENT '用于约束每单仅一个有效指派',
+    change_reason VARCHAR(500) NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_order_assignment_one_active (active_order_id),
+    KEY idx_order_assignment_order (order_id, is_active),
+    KEY idx_order_assignment_installer (installer_user_id, is_active),
+    CONSTRAINT fk_order_assignment_order FOREIGN KEY (order_id) REFERENCES work_order (id),
+    CONSTRAINT fk_order_assignment_installer FOREIGN KEY (installer_user_id) REFERENCES sys_user (id),
+    CONSTRAINT fk_order_assignment_operator FOREIGN KEY (assigned_by) REFERENCES sys_user (id),
+    CONSTRAINT chk_order_assignment_active CHECK (is_active IN (0, 1))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='订单指派历史';
+
+CREATE TABLE work_order_status_history (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    order_id BIGINT UNSIGNED NOT NULL,
+    from_status VARCHAR(32) NULL,
+    to_status VARCHAR(32) NOT NULL,
+    change_reason VARCHAR(500) NULL,
+    operator_user_id BIGINT UNSIGNED NOT NULL,
+    created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    PRIMARY KEY (id),
+    KEY idx_order_status_history (order_id, created_at),
+    CONSTRAINT fk_order_status_history_order FOREIGN KEY (order_id) REFERENCES work_order (id),
+    CONSTRAINT fk_order_status_history_operator FOREIGN KEY (operator_user_id) REFERENCES sys_user (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='订单状态历史';
+
+CREATE TABLE material_request (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    request_no VARCHAR(32) NOT NULL,
+    order_id BIGINT UNSIGNED NOT NULL,
+    installer_user_id BIGINT UNSIGNED NOT NULL,
+    request_status VARCHAR(32) NOT NULL DEFAULT 'PENDING' COMMENT 'PENDING/PREPARING/DONE/VOIDED',
+    remark VARCHAR(500) NULL,
+    submitted_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    completed_by BIGINT UNSIGNED NULL,
+    completed_at DATETIME(3) NULL,
+    voided_by BIGINT UNSIGNED NULL,
+    voided_at DATETIME(3) NULL,
+    void_reason VARCHAR(500) NULL,
+    version INT UNSIGNED NOT NULL DEFAULT 0,
+    created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_material_request_no (request_no),
+    KEY idx_material_request_order (order_id, submitted_at),
+    KEY idx_material_request_status (request_status, submitted_at),
+    CONSTRAINT fk_material_request_order FOREIGN KEY (order_id) REFERENCES work_order (id),
+    CONSTRAINT fk_material_request_installer FOREIGN KEY (installer_user_id) REFERENCES sys_user (id),
+    CONSTRAINT fk_material_request_completer FOREIGN KEY (completed_by) REFERENCES sys_user (id),
+    CONSTRAINT fk_material_request_voider FOREIGN KEY (voided_by) REFERENCES sys_user (id),
+    CONSTRAINT chk_material_request_status CHECK (request_status IN ('PENDING', 'PREPARING', 'DONE', 'VOIDED'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='耗材申请';
+
+CREATE TABLE material_request_item (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    request_id BIGINT UNSIGNED NOT NULL,
+    product_id BIGINT UNSIGNED NOT NULL,
+    product_code_snapshot VARCHAR(64) NOT NULL,
+    product_name_snapshot VARCHAR(255) NOT NULL,
+    model_spec_snapshot VARCHAR(255) NULL,
+    unit_snapshot VARCHAR(32) NOT NULL,
+    display_price_snapshot DECIMAL(10,2) NULL,
+    requested_quantity DECIMAL(12,3) NOT NULL,
+    prepared_quantity DECIMAL(12,3) NOT NULL DEFAULT 0,
+    item_status VARCHAR(32) NOT NULL DEFAULT 'PENDING' COMMENT 'PENDING/PREPARED/VOIDED',
+    version INT UNSIGNED NOT NULL DEFAULT 0,
+    created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_material_request_product (request_id, product_id),
+    KEY idx_material_request_item_product (product_id),
+    CONSTRAINT fk_material_request_item_request FOREIGN KEY (request_id) REFERENCES material_request (id),
+    CONSTRAINT fk_material_request_item_product FOREIGN KEY (product_id) REFERENCES product (id),
+    CONSTRAINT chk_material_item_requested CHECK (requested_quantity > 0),
+    CONSTRAINT chk_material_item_prepared CHECK (prepared_quantity >= 0 AND prepared_quantity <= requested_quantity),
+    CONSTRAINT chk_material_item_status CHECK (item_status IN ('PENDING', 'PREPARED', 'VOIDED'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='耗材申请明细';
+
+CREATE TABLE work_order_progress (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    order_id BIGINT UNSIGNED NOT NULL,
+    installer_user_id BIGINT UNSIGNED NOT NULL,
+    progress_type VARCHAR(32) NOT NULL DEFAULT 'PROGRESS' COMMENT 'PROGRESS/COMPLETION',
+    completion_order_id BIGINT UNSIGNED GENERATED ALWAYS AS (CASE WHEN progress_type = 'COMPLETION' THEN order_id ELSE NULL END) STORED COMMENT '用于约束每单仅一次完工提交',
+    description VARCHAR(2000) NOT NULL,
+    submitted_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_work_order_one_completion (completion_order_id),
+    KEY idx_work_order_progress (order_id, submitted_at),
+    CONSTRAINT fk_work_order_progress_order FOREIGN KEY (order_id) REFERENCES work_order (id),
+    CONSTRAINT fk_work_order_progress_installer FOREIGN KEY (installer_user_id) REFERENCES sys_user (id),
+    CONSTRAINT chk_work_order_progress_type CHECK (progress_type IN ('PROGRESS', 'COMPLETION'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='施工进度与完工记录';
+
+CREATE TABLE work_order_review (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    order_id BIGINT UNSIGNED NOT NULL,
+    reviewer_user_id BIGINT UNSIGNED NOT NULL,
+    score TINYINT UNSIGNED NULL COMMENT '1-5 分',
+    liked TINYINT(1) NOT NULL DEFAULT 0 COMMENT '点赞或满意标记',
+    content VARCHAR(2000) NULL,
+    labels_json JSON NULL,
+    created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_work_order_review_order (order_id),
+    KEY idx_work_order_review_user (reviewer_user_id, created_at),
+    CONSTRAINT fk_work_order_review_order FOREIGN KEY (order_id) REFERENCES work_order (id),
+    CONSTRAINT fk_work_order_review_user FOREIGN KEY (reviewer_user_id) REFERENCES sys_user (id),
+    CONSTRAINT chk_work_order_review_score CHECK (score IS NULL OR score BETWEEN 1 AND 5),
+    CONSTRAINT chk_work_order_review_liked CHECK (liked IN (0, 1))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='订单评价';
+
+CREATE TABLE business_file_relation (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    business_type VARCHAR(32) NOT NULL COMMENT 'PRODUCT/ORDER/PROGRESS/REVIEW',
+    business_id BIGINT UNSIGNED NOT NULL,
+    usage_type VARCHAR(32) NOT NULL COMMENT 'COVER/DETAIL/ATTACHMENT/PROGRESS/COMPLETION/REVIEW',
+    file_id BIGINT UNSIGNED NOT NULL,
+    sort_order INT NOT NULL DEFAULT 0,
+    created_by BIGINT UNSIGNED NULL,
+    created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_business_file (business_type, business_id, usage_type, file_id),
+    KEY idx_business_file_lookup (business_type, business_id, usage_type, sort_order),
+    KEY idx_business_file_file (file_id),
+    CONSTRAINT fk_business_file_asset FOREIGN KEY (file_id) REFERENCES file_asset (id),
+    CONSTRAINT fk_business_file_creator FOREIGN KEY (created_by) REFERENCES sys_user (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='业务文件关系';
+
+CREATE TABLE operation_audit_log (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    operator_user_id BIGINT UNSIGNED NULL,
+    operation_type VARCHAR(64) NOT NULL,
+    business_type VARCHAR(64) NOT NULL,
+    business_id VARCHAR(64) NULL,
+    request_id VARCHAR(64) NULL,
+    before_json JSON NULL,
+    after_json JSON NULL,
+    result_code VARCHAR(64) NULL,
+    client_ip VARCHAR(64) NULL,
+    created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    PRIMARY KEY (id),
+    KEY idx_audit_business (business_type, business_id, created_at),
+    KEY idx_audit_operator (operator_user_id, created_at),
+    KEY idx_audit_request (request_id),
+    CONSTRAINT fk_audit_operator FOREIGN KEY (operator_user_id) REFERENCES sys_user (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='关键操作审计';

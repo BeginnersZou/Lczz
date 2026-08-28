@@ -1,29 +1,14 @@
 # Lczz
 武汉力创之尊项目，后台管理系统以及微信小程序端
 
-## 项目目录
+## 当前联调与一期边界
 
-- `backend/`：Java 21 + Spring Boot 后端。
-- `frontend/admin/`：Vue 3 + Vite 后台管理系统。
-- `frontend/miniprogram/`：uni-app 微信小程序。
-- `docs/`：开发规范、架构与数据库文档。
-
-日常功能开发统一从 `dev` 创建分支。后台管理端和小程序需要独立发布时，分别从 `frontend/admin`、`frontend/miniprogram` 生成发布候选，提交到 `release/admin`、`release/miniprogram`。
-
-本地启动后台管理系统：
-
-```bash
-cd frontend/admin
-npm ci
-npm run dev
-```
-
-小程序依赖安装：
-
-```bash
-cd frontend/miniprogram
-npm ci
-```
+- 开发与生产环境统一使用 `https://admin.whlczz.cn/api/v1`，环境变量未加载时也回退到该线上地址。
+- 微信开发者工具和正式包均开启合法域名校验；需在微信公众平台将 `https://admin.whlczz.cn` 配置为 request、uploadFile（如使用）合法域名。
+- 一期不提供资讯动态、购物车、线上购买、支付和小程序内创建订单。
+- 小程序已移除虚拟登录和业务 Mock 数据，联调与发布包均只请求真实后端。
+- 产品页仅展示后端 `/consumables/**` 数据，订单和个人页仅展示当前角色可见的真实数据。
+- 发布前必须确认 `request`/`uploadFile` 合法 HTTPS 域名及图片选择隐私声明均已配置。
 
 
 鑫立创业务系统说明
