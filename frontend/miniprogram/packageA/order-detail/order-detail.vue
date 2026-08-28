@@ -54,20 +54,30 @@
 			</view>
 		</view>
 
-		<!-- ═══ 安装师傅耗材申请 ═══ -->
-		<view class="section-card" v-if="isInstaller">
+		<!-- ═══ 安装师傅耗材申请：清单与备注属于同一业务模块 ═══ -->
+		<view class="section-card material-request-card" v-if="isInstaller">
 			<view class="section-header">
 				<view class="section-title-wrap">
-					<text class="required" v-if="!materialReadonly">*</text>
-					<text class="section-title">耗材清单</text>
+					<view class="section-title-icon"><up-icon name="bag-fill" size="18" color="#0b63ce"></up-icon></view>
+					<view class="section-title-copy">
+						<text class="section-title">耗材申请</text>
+						<text class="section-subtitle">填写本次施工所需耗材及申请说明</text>
+					</view>
 				</view>
 				<view class="add-btn" @click="openToolPopup" v-if="!materialReadonly">
 					<up-icon name="plus" size="14" color="#fff"></up-icon>
-					<text>添加</text>
+					<text>添加耗材</text>
 				</view>
-				<text v-else-if="materialRequest" class="tool-qty-text">{{ materialRequest.statusLabel || materialRequest.status }}</text>
+				<text v-else-if="materialRequest" class="material-status">{{ materialRequest.statusLabel || materialRequest.status }}</text>
 			</view>
 
+			<view class="material-subheader">
+				<view class="material-subtitle-wrap">
+					<text class="required" v-if="!materialReadonly">*</text>
+					<text class="material-subtitle">耗材清单</text>
+				</view>
+				<text class="material-count" v-if="toolList.length">共 {{ toolList.length }} 种</text>
+			</view>
 			<view class="tool-list" v-if="toolList.length > 0">
 				<view class="tool-item" v-for="(tool, index) in toolList" :key="index">
 					<view class="tool-index">{{ index + 1 }}</view>
@@ -98,26 +108,23 @@
 				<text class="tool-empty-text" v-else>暂无耗材记录</text>
 			</view>
 
-			<view class="material-submit" v-if="!materialReadonly && toolList.length > 0"
-				:class="{ disabled: submitting }" @click="handleSubmit">
-				<text>{{ submitting ? '提交中...' : '提交耗材申请' }}</text>
-			</view>
-		</view>
-
-		<!-- ═══ 耗材申请备注 ═══ -->
-		<view class="section-card" v-if="isInstaller">
-			<view class="section-header">
-				<view class="section-title-wrap">
-					<text class="section-title">申请备注</text>
-				</view>
+			<view class="material-divider"></view>
+			<view class="material-subheader material-remark-header">
+				<text class="material-subtitle">申请备注</text>
+				<text class="material-optional">选填</text>
 			</view>
 			<view class="textarea-wrap" v-if="!materialReadonly">
-				<textarea class="complete-textarea" v-model="materialRemark" placeholder="选填：请填写耗材申请说明"
+				<textarea class="complete-textarea material-remark-input" v-model="materialRemark" placeholder="补充用途、施工位置或其他申请说明"
 					placeholder-class="placeholder-style" maxlength="500"></textarea>
 				<text class="text-count">{{ materialRemark.length }}/500</text>
 			</view>
-			<view class="complete-readonly" v-else>
+			<view class="complete-readonly material-remark-readonly" v-else>
 				<text class="complete-text">{{ materialRemark || '暂无申请备注' }}</text>
+			</view>
+
+			<view class="material-submit" v-if="!materialReadonly && toolList.length > 0"
+				:class="{ disabled: submitting }" @click="handleSubmit">
+				<text>{{ submitting ? '提交中...' : '提交耗材申请' }}</text>
 			</view>
 		</view>
 
@@ -1134,6 +1141,7 @@ const statusClass = computed(() => {
 	.section-title-wrap {
 		display: flex;
 		align-items: center;
+		min-width: 0;
 	}
 
 	.required {
@@ -1146,6 +1154,100 @@ const statusClass = computed(() => {
 		font-size: 30rpx;
 		font-weight: 600;
 		color: $text-main;
+	}
+
+	.material-request-card {
+		padding: 28rpx;
+
+		.section-header {
+			padding-bottom: 24rpx;
+			margin-bottom: 24rpx;
+			border-bottom: 1rpx solid #edf2f7;
+		}
+	}
+
+	.section-title-icon {
+		width: 58rpx;
+		height: 58rpx;
+		border-radius: 16rpx;
+		background: #eaf3ff;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+		margin-right: 16rpx;
+	}
+
+	.section-title-copy {
+		display: flex;
+		flex-direction: column;
+		min-width: 0;
+	}
+
+	.section-subtitle {
+		font-size: 21rpx;
+		line-height: 1.4;
+		color: $text-light;
+		margin-top: 5rpx;
+	}
+
+	.material-status {
+		padding: 8rpx 18rpx;
+		border-radius: 24rpx;
+		background: #fff7e6;
+		color: #d97706;
+		font-size: 23rpx;
+		font-weight: 500;
+		white-space: nowrap;
+	}
+
+	.material-subheader {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		margin-bottom: 18rpx;
+	}
+
+	.material-subtitle-wrap {
+		display: flex;
+		align-items: center;
+	}
+
+	.material-subtitle {
+		font-size: 27rpx;
+		font-weight: 600;
+		color: $text-main;
+	}
+
+	.material-count,
+	.material-optional {
+		font-size: 21rpx;
+		color: $text-light;
+		background: #f1f5f9;
+		padding: 6rpx 14rpx;
+		border-radius: 20rpx;
+	}
+
+	.material-divider {
+		height: 1rpx;
+		background: #edf2f7;
+		margin: 28rpx 0 24rpx;
+	}
+
+	.material-remark-header {
+		margin-bottom: 16rpx;
+	}
+
+	.material-remark-input {
+		height: 168rpx;
+		background: #f8fafc;
+		border: 1rpx solid #edf2f7;
+	}
+
+	.material-remark-readonly {
+		min-height: 96rpx;
+		background: #f8fafc;
+		border: 1rpx solid #edf2f7;
 	}
 
 	.upload-tip {
@@ -1631,13 +1733,14 @@ const statusClass = computed(() => {
 	}
 
 	.inline-submit {
-		height: 80rpx;
-		border-radius: 40rpx;
+		height: 88rpx;
+		border-radius: 44rpx;
 		background: linear-gradient(135deg, #3b8eea, #0b63ce);
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		margin-top: 24rpx;
+		margin-top: 40rpx;
+		box-shadow: 0 10rpx 24rpx rgba(11, 99, 206, 0.18);
 
 		text {
 			font-size: 28rpx;
@@ -1647,6 +1750,11 @@ const statusClass = computed(() => {
 
 		&.disabled {
 			opacity: 0.5;
+			box-shadow: none;
+		}
+
+		&:active {
+			opacity: 0.86;
 		}
 	}
 
@@ -1809,7 +1917,8 @@ const statusClass = computed(() => {
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		margin-top: 24rpx;
+		margin-top: 32rpx;
+		box-shadow: 0 8rpx 20rpx rgba(11, 99, 206, 0.16);
 
 		text {
 			font-size: 28rpx;
@@ -1819,6 +1928,7 @@ const statusClass = computed(() => {
 
 		&.disabled {
 			opacity: 0.5;
+			box-shadow: none;
 		}
 
 		&:active {
