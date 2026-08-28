@@ -161,36 +161,33 @@
 			</view>
 		</view>
 
-		<!-- ═══ 客户评价 ═══ -->
-		<view class="section-card">
+		<!-- ═══ 客户评价：内容仅后台管理员可见 ═══ -->
+		<view class="section-card review-private-card" v-if="isReviewer && (canReview || hasReviewed)">
 			<view class="section-header">
-				<view class="section-title-wrap"><text class="section-title">客户评价</text></view>
+				<view class="section-title-wrap"><text class="section-title">服务评价</text></view>
 				<view class="review-action" v-if="canReview" @click="goEvaluate"><text>去评价</text></view>
 			</view>
-			<view class="review-content" v-if="evaluation">
-				<view class="review-score">
-					<up-icon v-for="index in 5" :key="index" :name="index <= evaluation.score ? 'star-fill' : 'star'"
-						size="20" :color="index <= evaluation.score ? '#f59e0b' : '#cbd5e1'"></up-icon>
-					<text>{{ evaluation.score }}.0</text>
-					<text class="review-time">{{ evaluation.createTime }}</text>
-				</view>
-				<view class="review-labels" v-if="evaluation.labels.length">
-					<text v-for="label in evaluation.labels" :key="label">{{ label }}</text>
-				</view>
-				<text class="review-text">{{ evaluation.content }}</text>
-				<view class="image-grid" v-if="evaluation.images.length">
-					<view class="image-item" v-for="(image, index) in evaluation.images" :key="image">
-						<image class="preview-img" :src="image" mode="aspectFill" @click="previewEvaluationImages(index)"></image>
+			<view class="review-private-content" v-if="canReview">
+				<view class="review-private-icon"><up-icon name="edit-pen" size="26" color="#0b63ce"></up-icon></view>
+				<view class="review-private-copy">
+					<text class="review-private-title">服务已完成，期待您的评价</text>
+					<text class="review-private-desc">请对该师傅做出真实的评价</text>
+					<view class="review-privacy-tip">
+						<up-icon name="lock" size="14" color="#64748b"></up-icon>
+						<text>评价内容仅管理员可见，安装师傅不可见</text>
 					</view>
 				</view>
 			</view>
-			<view class="tool-empty review-empty" v-else-if="canReview">
-				<up-icon name="edit-pen" size="42" color="#94a3b8"></up-icon>
-				<text class="tool-empty-text">服务已完成，期待您的评价</text>
-			</view>
-			<view class="tool-empty review-empty" v-else>
-				<up-icon name="chat" size="42" color="#cbd5e1"></up-icon>
-				<text class="tool-empty-text">暂无评价</text>
+			<view class="review-private-content submitted" v-else-if="hasReviewed">
+				<view class="review-private-icon success"><up-icon name="checkmark" size="24" color="#16a34a"></up-icon></view>
+				<view class="review-private-copy">
+					<text class="review-private-title">评价已提交</text>
+					<text class="review-private-desc">感谢您的真实反馈，评价内容已交由管理员查看</text>
+					<view class="review-privacy-tip">
+						<up-icon name="lock" size="14" color="#64748b"></up-icon>
+						<text>评价内容不会向安装师傅展示</text>
+					</view>
+				</view>
 			</view>
 		</view>
 
@@ -357,7 +354,6 @@
 	orderApi,
 	consumablesApi,
 	authApi,
-	evaluationApi,
 	resolveMediaUrl
 	} from '@/api/api.js'
 	import { getAuthToken } from '@/utils/auth-session.js'
@@ -395,9 +391,10 @@
 	const materialRequest = ref(null)
 	// 耗材申请仅允许指派师傅提交一次；重复提交由服务端幂等/冲突规则兜底。
 	const userRole = ref('')
-	const evaluation = ref(null)
 	const isInstaller = computed(() => userRole.value === 'installer')
-	const canReview = computed(() => ['customer', 'dealer'].includes(userRole.value) && orderInfo.value.statusCode === 'PENDING_REVIEW' && !evaluation.value)
+	const isReviewer = computed(() => ['customer', 'dealer'].includes(userRole.value))
+	const canReview = computed(() => isReviewer.value && orderInfo.value.statusCode === 'PENDING_REVIEW')
+	const hasReviewed = computed(() => isReviewer.value && orderInfo.value.statusCode === 'REVIEWED')
 	const materialReadonly = computed(() => !isInstaller.value || !['待上门', '处理中'].includes(orderInfo.value.status) || Boolean(materialRequest.value))
 
 const statusClass = computed(() => {
@@ -458,25 +455,17 @@ const statusClass = computed(() => {
 		uni.previewImage({ current: urls[index], urls })
 	}
 
-	const previewEvaluationImages = (index) => {
-		uni.previewImage({ current: evaluation.value.images[index], urls: evaluation.value.images })
-	}
-
 	const goEvaluate = () => {
 		uni.navigateTo({ url: `/packageA/order-evaluate/order-evaluate?id=${orderId.value}` })
 	}
 
-	const refreshOrderEvaluation = async () => {
+	const refreshOrderStatus = async () => {
 		if (!orderId.value) return
-		const [orderRes, evaluationRes] = await Promise.all([
-			orderApi.getDetail(orderId.value),
-			evaluationApi.getByOrder(orderId.value, { loading: false })
-		])
+		const orderRes = await orderApi.getDetail(orderId.value, { loading: false })
 		if (orderRes.code === 200) orderInfo.value = orderRes.data || {}
-		if (evaluationRes.code === 200) evaluation.value = evaluationRes.data || null
 	}
 
-	onShow(() => refreshOrderEvaluation())
+	onShow(() => refreshOrderStatus())
 
 	const previewProgressImage = (media) => {
 		if (media.mimeType?.startsWith('video/')) return
@@ -906,13 +895,12 @@ const statusClass = computed(() => {
 		detailError.value = null
 		try {
 			// 并行获取订单详情与当前用户角色
-			const [orderRes, userRes, progressRes, evaluationRes] = await Promise.all([
+			const [orderRes, userRes, progressRes] = await Promise.all([
 				orderApi.getDetail(orderId.value),
 				authApi.getUserInfo(),
-				orderApi.getProgress(orderId.value, { loading: false }),
-				evaluationApi.getByOrder(orderId.value, { loading: false })
+				orderApi.getProgress(orderId.value, { loading: false })
 			])
-			const failedResponse = [orderRes, userRes, progressRes, evaluationRes].find(res => res.code !== 200)
+			const failedResponse = [orderRes, userRes, progressRes].find(res => res.code !== 200)
 			if (failedResponse) {
 				setDetailError(failedResponse)
 				return
@@ -924,7 +912,6 @@ const statusClass = computed(() => {
 			const data = orderRes.data || {}
 			orderInfo.value = data
 			if (progressRes.code === 200) progressRecords.value = progressRes.data || []
-			if (evaluationRes.code === 200) evaluation.value = evaluationRes.data || null
 			if (userRole.value === 'installer') {
 				const materialsRes = await orderApi.getMaterials(orderId.value, { loading: false, silent: true })
 				// 后端以 404 表示该订单尚未提交耗材申请，此时应展示可填写的空表单。
@@ -1766,48 +1753,72 @@ const statusClass = computed(() => {
 		color: $primary;
 	}
 
-	.review-score {
-		display: flex;
-		align-items: center;
-		gap: 6rpx;
-		font-size: 25rpx;
-		font-weight: 600;
-		color: #d97706;
-		margin-bottom: 18rpx;
-	}
-
-	.review-time {
-		margin-left: auto;
-		font-size: 22rpx;
-		font-weight: 400;
-		color: $text-light;
-	}
-
-	.review-labels {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 12rpx;
-		margin-bottom: 16rpx;
-
-		text {
-			padding: 7rpx 16rpx;
-			border-radius: 22rpx;
-			background: #eef6ff;
-			font-size: 23rpx;
-			color: $primary;
+	.review-private-card {
+		.section-header {
+			margin-bottom: 18rpx;
 		}
 	}
 
-	.review-text {
-		display: block;
-		font-size: 27rpx;
-		line-height: 1.7;
-		color: $text-main;
-		margin-bottom: 18rpx;
+	.review-private-content {
+		display: flex;
+		align-items: center;
+		padding: 22rpx;
+		border-radius: 16rpx;
+		background: linear-gradient(135deg, #f4f9ff 0%, #f8fbff 100%);
+		border: 1rpx solid #dcecff;
+
+		&.submitted {
+			background: #f6fbf8;
+			border-color: #d9f2e2;
+		}
 	}
 
-	.review-empty {
-		padding: 38rpx 0 44rpx;
+	.review-private-icon {
+		width: 66rpx;
+		height: 66rpx;
+		border-radius: 18rpx;
+		background: #e5f1ff;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+
+		&.success {
+			background: #dcfce7;
+		}
+	}
+
+	.review-private-copy {
+		min-width: 0;
+		margin-left: 18rpx;
+		display: flex;
+		flex: 1;
+		flex-direction: column;
+	}
+
+	.review-private-title {
+		font-size: 27rpx;
+		font-weight: 600;
+		color: $text-main;
+	}
+
+	.review-private-desc {
+		font-size: 23rpx;
+		color: $text-sub;
+		margin-top: 8rpx;
+	}
+
+	.review-privacy-tip {
+		display: flex;
+		align-items: center;
+		gap: 7rpx;
+		margin-top: 12rpx;
+
+		text {
+			font-size: 21rpx;
+			line-height: 1.45;
+			color: $text-sub;
+		}
 	}
 
 	/* ═══ 图片上传 ═══ */

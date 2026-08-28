@@ -311,6 +311,10 @@ function updateChart() {
     },
     yAxis: {
       type: 'value',
+      min: 0,
+      // 订单量是离散计数，纵轴刻度不得出现 0.5、1.5 等小数。
+      // 使用最小间隔而非固定 interval，大数据量时仍可由 ECharts 自动选择合理整数步长。
+      minInterval: 1,
       axisLine: {
         show: false
       },

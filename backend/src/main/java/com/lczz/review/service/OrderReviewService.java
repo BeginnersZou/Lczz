@@ -52,12 +52,14 @@ public class OrderReviewService {
     }
 
     public ReviewView byOrder(AuthenticatedUser actor, long orderId) {
+        ensureAdminReader(actor);
         requireAccessibleOrder(actor, orderId);
         WorkOrderReviewEntity review = findByOrder(orderId);
         return review == null ? null : toView(actor, review);
     }
 
     public List<String> reviewedOrderIds(AuthenticatedUser actor) {
+        ensureAdminReader(actor);
         LambdaQueryWrapper<WorkOrderEntity> orderQuery = scopedOrders(actor)
                 .eq(WorkOrderEntity::getOrderStatus, "REVIEWED");
         Set<Long> reviewed = reviewMapper.selectList(new LambdaQueryWrapper<WorkOrderReviewEntity>())
@@ -69,7 +71,7 @@ public class OrderReviewService {
     }
 
     @Transactional
-    public ReviewView submit(AuthenticatedUser actor, ReviewCommand command) {
+    public ReviewSubmissionView submit(AuthenticatedUser actor, ReviewCommand command) {
         ensureReviewerRole(actor);
         WorkOrderEntity order = orderMapper.selectForUpdate(command.orderId());
         if (order == null || !Objects.equals(order.getCustomerUserId(), actor.userId())) {
@@ -110,7 +112,8 @@ public class OrderReviewService {
                 .set(WorkOrderEntity::getVersion, order.getVersion() + 1));
         if (updated != 1) throw new BusinessException(409, "ORDER_STATUS_CONFLICT", "订单状态已变化，请刷新后重试");
         recordStatus(order.getId(), actor.userId());
-        return toView(actor, reviewMapper.selectById(review.getId()));
+        // 评价内容属于后台管理信息。提交端仅获得提交凭证，不回传评分、文字、标签或图片。
+        return new ReviewSubmissionView(review.getId(), order.getId(), "SUBMITTED");
     }
 
     private ReviewView toView(AuthenticatedUser actor, WorkOrderReviewEntity review) {
@@ -148,6 +151,12 @@ public class OrderReviewService {
     private void ensureReviewerRole(AuthenticatedUser actor) {
         if (!actor.hasRole(RoleCode.CUSTOMER) && !actor.hasRole(RoleCode.DEALER)) {
             throw new BusinessException(403, "REVIEW_SUBMIT_FORBIDDEN", "仅订单绑定客户可以提交评价");
+        }
+    }
+
+    private void ensureAdminReader(AuthenticatedUser actor) {
+        if (!actor.hasRole(RoleCode.ADMIN)) {
+            throw new BusinessException(403, "REVIEW_READ_FORBIDDEN", "评价内容仅管理员可查看");
         }
     }
 
@@ -211,6 +220,7 @@ public class OrderReviewService {
 
     public record ReviewCommand(long orderId, int score, String content, Boolean liked, String label,
                                 List<String> labels, List<Long> fileIds, List<String> images) { }
+    public record ReviewSubmissionView(long id, long orderId, String status) { }
     public record ReviewView(long id, long orderId, long reviewerUserId, int score, boolean liked, String content,
                              List<String> labels, List<String> images, LocalDateTime createTime) { }
 }

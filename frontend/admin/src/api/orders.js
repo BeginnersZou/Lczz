@@ -74,6 +74,19 @@ export function getOrderDetailApi(id) {
 }
 
 /**
+ * 管理员查看指定订单的客户评价。
+ * 评价内容属于后台管理信息，服务端会拒绝非管理员角色访问。
+ * @param {string|number} orderId
+ * @returns {Promise<Object|null>}
+ */
+export function getOrderEvaluationApi(orderId) {
+  return request({
+    url: `/orders/evaluation/${orderId}`,
+    method: 'get'
+  })
+}
+
+/**
  * 新增订单
  * @param {Object} data - 订单表单数据
  * @returns {Promise<Object>}

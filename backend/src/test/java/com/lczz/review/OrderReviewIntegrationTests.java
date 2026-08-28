@@ -80,7 +80,7 @@ class OrderReviewIntegrationTests {
     }
 
     @Test
-    void boundCustomerReviewsOnceAndRelatedRolesCanReadImages() throws Exception {
+    void boundCustomerReviewsOnceAndOnlyAdminCanReadContent() throws Exception {
         String imageUrl = uploadImage(customerToken);
         String request = """
                 {"orderId":%d,"score":5,"content":"师傅专业，安装完成后运行正常", "liked":true,
@@ -88,9 +88,12 @@ class OrderReviewIntegrationTests {
                 """.formatted(orderId, imageUrl.replace("&", "\\u0026"));
         mockMvc.perform(post("/api/orders/evaluation").header("Authorization", "Bearer " + customerToken)
                         .contentType("application/json").content(request))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.data.score").value(5))
-                .andExpect(jsonPath("$.data.labels[0]").value("超赞"))
-                .andExpect(jsonPath("$.data.images[0]").isNotEmpty());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.orderId").value(orderId))
+                .andExpect(jsonPath("$.data.status").value("SUBMITTED"))
+                .andExpect(jsonPath("$.data.score").doesNotExist())
+                .andExpect(jsonPath("$.data.content").doesNotExist())
+                .andExpect(jsonPath("$.data.images").doesNotExist());
         assertThat(orderMapper.selectById(orderId).getOrderStatus()).isEqualTo("REVIEWED");
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM work_order_review WHERE order_id=?",
                 Long.class, orderId)).isEqualTo(1L);
@@ -99,11 +102,23 @@ class OrderReviewIntegrationTests {
 
         mockMvc.perform(get("/api/orders/evaluation/" + orderId)
                         .header("Authorization", "Bearer " + token(installerId, RoleCode.INSTALLER)))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.data.content")
-                        .value("师傅专业，安装完成后运行正常"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("REVIEW_READ_FORBIDDEN"));
+        mockMvc.perform(get("/api/orders/evaluation/" + orderId)
+                        .header("Authorization", "Bearer " + customerToken))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("REVIEW_READ_FORBIDDEN"));
+        mockMvc.perform(get("/api/orders/evaluation/" + orderId)
+                        .header("Authorization", "Bearer " + token(adminId, RoleCode.ADMIN)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content").value("师傅专业，安装完成后运行正常"))
                 .andExpect(jsonPath("$.data.images[0]").isNotEmpty());
-        mockMvc.perform(get("/api/orders/evaluation/ids").header("Authorization", "Bearer " + customerToken))
+        mockMvc.perform(get("/api/orders/evaluation/ids")
+                        .header("Authorization", "Bearer " + token(adminId, RoleCode.ADMIN)))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data[0]").value(Long.toString(orderId)));
+        mockMvc.perform(get("/api/orders/evaluation/ids").header("Authorization", "Bearer " + customerToken))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("REVIEW_READ_FORBIDDEN"));
 
         mockMvc.perform(post("/api/orders/evaluation").header("Authorization", "Bearer " + customerToken)
                         .contentType("application/json").content(request))

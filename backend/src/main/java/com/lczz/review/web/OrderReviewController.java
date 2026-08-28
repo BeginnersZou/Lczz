@@ -4,6 +4,7 @@ import com.lczz.auth.domain.AuthenticatedUser;
 import com.lczz.common.api.ApiResponse;
 import com.lczz.review.service.OrderReviewService;
 import com.lczz.review.service.OrderReviewService.ReviewCommand;
+import com.lczz.review.service.OrderReviewService.ReviewSubmissionView;
 import com.lczz.review.service.OrderReviewService.ReviewView;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -36,14 +37,14 @@ public class OrderReviewController {
     }
 
     @GetMapping("/{orderId}")
-    @Operation(summary = "订单相关角色查询评价；未评价时 data 为 null")
+    @Operation(summary = "管理员查询订单评价；未评价时 data 为 null")
     ApiResponse<ReviewView> byOrder(@AuthenticationPrincipal AuthenticatedUser actor,
                                     @PathVariable @Min(1) long orderId, HttpServletRequest request) {
         return ApiResponse.success(reviewService.byOrder(actor, orderId), requestId(request));
     }
 
     @GetMapping("/ids")
-    @Operation(summary = "查询当前角色范围内已评价订单 ID")
+    @Operation(summary = "管理员查询已评价订单 ID")
     ApiResponse<List<String>> reviewedIds(@AuthenticationPrincipal AuthenticatedUser actor,
                                           HttpServletRequest request) {
         return ApiResponse.success(reviewService.reviewedOrderIds(actor), requestId(request));
@@ -51,8 +52,8 @@ public class OrderReviewController {
 
     @PostMapping
     @Operation(summary = "绑定客户对待评价订单提交一次评价")
-    ApiResponse<ReviewView> submit(@AuthenticationPrincipal AuthenticatedUser actor,
-                                   @Valid @RequestBody ReviewRequest body, HttpServletRequest request) {
+    ApiResponse<ReviewSubmissionView> submit(@AuthenticationPrincipal AuthenticatedUser actor,
+                                             @Valid @RequestBody ReviewRequest body, HttpServletRequest request) {
         return ApiResponse.success(reviewService.submit(actor, body.toCommand()), requestId(request));
     }
 
