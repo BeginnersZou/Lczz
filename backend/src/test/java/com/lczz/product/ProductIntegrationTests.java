@@ -102,6 +102,43 @@ class ProductIntegrationTests {
     }
 
     @Test
+    void guestCanBrowseEnabledProductsAndCategoriesButCannotWrite() throws Exception {
+        String admin = adminToken();
+        long parentId = createCategory(admin, "guest-materials", "游客可见分类", null);
+        long childId = createCategory(admin, "guest-aux", "游客可见耗材", parentId);
+        long enabledId = insertProduct("GUEST-ON", "游客可见产品", childId, true);
+        long disabledId = insertProduct("GUEST-OFF", "游客不可见产品", childId, false);
+        jdbcTemplate.update("INSERT INTO file_asset(access_url, deleted) VALUES (?, FALSE)", "/files/guest-cover.jpg");
+        Long coverId = jdbcTemplate.queryForObject("SELECT MAX(id) FROM file_asset", Long.class);
+        jdbcTemplate.update("INSERT INTO file_asset(access_url, deleted) VALUES (?, FALSE)", "/files/guest-detail.jpg");
+        Long detailId = jdbcTemplate.queryForObject("SELECT MAX(id) FROM file_asset", Long.class);
+        jdbcTemplate.update("UPDATE product SET cover_file_id=? WHERE id=?", coverId, enabledId);
+        jdbcTemplate.update("INSERT INTO business_file_relation(business_type, business_id, usage_type, file_id) "
+                + "VALUES ('PRODUCT', ?, 'DETAIL', ?)", enabledId, detailId);
+
+        mockMvc.perform(get("/api/v1/consumables/list").param("enabled", "false"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.list[0].id").value(enabledId))
+                .andExpect(jsonPath("$.data.list[0].image")
+                        .value(org.hamcrest.Matchers.startsWith("/api/files/access/")));
+        mockMvc.perform(get("/api/v1/consumables/detail/{id}", enabledId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.name").value("游客可见产品"))
+                .andExpect(jsonPath("$.data.detailImages[0].url")
+                        .value(org.hamcrest.Matchers.startsWith("/api/files/access/")));
+        mockMvc.perform(get("/api/v1/consumables/detail/{id}", disabledId))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("PRODUCT_NOT_FOUND"));
+        mockMvc.perform(get("/api/v1/consumables/categories"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].name").value("游客可见分类"));
+        mockMvc.perform(post("/api/v1/consumables").contentType("application/json").content("{}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error").value("UNAUTHORIZED"));
+    }
+
+    @Test
     void categoryInUseCannotBeDeletedAndPurchaseEndpointDoesNotExist() throws Exception {
         String token = adminToken();
         long parentId = createCategory(token, "materials", "安装辅料", null);

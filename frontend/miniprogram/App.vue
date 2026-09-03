@@ -5,11 +5,10 @@ import { clearAuthSession, getAuthToken, saveAuthUserInfo } from '@/utils/auth-s
 
 async function restoreAuthSession() {
 	if (!getAuthToken()) return
-	const res = await authApi.getUserInfo({ loading: false })
+	const res = await authApi.getUserInfo({ loading: false, silent: true, redirectOnUnauthorized: false })
 	if (res.code === 200) {
 		if (!saveAuthUserInfo(res.data)) {
 			clearAuthSession()
-			uni.reLaunch({ url: '/pages/login/login' })
 		}
 		return
 	}

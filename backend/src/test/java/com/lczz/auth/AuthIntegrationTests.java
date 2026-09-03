@@ -150,12 +150,38 @@ class AuthIntegrationTests {
                 .andExpect(jsonPath("$.data").doesNotExist());
     }
 
-    private void bindNewUser(String loginCode, String phoneCode) throws Exception {
+    @Test
+    void customerCanCancelAccountAndRemoveWechatAndPhoneIdentity() throws Exception {
+        when(wechatGateway.exchangeLoginCode(anyString()))
+                .thenReturn(new WechatIdentity("wx-app", "cancel-open", "cancel-union"));
+        when(wechatGateway.exchangePhoneCode(anyString())).thenReturn("13800138007");
+        String token = bindNewUser("cancel-login-code", "cancel-phone-code");
+
+        mockMvc.perform(post("/api/auth/account/cancel")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType("application/json")
+                        .content("{\"confirmed\":true}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").value(true));
+
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM user_wechat_identity WHERE open_id='cancel-open'", Long.class)).isZero();
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM sys_user WHERE phone='13800138007'", Long.class)).isZero();
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM sys_user WHERE nickname='已注销用户' AND deleted=TRUE", Long.class)).isEqualTo(1);
+        mockMvc.perform(get("/api/auth/info").header("Authorization", "Bearer " + token))
+                .andExpect(status().isUnauthorized());
+    }
+
+    private String bindNewUser(String loginCode, String phoneCode) throws Exception {
         mockMvc.perform(post("/api/auth/wechat/login").contentType("application/json")
                         .content("{\"code\":\"" + loginCode + "\"}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.needPhone").value(true));
-        mockMvc.perform(post("/api/auth/wechat/bind-phone").contentType("application/json")
+        String response = mockMvc.perform(post("/api/auth/wechat/bind-phone").contentType("application/json")
                         .content("{\"code\":\"" + loginCode + "\",\"phoneCode\":\"" + phoneCode + "\"}"))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.data.userInfo.role").value("customer"));
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.userInfo.role").value("customer"))
+                .andReturn().getResponse().getContentAsString();
+        return new com.fasterxml.jackson.databind.ObjectMapper().readTree(response).at("/data/token").asText();
     }
 }

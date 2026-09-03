@@ -17,7 +17,7 @@
 							<text class="user-phone" v-if="userInfo.phone">{{ formatPhone(userInfo.phone) }}</text>
 						</view>
 					</view>
-					<view class="setting-btn" hover-class="hover-mask" :hover-stay-time="80" @click="goSettings">
+					<view v-if="!isGuest" class="setting-btn" hover-class="hover-mask" :hover-stay-time="80" @click="goSettings">
 						<up-icon name="setting" size="22" color="#fff"></up-icon>
 					</view>
 				</view>
@@ -25,7 +25,7 @@
 		</view>
 
 		<!-- ═══ 工作概览卡片（浮于头部下方） ═══ -->
-		<view class="stats-card" v-if="!statsError" hover-class="hover-press" :hover-stay-time="80" @click="goToOrder()">
+		<view class="stats-card" v-if="!isGuest && !statsError" hover-class="hover-press" :hover-stay-time="80" @click="goToOrder()">
 			<view class="stat-item" @click.stop="goToOrder(1)">
 				<text class="stat-num">{{ statsLoading ? '--' : stats.pending }}</text>
 				<text class="stat-label">待上门</text>
@@ -41,12 +41,18 @@
 				<text class="stat-label">已完成</text>
 			</view>
 		</view>
-		<view class="stats-card stats-error-card" v-else @click="fetchStats">
+		<view class="stats-card stats-error-card" v-else-if="!isGuest" @click="fetchStats">
 			<up-icon name="reload" size="22" color="#0b63ce"></up-icon>
 			<view class="stats-error-copy">
 				<text class="stats-error-title">订单概览暂不可用</text>
 				<text class="stats-error-desc">点击重新加载真实数据</text>
 			</view>
+		</view>
+		<view class="guest-card" v-else>
+			<text class="guest-card-title">登录后管理个人服务</text>
+			<text class="guest-card-desc">手机号用于关联你的订单与服务记录；暂不登录不影响浏览产品、品牌服务和联系客服。</text>
+			<button class="guest-login-btn" hover-class="hover-press" @click="goLogin">手机号快捷登录</button>
+			<button class="guest-browse-btn" hover-class="hover-press" @click="goToOfficial">暂不登录，浏览服务</button>
 		</view>
 
 		<!-- ═══ 快捷功能 ═══ -->
@@ -144,6 +150,7 @@
 	} from '@/utils/auth-session.js'
 
 	const userInfo = ref({})
+	const isGuest = ref(!getAuthToken())
 	const headerTopPadding = ref(64)
 	try {
 		const windowInfo = typeof uni.getWindowInfo === 'function' ? uni.getWindowInfo() : uni.getSystemInfoSync()
@@ -174,7 +181,8 @@
 			if (res.code === 200) {
 				if (!saveAuthUserInfo(res.data)) {
 					clearAuthSession()
-					uni.reLaunch({ url: '/pages/login/login' })
+					isGuest.value = true
+					userInfo.value = {}
 					return
 				}
 				userInfo.value = res.data
@@ -207,11 +215,13 @@
 
 	// 显示昵称：优先取后端返回的昵称/姓名，兜底"微信用户"
 	const displayName = computed(() => {
+		if (isGuest.value) return '游客'
 		const u = userInfo.value || {}
 		return u.nickname || u.name || u.username || '微信用户'
 	})
 
 	const roleLabel = computed(() => {
+		if (isGuest.value) return '游客模式'
 		const role = (userInfo.value && userInfo.value.role) || ''
 		return getRoleLabel(role)
 	})
@@ -240,9 +250,12 @@
 
 	// 页面再次显示时刷新（退出登录后返回会重新读取）
 	onShow(() => {
-		if (!getAuthToken()) {
+		isGuest.value = !getAuthToken()
+		if (isGuest.value) {
 			userInfo.value = {}
-			uni.reLaunch({ url: '/pages/login/login' })
+			statsLoading.value = false
+			statsError.value = false
+			computeCacheSize()
 			return
 		}
 		loadUserInfo()
@@ -252,6 +265,7 @@
 
 	// 进入设置页
 	const goSettings = () => {
+		if (isGuest.value) return goLogin()
 		uni.navigateTo({
 			url: '/packageA/settings/settings'
 		})
@@ -267,6 +281,10 @@
 
 	const goToOfficial = () => {
 		uni.switchTab({ url: '/pages/official/official' })
+	}
+
+	const goLogin = () => {
+		uni.navigateTo({ url: '/pages/login/login' })
 	}
 
 	// 联系客服
@@ -428,6 +446,13 @@
 	.stats-error-copy { display: flex; flex-direction: column; }
 	.stats-error-title { font-size: 26rpx; font-weight: 650; color: #142434; }
 	.stats-error-desc { margin-top: 6rpx; font-size: 21rpx; color: #8b9aaa; }
+	.guest-card { margin: -60rpx 24rpx 0; padding: 36rpx 32rpx 30rpx; position: relative; z-index: 10; border-radius: 26rpx; background: #fff; box-shadow: 0 12rpx 36rpx rgba(20, 54, 84, 0.12); display: flex; flex-direction: column; align-items: center; text-align: center; }
+	.guest-card-title { color: #142434; font-size: 30rpx; font-weight: 700; }
+	.guest-card-desc { margin-top: 12rpx; color: #64748b; font-size: 23rpx; line-height: 1.65; }
+	.guest-login-btn, .guest-browse-btn { width: 100%; height: 78rpx; margin: 26rpx 0 0; padding: 0; border-radius: 20rpx; display: flex; align-items: center; justify-content: center; font-size: 25rpx; font-weight: 600; }
+	.guest-login-btn { color: #fff; background: linear-gradient(135deg, #0b63ce, #2088e2); }
+	.guest-browse-btn { margin-top: 14rpx; color: #0b63ce; background: #f7fbff; border: 1rpx solid #cbdcf2; }
+	.guest-login-btn::after, .guest-browse-btn::after { border: 0; }
 
 	.stat-item {
 		flex: 1;

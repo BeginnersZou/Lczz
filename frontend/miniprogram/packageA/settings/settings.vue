@@ -56,6 +56,9 @@
 		<view class="logout-btn" @click="handleLogout">
 			<text>退出登录</text>
 		</view>
+		<view v-if="canCancelAccount" class="cancel-account" @click="handleCancelAccount">
+			<text>注销账号</text>
+		</view>
 
 		<view class="footer">
 			<text class="footer-text">武汉力创之尊机电设备有限公司</text>
@@ -65,13 +68,14 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { authApi } from '@/api/api.js'
 import { clearAuthSession, getAuthToken, getAuthUserInfo, maskPhone } from '@/utils/auth-session.js'
 
 const userInfo = ref({})
 const version = ref('1.0.0')
 const cacheSize = ref('0KB')
+const canCancelAccount = computed(() => userInfo.value.role === 'customer')
 
 // 手机号脱敏
 const formatPhone = (phone) => {
@@ -80,7 +84,7 @@ const formatPhone = (phone) => {
 
 onMounted(() => {
 	if (!getAuthToken()) {
-		uni.reLaunch({ url: '/pages/login/login' })
+		uni.switchTab({ url: '/pages/index/index' })
 		return
 	}
 	userInfo.value = getAuthUserInfo()
@@ -155,9 +159,43 @@ const handleLogout = () => {
 				uni.hideLoading()
 				uni.showToast({ title: '已退出登录', icon: 'success' })
 				setTimeout(() => {
-					uni.reLaunch({ url: '/pages/login/login' })
+					uni.switchTab({ url: '/pages/index/index' })
 				}, 1000)
 			}
+		}
+	})
+}
+
+// 自主注销：二次确认后立即清除微信身份绑定和可识别账号资料
+const handleCancelAccount = () => {
+	uni.showModal({
+		title: '注销账号',
+		content: '注销后登录信息、手机号绑定和账号资料将被删除或匿名化，且无法恢复。履约及售后依法需要保留的记录仅保留最少信息。是否继续？',
+		cancelText: '暂不注销',
+		confirmText: '继续注销',
+		confirmColor: '#e5484d',
+		success: (first) => {
+			if (!first.confirm) return
+			uni.showModal({
+				title: '再次确认',
+				content: '确认永久注销当前账号？',
+				cancelText: '取消',
+				confirmText: '确认注销',
+				confirmColor: '#e5484d',
+				success: async (second) => {
+					if (!second.confirm) return
+					uni.showLoading({ title: '正在注销...', mask: true })
+					try {
+						const response = await authApi.cancelAccount()
+						if (response.code !== 200) return
+						clearAuthSession()
+						uni.showToast({ title: '账号已注销', icon: 'success' })
+						setTimeout(() => uni.switchTab({ url: '/pages/index/index' }), 1000)
+					} finally {
+						uni.hideLoading()
+					}
+				}
+			})
 		}
 	})
 }
@@ -261,6 +299,17 @@ const handleLogout = () => {
 
 	&:active {
 		background: $bg-hover;
+	}
+}
+
+.cancel-account {
+	margin-top: 22rpx;
+	text-align: center;
+
+	text {
+		font-size: $font-sm;
+		color: $text-light;
+		text-decoration: underline;
 	}
 }
 

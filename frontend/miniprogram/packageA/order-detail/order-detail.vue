@@ -356,7 +356,7 @@
 	authApi,
 	resolveMediaUrl
 	} from '@/api/api.js'
-	import { getAuthToken } from '@/utils/auth-session.js'
+	import { requireLogin } from '@/utils/auth-guard.js'
 
 	// ===== 动态计算弹出框高度 =====
 	// #ifdef MP-WEIXIN
@@ -941,10 +941,7 @@ const statusClass = computed(() => {
 	}
 
 	onLoad((options) => {
-		if (!getAuthToken()) {
-			uni.reLaunch({ url: '/pages/login/login' })
-			return
-		}
+		if (!requireLogin({ content: '订单详情包含个人服务信息。你可以暂不登录，继续浏览产品和服务。' })) return
 		orderId.value = options?.id || ''
 		loadOrderDetails()
 	})

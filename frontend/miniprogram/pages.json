@@ -9,16 +9,6 @@
 	},
 	"pages": [
 		{
-			"path": "pages/login/login",
-			"style": {
-				"navigationStyle": "custom",
-				"enablePullDownRefresh": false,
-				"app-plus": {
-					"titleView": false
-				}
-			}
-		},
-		{
 			"path": "pages/index/index",
 			"style": {
 				"enablePullDownRefresh": true,
@@ -27,6 +17,16 @@
 				"navigationBarTextStyle": "white",
 				"backgroundColorTop": "#0b63ce",
 				"backgroundColorBottom": "#f4f7fb"
+			}
+		},
+		{
+			"path": "pages/login/login",
+			"style": {
+				"navigationStyle": "custom",
+				"enablePullDownRefresh": false,
+				"app-plus": {
+					"titleView": false
+				}
 			}
 		},
 		{

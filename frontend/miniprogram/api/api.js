@@ -4,7 +4,7 @@
  *
  * 统一返回结构：{ code, data, msg }
  *   - code===200 成功，页面用 res.data 取数据
- *   - code===401 登录失效（request.js 自动跳登录）
+ *   - code===401 登录失效（request.js 清除登录态并提供可拒绝的登录引导）
  *   - 其他业务码：request.js 已统一 toast(res.msg)，页面无需重复提示
  *
  * 使用示例：
@@ -98,9 +98,9 @@ const normalizeEvaluation = (item = {}) => ({
 // ====================== 认证相关 ======================
 export const authApi = {
 	// 微信一键登录（传微信 code；已注册用户返回 { token, userInfo }，新用户返回 { needPhone: true }）
-	loginWithWechat: (data) => http.post('/auth/wechat/login', data).then(normalizeAuthResponse),
+	loginWithWechat: (data) => http.post('/auth/wechat/login', data, { auth: false, redirectOnUnauthorized: false }).then(normalizeAuthResponse),
 	// 手机号授权绑定
-	bindPhone: (data) => http.post('/auth/wechat/bind-phone', data).then(normalizeAuthResponse),
+	bindPhone: (data) => http.post('/auth/wechat/bind-phone', data, { auth: false, redirectOnUnauthorized: false }).then(normalizeAuthResponse),
 	// 获取当前登录用户信息
 	getUserInfo: async (options = {}) => {
 		const res = await http.get('/auth/info', {}, options)
@@ -108,7 +108,9 @@ export const authApi = {
 		return res
 	},
 	// 退出登录
-	logout: () => http.post('/auth/logout')
+	logout: () => http.post('/auth/logout'),
+	// 用户主动注销账号并删除/匿名化账号个人信息
+	cancelAccount: () => http.post('/auth/account/cancel', { confirmed: true })
 }
 
 // ====================== 订单相关 ======================
@@ -169,16 +171,17 @@ export const evaluationApi = {
 export const consumablesApi = {
 	// 耗材列表（分页） params: { page, pageSize, keyword, category }
 	getList: async (params) => {
-		const res = await http.get('/consumables/list', params)
+		const res = await http.get('/consumables/list', params, { auth: false, redirectOnUnauthorized: false })
 		if (res.code === 200 && res.data) res.data.list = (res.data.list || []).map(normalizeProduct)
 		return res
 	},
 	// 耗材详情
 	getDetail: async (id) => {
-		const res = await http.get(`/consumables/detail/${id}`)
+		const res = await http.get(`/consumables/detail/${id}`, {}, { auth: false, redirectOnUnauthorized: false })
 		if (res.code === 200) res.data = normalizeProduct(res.data)
 		return res
-	}
+	},
+	getCategories: () => http.get('/consumables/categories', {}, { auth: false, redirectOnUnauthorized: false })
 }
 
 // ====================== 仪表盘 / 工作台概览 ======================

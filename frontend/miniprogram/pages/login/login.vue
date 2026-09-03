@@ -26,7 +26,7 @@
     <view class="login-panel">
       <view class="panel-heading">
         <text class="panel-title">欢迎使用</text>
-        <text class="panel-subtitle">登录后查看订单进度与服务记录</text>
+        <text class="panel-subtitle">登录后可查看个人订单；暂不登录也可浏览产品和服务</text>
       </view>
 
       <view class="login-action">
@@ -36,6 +36,7 @@
           <text class="btn-text">{{ isLogging ? '正在登录…' : '手机号快捷登录' }}</text>
         </button>
         <text class="login-tip">{{ isAgree ? '手机号仅用于注册登录和订单服务' : '请先阅读并勾选下方协议' }}</text>
+        <button class="guest-entry-btn" hover-class="guest-button-pressed" @click="continueAsGuest">暂不登录，先看看</button>
       </view>
 
       <view class="agreement-row">
@@ -81,6 +82,10 @@ const goToAgreement = (type) => {
   })
 }
 
+const continueAsGuest = () => {
+  uni.switchTab({ url: '/pages/index/index' })
+}
+
 // ============ 微信手机号一键登录（新用户自动注册为普通客户） ============
 const onGetPhoneNumber = async (e) => {
   if (isLogging.value) return
@@ -104,7 +109,7 @@ const onGetPhoneNumber = async (e) => {
     if (normalizedErrno === 112) {
       reason = '当前小程序尚未完成手机号信息用途声明，请完善《用户隐私保护指引》并等待配置生效后重试。'
     } else if (denied) {
-      reason = '你已取消手机号授权，请重新点击并选择手机号。'
+      reason = '你已取消手机号授权，可暂不登录继续浏览产品和服务。'
     }
     uni.showModal({
       title: '手机号授权未完成',
@@ -223,6 +228,8 @@ const getWxCode = () => {
 .phone-login-btn::after { border: 0; }.phone-login-btn[disabled] { opacity: .55; background: linear-gradient(135deg, #0b63ce, #2088e2); color: #fff; }
 .button-pressed { opacity: .84; transform: scale(.99); }.btn-text { color: #fff; font-size: 29rpx; font-weight: 650; }
 .login-tip { display: block; text-align: center; margin-top: 16rpx; color: #9aa8b6; font-size: 20rpx; }
+.guest-entry-btn { width: 100%; height: 78rpx; margin: 18rpx 0 0; padding: 0; border: 1rpx solid #cbdcf2; border-radius: 20rpx; background: #f7fbff; color: #0b63ce; display: flex; align-items: center; justify-content: center; font-size: 26rpx; font-weight: 600; }
+.guest-entry-btn::after { border: 0; }.guest-button-pressed { background: #edf5ff; transform: scale(.99); }
 
 .agreement-row { display: flex; align-items: center; gap: 10rpx; margin-top: 30rpx; padding-top: 25rpx; border-top: 1rpx solid #edf1f5; }
 .agreement-text { display: block; flex: 1; min-width: 0; color: $text-sub; font-size: 21rpx; line-height: 1.55; }.link-text { color: $primary; }

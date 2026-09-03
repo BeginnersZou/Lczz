@@ -1,6 +1,7 @@
 package com.lczz.auth.web;
 
 import com.lczz.auth.domain.AuthenticatedUser;
+import com.lczz.auth.service.AccountCancellationService;
 import com.lczz.auth.service.AuthService;
 import com.lczz.auth.service.AuthService.LoginResult;
 import com.lczz.auth.service.AuthService.UserInfo;
@@ -22,9 +23,11 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping({"/api/auth", "/api/v1/auth"})
 public class AuthController {
     private final AuthService authService;
+    private final AccountCancellationService accountCancellationService;
 
-    public AuthController(AuthService authService) {
+    public AuthController(AuthService authService, AccountCancellationService accountCancellationService) {
         this.authService = authService;
+        this.accountCancellationService = accountCancellationService;
     }
 
     @PostMapping("/login")
@@ -59,6 +62,14 @@ public class AuthController {
         return ApiResponse.success(true, requestId(request));
     }
 
+    @PostMapping("/account/cancel")
+    ApiResponse<Boolean> cancelAccount(@AuthenticationPrincipal AuthenticatedUser principal,
+                                       @RequestBody CancelAccountRequest body,
+                                       HttpServletRequest request) {
+        accountCancellationService.cancel(principal, Boolean.TRUE.equals(body.confirmed()));
+        return ApiResponse.success(true, requestId(request));
+    }
+
     private void putLogin(Map<String, Object> data, LoginResult login) {
         data.put("token", login.token());
         data.put("tokenType", login.tokenType());
@@ -76,4 +87,5 @@ public class AuthController {
     record WechatLoginRequest(@NotBlank @Size(max = 256) String code) { }
     record BindPhoneRequest(@NotBlank @Size(max = 256) String code,
                             @NotBlank @Size(max = 256) String phoneCode) { }
+    record CancelAccountRequest(Boolean confirmed) { }
 }

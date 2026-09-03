@@ -4,8 +4,8 @@
 		<view class="agreement-card title-card">
 			<text class="doc-title">力创之尊智慧机电 小程序隐私保护指引</text>
 			<view class="doc-meta">
-				<text class="meta-text">版本号：v1.2.0</text>
-				<text class="meta-text">更新日期：2026年8月25日</text>
+				<text class="meta-text">版本号：v1.3.0</text>
+				<text class="meta-text">更新日期：2026年9月3日</text>
 			</view>
 		</view>
 
@@ -19,7 +19,7 @@
 		<view class="agreement-card">
 			<text class="chapter-title">一、信息收集范围</text>
 			<text class="chapter-text">在你使用本小程序过程中，开发者会处理以下必要信息：</text>
-			<text class="chapter-text">1. 手机号：在获取你的明示同意后收集，用于用户注册、登录、身份验证、账号管理及订单服务联系；</text>
+			<text class="chapter-text">1. 手机号：仅当你主动点击“手机号快捷登录”并在微信授权界面明示同意后收集，用于注册、登录、身份验证、账号管理及关联订单服务；拒绝授权或选择暂不登录，不影响浏览产品、品牌服务及联系客服等公共功能；</text>
 			<text class="chapter-text">2. 剪切板：仅在你主动点击复制时，将订单编号、服务名称或公司联系地址写入剪切板，不主动读取剪切板中的其他内容；</text>
 			<text class="chapter-text">3. 订单信息：用于查询和管理空调安装、维修等服务订单、施工进度、耗材及评价记录；</text>
 			<text class="chapter-text">4. 地址：用于安排安装维修人员上门服务，并向你展示订单对应的服务地址；</text>
@@ -57,8 +57,9 @@
 		<view class="agreement-card">
 			<text class="chapter-title">五、您的权利</text>
 			<text class="chapter-text">1. 你可以通过“我的”页面或下方联系方式，依法行使个人信息查阅、复制、更正、删除等权利；</text>
-			<text class="chapter-text">2. 你可以通过微信设置撤回相关授权，撤回后对应功能可能无法继续使用；</text>
-			<text class="chapter-text">3. 你可以通过下方电话申请注销账号。开发者将在受理后十五个工作日内完成核查和处理，并依法删除或匿名化相关个人信息。</text>
+			<text class="chapter-text">2. 你可以拒绝或通过微信设置撤回相关授权；拒绝或撤回后，仅依赖该信息的登录、订单查询等功能可能无法使用，其他公共功能仍可继续使用；</text>
+			<text class="chapter-text">3. 你可以在“我的－设置－注销账号”中自主注销。确认注销后，开发者立即解除微信身份与手机号绑定，并删除或匿名化可识别的账号资料；依法需要保留的履约、售后记录仅在法定期限和最小范围内保存，到期后删除或匿名化；</text>
+			<text class="chapter-text">4. 你也可以通过下方电话提出查阅、复制、更正或删除个人信息的请求。</text>
 		</view>
 
 		<!-- 六、Cookie/Token 使用 -->

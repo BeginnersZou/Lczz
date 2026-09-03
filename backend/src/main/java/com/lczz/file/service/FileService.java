@@ -206,7 +206,7 @@ public class FileService {
     }
 
     private void authorizeFile(AuthenticatedUser actor, FileAssetRecord file) {
-        if (actor.hasRole(RoleCode.ADMIN)) return;
+        if (actor != null && actor.hasRole(RoleCode.ADMIN)) return;
         List<FileRelationRecord> relations = relationMapper.selectList(new LambdaQueryWrapper<FileRelationRecord>()
                 .eq(FileRelationRecord::getFileId, file.getId()));
         if (isProductCover(actor, file.getId())) return;
@@ -216,13 +216,13 @@ public class FileService {
             if (!allowed) throw new BusinessException(403, "FILE_ACCESS_FORBIDDEN", "无权访问该文件");
             return;
         }
-        if (!Objects.equals(file.getUploadedBy(), actor.userId())) {
+        if (actor == null || !Objects.equals(file.getUploadedBy(), actor.userId())) {
             throw new BusinessException(403, "FILE_ACCESS_FORBIDDEN", "无权访问该文件");
         }
     }
 
     private boolean isProductCover(AuthenticatedUser actor, long fileId) {
-        String sql = actor.hasRole(RoleCode.ADMIN)
+        String sql = actor != null && actor.hasRole(RoleCode.ADMIN)
                 ? "SELECT COUNT(*) FROM product WHERE cover_file_id=? AND deleted=0"
                 : "SELECT COUNT(*) FROM product WHERE cover_file_id=? AND deleted=0 AND enabled=1";
         return count(sql, fileId) > 0;
@@ -235,13 +235,13 @@ public class FileService {
     }
 
     private boolean canAccessBusiness(AuthenticatedUser actor, String type, long id, boolean write) {
-        if (actor.hasRole(RoleCode.ADMIN)) return businessExists(type, id);
+        if (actor != null && actor.hasRole(RoleCode.ADMIN)) return businessExists(type, id);
         return switch (type) {
             case "PRODUCT" -> !write && count(
                     "SELECT COUNT(*) FROM product WHERE id=? AND deleted=0 AND enabled=1", id) > 0;
-            case "ORDER" -> canAccessOrder(actor, id, write);
-            case "PROGRESS" -> canAccessProgress(actor, id, write);
-            case "REVIEW" -> canAccessReview(actor, id, write);
+            case "ORDER" -> actor != null && canAccessOrder(actor, id, write);
+            case "PROGRESS" -> actor != null && canAccessProgress(actor, id, write);
+            case "REVIEW" -> actor != null && canAccessReview(actor, id, write);
             default -> false;
         };
     }

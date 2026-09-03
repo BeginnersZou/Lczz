@@ -1,6 +1,6 @@
 <template>
 	<view class="page">
-		<view class="order-banner">
+		<view class="order-banner" v-if="!isGuest">
 			<view class="banner-icon"><up-icon name="order" size="28" color="#ffffff"></up-icon></view>
 			<view class="banner-copy">
 				<text class="banner-title">服务进度，随时掌握</text>
@@ -8,7 +8,7 @@
 			</view>
 			<view class="live-dot"><view class="dot"></view><text>实时更新</text></view>
 		</view>
-		<view class="order-search">
+		<view class="order-search" v-if="!isGuest">
 			<view class="search-input-wrap">
 				<up-icon name="search" size="18" color="#6f8396"></up-icon>
 				<input v-model="searchKeyword" class="search-input" placeholder="搜索订单编号、客户姓名"
@@ -20,7 +20,7 @@
 			<view class="search-btn" hover-class="hover-press" :hover-stay-time="80" @click="performSearch">搜索</view>
 		</view>
 		<!-- 标签切换 -->
-		<view class="tabs-wrap">
+		<view class="tabs-wrap" v-if="!isGuest">
 		<view class="tabs-row">
 			<view class="tab-item" v-for="(tab, index) in tabs" :key="index" :class="{ active: currentTab === index }"
 				@click="switchTab(index)">
@@ -32,7 +32,7 @@
 
 
 		<!-- ═══ 订单列表 ═══ -->
-		<view class="order-list">
+		<view class="order-list" v-if="!isGuest">
 			<!-- 骨架屏 -->
 			<template v-if="listLoading && allOrders.length === 0">
 				<view class="order-card skeleton-card" v-for="i in 4" :key="'sk' + i">
@@ -145,6 +145,13 @@
 				</view>
 			</template>
 		</view>
+		<view class="guest-state" v-else>
+			<view class="guest-icon"><up-icon name="order" size="42" color="#0b63ce"></up-icon></view>
+			<text class="guest-title">登录后查看个人订单</text>
+			<text class="guest-desc">订单信息与手机号关联，用于展示上门时间、处理状态和服务记录。你也可以暂不登录，继续浏览产品和服务。</text>
+			<button class="guest-login-btn" hover-class="hover-press" @click="goLogin">手机号快捷登录</button>
+			<button class="guest-home-btn" hover-class="hover-press" @click="goHome">暂不登录，返回首页</button>
+		</view>
 
 
 	</view>
@@ -167,8 +174,11 @@ import { getAuthToken } from '@/utils/auth-session.js'
 // onShow 确保从详情页返回时刷新列表（完工提交后状态会变化）
 // 同时处理从"我的"页统计项点击跳转时切换到对应 tab
 onShow(() => {
-	if (!getAuthToken()) {
-		uni.reLaunch({ url: '/pages/login/login' })
+	isGuest.value = !getAuthToken()
+	if (isGuest.value) {
+		allOrders.value = []
+		total.value = 0
+		listError.value = null
 		return
 	}
 	if (uni.$pendingOrderTab != null) {
@@ -215,6 +225,7 @@ const userRole = ref('')
 const searchKeyword = ref('')
 const activeKeyword = ref('')
 const listError = ref(null)
+const isGuest = ref(!getAuthToken())
 
 // 当前登录用户角色
 const loadUserRole = async () => {
@@ -367,6 +378,7 @@ const goEvaluate = (order) => {
 }
 
 const goHome = () => uni.switchTab({ url: '/pages/index/index' })
+const goLogin = () => uni.navigateTo({ url: '/pages/login/login' })
 </script>
 
 <style scoped lang="scss">
@@ -729,6 +741,14 @@ $text-light: #94a3b8;
 .error-state { padding-top: 110rpx; }
 .error-icon { background: #fff7e6; }
 .load-retry { color: #b45309; background: #fff7e6; border-radius: 24rpx; padding: 12rpx 24rpx; font-size: 22rpx; }
+.guest-state { margin: 36rpx 24rpx 0; padding: 88rpx 44rpx 52rpx; border-radius: 30rpx; background: #fff; box-shadow: $shadow-card; display: flex; flex-direction: column; align-items: center; text-align: center; }
+.guest-icon { width: 116rpx; height: 116rpx; border-radius: 32rpx; background: #eaf3ff; display: flex; align-items: center; justify-content: center; }
+.guest-title { margin-top: 28rpx; color: $text-main; font-size: 32rpx; font-weight: 700; }
+.guest-desc { margin-top: 16rpx; color: $text-sub; font-size: 24rpx; line-height: 1.7; }
+.guest-login-btn, .guest-home-btn { width: 100%; height: 84rpx; margin: 32rpx 0 0; padding: 0; border-radius: 21rpx; display: flex; align-items: center; justify-content: center; font-size: 27rpx; font-weight: 600; }
+.guest-login-btn { color: #fff; background: linear-gradient(135deg, #0b63ce, #2088e2); }
+.guest-home-btn { margin-top: 18rpx; color: #0b63ce; background: #f7fbff; border: 1rpx solid #cbdcf2; }
+.guest-login-btn::after, .guest-home-btn::after { border: 0; }
 
 /* ═══ 触底加载状态 ═══ */
 .load-status {

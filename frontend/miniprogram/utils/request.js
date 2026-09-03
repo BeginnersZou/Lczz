@@ -1,5 +1,6 @@
 import baseUrl from '../config.js'
 import { clearAuthSession, getAuthToken } from './auth-session.js'
+import { showLoginChoice } from './auth-guard.js'
 
 // ====================== Loading 管理（计数器，支持并发请求） ======================
 let loadingCount = 0
@@ -23,25 +24,18 @@ function getToken() {
   return getAuthToken()
 }
 
-// ====================== 401 统一处理（防重复跳转） ======================
-let isRedirecting = false
-
-function handleUnauthorized() {
-  if (isRedirecting) return
-  isRedirecting = true
-  // 仅清除登录态，保留其他本地数据
+// ====================== 401 统一处理（允许用户拒绝登录并继续使用公共功能） ======================
+function handleUnauthorized(redirectOnUnauthorized = true) {
+  // 仅清除失效登录态，保留其他本地数据
   clearAuthSession()
-  uni.showToast({ title: '请先登录', icon: 'none' })
-  setTimeout(() => {
-    uni.reLaunch({ url: '/pages/login/login' })
-    isRedirecting = false
-  }, 1500)
+  if (!redirectOnUnauthorized) return
+  showLoginChoice()
 }
 
 // ====================== 核心请求方法 ======================
 // 统一返回后端完整响应体 { code, data, msg }：
 //  - code===200：业务成功，页面用 res.data 取数据
-//  - code===401：登录失效，自动跳登录
+//  - code===401：清除失效登录态；受保护功能提供可拒绝的登录引导
 //  - 其他业务码：统一 toast(res.msg)，页面无需重复提示
 //  - 网络异常：统一 toast，返回 code:-1
 // 页面用法：const res = await api(); if (res.code === 200) { list.value = res.data }
@@ -53,7 +47,9 @@ const request = (options = {}) => {
     header = {},     // 额外请求头（可覆盖默认）
     loading = true,  // 是否显示 loading
     timeout = 10000, // 超时时间（毫秒）
-    silent = false   // 预期性探测失败时不弹 Toast
+    silent = false,  // 预期性探测失败时不弹 Toast
+    auth = true,     // 公共接口设为 false，不发送本地登录凭证
+    redirectOnUnauthorized = true // 公共接口设为 false，避免游客被强制送往登录页
   } = options
 
   if (loading) showLoading()
@@ -66,7 +62,7 @@ const request = (options = {}) => {
       timeout,
       header: {
         'Content-Type': 'application/json',
-        Authorization: getToken() ? `Bearer ${getToken()}` : '',
+        ...(auth && getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
         ...header
       },
       success: (res) => {
@@ -105,7 +101,7 @@ const request = (options = {}) => {
           return
         }
         if (body.code === 401) {
-          handleUnauthorized()
+          handleUnauthorized(redirectOnUnauthorized)
           resolve({ code: 401, data: null, msg: body.msg })
           return
         }
@@ -196,7 +192,7 @@ const upload = (options = {}) => {
           return
         }
         if (body.code === 401) {
-          handleUnauthorized()
+          handleUnauthorized(true)
           resolve({ code: 401, data: null, msg: body.msg })
           return
         }

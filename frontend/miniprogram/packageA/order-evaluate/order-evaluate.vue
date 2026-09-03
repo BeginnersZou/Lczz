@@ -107,7 +107,7 @@
 import { computed, ref } from 'vue'
 import { onBackPress, onLoad } from '@dcloudio/uni-app'
 import { authApi, evaluationApi, orderApi, uploadApi } from '@/api/api.js'
-import { getAuthToken } from '@/utils/auth-session.js'
+import { requireLogin } from '@/utils/auth-guard.js'
 
 const orderId = ref('')
 const orderInfo = ref({})
@@ -253,10 +253,7 @@ const loadPage = async () => {
 }
 
 onLoad(async (options) => {
-	if (!getAuthToken()) {
-		uni.reLaunch({ url: '/pages/login/login' })
-		return
-	}
+	if (!requireLogin({ content: '提交服务评价需要关联你的订单。你可以暂不登录，继续浏览产品和服务。' })) return
 	if (!options?.id) {
 		loading.value = false
 		loadFailed.value = true
