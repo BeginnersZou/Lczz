@@ -9,4 +9,7 @@ import org.apache.ibatis.annotations.Select;
 public interface ProductMapper extends BaseMapper<ProductEntity> {
     @Select("SELECT * FROM product WHERE id = #{id} AND deleted = 0 FOR UPDATE")
     ProductEntity selectForUpdate(@Param("id") long id);
+
+    @Select("SELECT * FROM product WHERE id = #{id} FOR UPDATE")
+    ProductEntity selectAnyForUpdate(@Param("id") long id);
 }

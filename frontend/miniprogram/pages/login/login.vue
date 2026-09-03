@@ -33,7 +33,7 @@
         <button class="phone-login-btn" open-type="getPhoneNumber"
           hover-class="button-pressed" @getphonenumber="onGetPhoneNumber"
           :disabled="isLogging || !isAgree">
-          <text class="btn-text">{{ isLogging ? '正在登录…' : '手机号快捷登录' }}</text>
+          <text class="btn-text">{{ isLogging ? '正在登录…' : '一键快捷登录' }}</text>
         </button>
         <text class="login-tip">{{ isAgree ? '手机号仅用于注册登录和订单服务' : '请先阅读并勾选下方协议' }}</text>
         <button class="guest-entry-btn" hover-class="guest-button-pressed" @click="continueAsGuest">暂不登录，先看看</button>

@@ -3,6 +3,7 @@ package com.lczz.auth.service;
 import com.lczz.auth.domain.AuthenticatedUser;
 import com.lczz.auth.domain.RoleCode;
 import com.lczz.common.exception.BusinessException;
+import com.lczz.file.service.FileService;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -14,9 +15,11 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class AccountCancellationService {
     private final JdbcTemplate jdbcTemplate;
+    private final FileService fileService;
 
-    public AccountCancellationService(JdbcTemplate jdbcTemplate) {
+    public AccountCancellationService(JdbcTemplate jdbcTemplate, FileService fileService) {
         this.jdbcTemplate = jdbcTemplate;
+        this.fileService = fileService;
     }
 
     @Transactional
@@ -39,8 +42,9 @@ public class AccountCancellationService {
                     "已注销用户", "已删除", "已删除", LocalDateTime.now(ZoneOffset.UTC), orderId);
         }
 
-        jdbcTemplate.update("DELETE FROM business_file_relation WHERE business_type='REVIEW' AND business_id IN "
-                + "(SELECT id FROM work_order_review WHERE reviewer_user_id=?)", userId);
+        List<Long> reviewIds = jdbcTemplate.queryForList(
+                "SELECT id FROM work_order_review WHERE reviewer_user_id=?", Long.class, userId);
+        fileService.deleteBusinessFiles("REVIEW", reviewIds);
         jdbcTemplate.update("DELETE FROM work_order_review WHERE reviewer_user_id=?", userId);
         jdbcTemplate.update("DELETE FROM user_wechat_identity WHERE user_id=?", userId);
         jdbcTemplate.update("DELETE FROM sys_user_role WHERE user_id=?", userId);

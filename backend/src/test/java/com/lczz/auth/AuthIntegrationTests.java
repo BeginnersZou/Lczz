@@ -39,6 +39,7 @@ class AuthIntegrationTests {
 
     @BeforeEach
     void clearUsers() {
+        jdbcTemplate.update("DELETE FROM wechat_login_challenge");
         jdbcTemplate.update("DELETE FROM operation_audit_log");
         jdbcTemplate.update("DELETE FROM user_wechat_identity");
         jdbcTemplate.update("DELETE FROM sys_user_role");

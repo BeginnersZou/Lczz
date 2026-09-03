@@ -58,5 +58,14 @@ CREATE TABLE user_wechat_identity (
   UNIQUE(app_id, open_id)
 );
 
+CREATE TABLE wechat_login_challenge (
+  code_hash VARCHAR(64) PRIMARY KEY,
+  app_id VARCHAR(64) NOT NULL,
+  open_id VARCHAR(128) NOT NULL,
+  union_id VARCHAR(128),
+  expires_at TIMESTAMP NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
 INSERT INTO sys_role(role_code, role_name) VALUES
  ('ADMIN', '管理员'), ('CUSTOMER', '普通用户'), ('INSTALLER', '安装师傅'), ('DEALER', '经销商');

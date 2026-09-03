@@ -26,7 +26,7 @@
 		<!-- 二、账号与登录 -->
 		<view class="agreement-card">
 			<text class="chapter-title">二、账号注册与登录</text>
-			<text class="chapter-text">1. 你可以不登录浏览产品、品牌服务及联系客服；当你主动使用个人订单等账号功能时，可点击“手机号快捷登录”并自行决定是否授权手机号完成注册登录；</text>
+			<text class="chapter-text">1. 你可以不登录浏览产品、品牌服务及联系客服；当你主动使用个人订单等账号功能时，可点击“一键快捷登录”并自行决定是否授权手机号完成注册登录；</text>
 			<text class="chapter-text">2. 拒绝手机号授权不会导致退出小程序，也不会影响与账号信息无关的公共功能；</text>
 			<text class="chapter-text">3. 您应确保注册信息真实、有效，并对账号及密码的安全保管承担责任；</text>
 			<text class="chapter-text">4. 因您保管不善导致账号被盗用或信息泄露的，由您自行承担相应后果；</text>

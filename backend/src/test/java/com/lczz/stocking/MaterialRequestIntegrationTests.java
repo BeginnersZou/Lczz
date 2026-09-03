@@ -81,6 +81,7 @@ class MaterialRequestIntegrationTests {
         JsonNode first = submit(orderId, installerToken, itemsJson("2.500", "1"));
         long requestId = first.path("id").asLong();
         assertThat(first.path("materials").get(0).path("name").asText()).isEqualTo("铜管");
+        assertThat(productMapper.selectById(product1Id).getDisplayStock()).isEqualByComparingTo("7.500");
         assertThat(orderMapper.selectById(orderId).getOrderStatus()).isEqualTo("IN_PROGRESS");
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM work_order_status_history WHERE order_id=? "
                 + "AND to_status='IN_PROGRESS'", Long.class, orderId)).isEqualTo(1L);
@@ -90,6 +91,7 @@ class MaterialRequestIntegrationTests {
 
         JsonNode retry = submit(orderId, installerToken, itemsJson("2.500", "1"));
         assertThat(retry.path("id").asLong()).isEqualTo(requestId);
+        assertThat(productMapper.selectById(product1Id).getDisplayStock()).isEqualByComparingTo("7.500");
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM material_request", Long.class)).isEqualTo(1L);
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM work_order_status_history WHERE order_id=? "
                 + "AND to_status='IN_PROGRESS'", Long.class, orderId)).isEqualTo(1L);
@@ -126,10 +128,11 @@ class MaterialRequestIntegrationTests {
                 .andExpect(jsonPath("$.error").value("INSUFFICIENT_PRODUCT_STOCK"))
                 .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("库存仅剩10")));
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM material_request", Long.class)).isZero();
+        assertThat(productMapper.selectById(product1Id).getDisplayStock()).isEqualByComparingTo("10.000");
     }
 
     @Test
-    void adminTracksPreparationCompletionAndVoidWithoutChangingDisplayStock() throws Exception {
+    void adminTracksPreparationCompletionAndVoidWithReservedStockRelease() throws Exception {
         JsonNode request = submit(orderId, installerToken, itemsJson("2", "1"));
         long requestId = request.path("id").asLong();
         long firstItem = request.path("materials").get(0).path("id").asLong();
@@ -155,21 +158,24 @@ class MaterialRequestIntegrationTests {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("done"))
                 .andExpect(jsonPath("$.data.completedBy").value(adminId))
                 .andExpect(jsonPath("$.data.completedAt").isNotEmpty());
-        assertThat(productMapper.selectById(product1Id).getDisplayStock()).isEqualByComparingTo("10.000");
+        assertThat(productMapper.selectById(product1Id).getDisplayStock()).isEqualByComparingTo("8.000");
 
         long secondOrder = createOrder("WO-STOCK-002", installerId);
         JsonNode voidable = submit(secondOrder, installerToken,
                 "{\"items\":[{\"productId\":" + product1Id + ",\"quantity\":1}]}" );
         long voidId = voidable.path("id").asLong();
+        assertThat(productMapper.selectById(product1Id).getDisplayStock()).isEqualByComparingTo("7.000");
         mockMvc.perform(post("/api/preparation/" + voidId + "/void")
                         .header("Authorization", "Bearer " + adminToken)
                         .contentType("application/json").content("{\"reason\":\"订单调整\"}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("voided"))
                 .andExpect(jsonPath("$.data.voidedBy").value(adminId))
                 .andExpect(jsonPath("$.data.voidedAt").isNotEmpty());
+        assertThat(productMapper.selectById(product1Id).getDisplayStock()).isEqualByComparingTo("8.000");
         JsonNode resubmitted = submit(secondOrder, installerToken,
                 "{\"items\":[{\"productId\":" + product1Id + ",\"quantity\":1}]}" );
         assertThat(resubmitted.path("id").asLong()).isNotEqualTo(voidId);
+        assertThat(productMapper.selectById(product1Id).getDisplayStock()).isEqualByComparingTo("7.000");
 
         mockMvc.perform(get("/api/preparation/list").param("keyword", "铜管").param("status", "pending")
                         .header("Authorization", "Bearer " + adminToken))

@@ -201,5 +201,7 @@ export const uploadApi = {
 			formData,
 			...options
 		})
-	}
+	},
+	// 删除尚未提交、未绑定业务的临时文件，防止退出页面后残留孤立附件。
+	deleteTemporary: (id, options = {}) => http.delete(`/files/${id}`, {}, options)
 }

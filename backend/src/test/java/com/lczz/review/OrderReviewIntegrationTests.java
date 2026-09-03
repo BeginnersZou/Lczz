@@ -99,6 +99,18 @@ class OrderReviewIntegrationTests {
                 Long.class, orderId)).isEqualTo(1L);
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM work_order_status_history WHERE order_id=? "
                 + "AND from_status='PENDING_REVIEW' AND to_status='REVIEWED'", Long.class, orderId)).isEqualTo(1L);
+        long reviewFileId = jdbcTemplate.queryForObject("SELECT file_id FROM business_file_relation "
+                + "WHERE business_type='REVIEW'", Long.class);
+
+        mockMvc.perform(get("/api/files/" + reviewFileId + "/url")
+                        .header("Authorization", "Bearer " + customerToken))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/files/" + reviewFileId + "/url")
+                        .header("Authorization", "Bearer " + token(installerId, RoleCode.INSTALLER)))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/files/" + reviewFileId + "/url")
+                        .header("Authorization", "Bearer " + token(adminId, RoleCode.ADMIN)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.url").isNotEmpty());
 
         mockMvc.perform(get("/api/orders/evaluation/" + orderId)
                         .header("Authorization", "Bearer " + token(installerId, RoleCode.INSTALLER)))

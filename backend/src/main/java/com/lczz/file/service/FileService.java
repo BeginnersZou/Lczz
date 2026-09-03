@@ -19,8 +19,10 @@ import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Base64;
+import java.util.Collection;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -38,6 +40,8 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 
 @Service
@@ -181,6 +185,55 @@ public class FileService {
         return toView(file, signedUrl(fileId));
     }
 
+    @Transactional
+    public boolean deleteUnboundOwned(AuthenticatedUser actor, long fileId) {
+        FileAssetRecord file = requireFile(fileId);
+        if (!actor.hasRole(RoleCode.ADMIN) && !Objects.equals(file.getUploadedBy(), actor.userId())) {
+            throw new BusinessException(403, "FILE_DELETE_FORBIDDEN", "只能删除自己尚未提交的文件");
+        }
+        Long relationCount = relationMapper.selectCount(new LambdaQueryWrapper<FileRelationRecord>()
+                .eq(FileRelationRecord::getFileId, fileId));
+        if (relationCount != null && relationCount > 0) {
+            throw new BusinessException(409, "FILE_ALREADY_BOUND", "已提交的业务文件不能直接删除");
+        }
+        markDeleted(file);
+        return true;
+    }
+
+    @Transactional
+    public void deleteBusinessFiles(String businessType, Collection<Long> businessIds) {
+        if (businessIds == null || businessIds.isEmpty()) return;
+        List<FileRelationRecord> links = relationMapper.selectList(new LambdaQueryWrapper<FileRelationRecord>()
+                .eq(FileRelationRecord::getBusinessType, businessType)
+                .in(FileRelationRecord::getBusinessId, businessIds));
+        if (links.isEmpty()) return;
+        relationMapper.delete(new LambdaQueryWrapper<FileRelationRecord>()
+                .eq(FileRelationRecord::getBusinessType, businessType)
+                .in(FileRelationRecord::getBusinessId, businessIds));
+        links.stream().map(FileRelationRecord::getFileId).distinct().forEach(fileId -> {
+            Long remaining = relationMapper.selectCount(new LambdaQueryWrapper<FileRelationRecord>()
+                    .eq(FileRelationRecord::getFileId, fileId));
+            if (remaining != null && remaining == 0) {
+                FileAssetRecord file = fileMapper.selectById(fileId);
+                if (file != null) markDeleted(file);
+            }
+        });
+    }
+
+    private void markDeleted(FileAssetRecord file) {
+        file.setDeleted(true);
+        file.setDeletedAt(LocalDateTime.now(ZoneOffset.UTC));
+        fileMapper.updateById(file);
+        Runnable cleanup = () -> storage.deleteQuietly(file.getObjectKey());
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override public void afterCommit() { cleanup.run(); }
+            });
+        } else {
+            cleanup.run();
+        }
+    }
+
     private void addRelation(AuthenticatedUser actor, long fileId, RelationCommand relation) {
         Long duplicate = relationMapper.selectCount(new LambdaQueryWrapper<FileRelationRecord>()
                 .eq(FileRelationRecord::getBusinessType, relation.businessType())
@@ -282,12 +335,8 @@ public class FileService {
             return count("SELECT COUNT(*) FROM work_order_review WHERE id=? AND reviewer_user_id=?",
                     reviewId, actor.userId()) > 0;
         }
-        if (actor.hasRole(RoleCode.INSTALLER)) {
-            return count("SELECT COUNT(*) FROM work_order_review r JOIN work_order o ON o.id=r.order_id "
-                    + "WHERE r.id=? AND o.installer_user_id=? AND o.deleted=0", reviewId, actor.userId()) > 0;
-        }
-        return count("SELECT COUNT(*) FROM work_order_review r JOIN work_order o ON o.id=r.order_id "
-                + "WHERE r.id=? AND o.customer_user_id=? AND o.deleted=0", reviewId, actor.userId()) > 0;
+        // 评价正文与附件属于管理员私密反馈，提交人和安装师傅均不得再次读取。
+        return false;
     }
 
     private int count(String sql, Object... args) {
@@ -311,7 +360,13 @@ public class FileService {
         String detected = detectMime(header);
         String expected = EXTENSION_MIME.get(extension);
         String claimed = normalizeMime(multipart.getContentType());
-        if (expected == null || !expected.equals(detected) || !detected.equals(claimed)) {
+        boolean videoContainer = Set.of("mp4", "mov", "m4v").contains(extension)
+                && Set.of("video/mp4", "video/quicktime").contains(detected);
+        boolean signatureMatches = expected != null && (expected.equals(detected) || videoContainer);
+        boolean genericClaim = claimed.isBlank() || "application/octet-stream".equals(claimed);
+        boolean claimMatches = genericClaim || detected.equals(claimed)
+                || videoContainer && Set.of("video/mp4", "video/quicktime", "video/x-m4v").contains(claimed);
+        if (!signatureMatches || !claimMatches) {
             throw new BusinessException("INVALID_FILE_TYPE", "仅支持 jpg/png/gif/webp 图片或 mp4/mov/m4v 视频，且文件类型必须真实一致");
         }
         long typeLimit = detected.startsWith("image/")

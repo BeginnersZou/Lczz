@@ -105,7 +105,7 @@
 
 <script setup>
 import { computed, ref } from 'vue'
-import { onBackPress, onLoad } from '@dcloudio/uni-app'
+import { onBackPress, onLoad, onUnload } from '@dcloudio/uni-app'
 import { authApi, evaluationApi, orderApi, uploadApi } from '@/api/api.js'
 import { requireLogin } from '@/utils/auth-guard.js'
 
@@ -145,7 +145,10 @@ const previewImages = (index) => {
 	uni.previewImage({ current: urls[index], urls })
 }
 
-const removeImage = (index) => images.value.splice(index, 1)
+const removeImage = (index) => {
+	const [removed] = images.value.splice(index, 1)
+	if (removed?.id) uploadApi.deleteTemporary(removed.id, { loading: false, silent: true })
+}
 
 const chooseImages = () => {
 	const remaining = 9 - images.value.length
@@ -220,6 +223,13 @@ onBackPress(() => {
 		}
 	})
 	return true
+})
+
+onUnload(() => {
+	if (submitted.value) return
+	images.value.filter(image => image.id).forEach(image => {
+		uploadApi.deleteTemporary(image.id, { loading: false, silent: true })
+	})
 })
 
 const loadPage = async () => {

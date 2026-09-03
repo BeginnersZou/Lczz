@@ -18,6 +18,7 @@ import com.lczz.order.persistence.WorkOrderEntity;
 import com.lczz.order.persistence.WorkOrderMapper;
 import com.lczz.order.persistence.WorkOrderStatusHistoryEntity;
 import com.lczz.order.persistence.WorkOrderStatusHistoryMapper;
+import com.lczz.stocking.service.MaterialRequestService;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -65,16 +66,18 @@ public class OrderService {
     private final UserMapper userMapper;
     private final RoleMapper roleMapper;
     private final FileService fileService;
+    private final MaterialRequestService materialRequestService;
 
     public OrderService(WorkOrderMapper orderMapper, WorkOrderAssignmentMapper assignmentMapper,
                         WorkOrderStatusHistoryMapper historyMapper, UserMapper userMapper, RoleMapper roleMapper,
-                        FileService fileService) {
+                        FileService fileService, MaterialRequestService materialRequestService) {
         this.orderMapper = orderMapper;
         this.assignmentMapper = assignmentMapper;
         this.historyMapper = historyMapper;
         this.userMapper = userMapper;
         this.roleMapper = roleMapper;
         this.fileService = fileService;
+        this.materialRequestService = materialRequestService;
     }
 
     public OrderPage list(AuthenticatedUser actor, int page, int pageSize, String keyword, String status,
@@ -202,6 +205,7 @@ public class OrderService {
         order.setOrderStatus(target);
         order.setUpdatedBy(actor.userId());
         if ("CANCELLED".equals(target)) {
+            materialRequestService.voidActiveByOrder(actor, id, "订单作废，释放已预占库存");
             order.setCancelledBy(actor.userId());
             order.setCancelledAt(LocalDateTime.now(ZoneOffset.UTC));
             order.setCancelReason(blankToNull(reason));

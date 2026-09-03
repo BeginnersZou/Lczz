@@ -115,10 +115,11 @@ public class MaterialRequestService {
             return existingOrConflict(existing, actor.userId(), requested);
         }
 
-        List<ProductEntity> products = productMapper.selectByIds(requested.keySet());
-        Map<Long, ProductEntity> productMap = products.stream()
-                .filter(product -> Boolean.TRUE.equals(product.getEnabled()))
-                .collect(Collectors.toMap(ProductEntity::getId, Function.identity()));
+        Map<Long, ProductEntity> productMap = new LinkedHashMap<>();
+        requested.keySet().stream().sorted().forEach(productId -> {
+            ProductEntity product = productMapper.selectForUpdate(productId);
+            if (product != null && Boolean.TRUE.equals(product.getEnabled())) productMap.put(productId, product);
+        });
         if (productMap.size() != requested.size()) {
             throw new BusinessException("INVALID_MATERIAL_PRODUCT", "所选耗材不存在或已下架");
         }
@@ -146,6 +147,7 @@ public class MaterialRequestService {
             if (concurrent != null) return existingOrConflict(concurrent, actor.userId(), requested);
             throw exception;
         }
+        requested.forEach((productId, quantity) -> reserveStock(productMap.get(productId), quantity, actor.userId()));
         requested.forEach((productId, quantity) -> insertSnapshot(request.getId(), productMap.get(productId), quantity));
         transitionToInProgress(order, actor.userId());
         return toViews(List.of(requestMapper.selectById(request.getId()))).getFirst();
@@ -225,12 +227,23 @@ public class MaterialRequestService {
         request.setVoidedAt(LocalDateTime.now(ZoneOffset.UTC));
         request.setVoidReason(blankToNull(reason));
         requestMapper.updateById(request);
-        for (MaterialRequestItemEntity item : items(requestId)) {
+        List<MaterialRequestItemEntity> requestItems = items(requestId);
+        releaseReservedStock(requestItems, actor.userId());
+        for (MaterialRequestItemEntity item : requestItems) {
             item.setItemStatus("VOIDED");
             item.setPreparedQuantity(BigDecimal.ZERO);
             itemMapper.updateById(item);
         }
         return detail(actor, requestId);
+    }
+
+    @Transactional
+    public void voidActiveByOrder(AuthenticatedUser actor, long orderId, String reason) {
+        MaterialRequestEntity request = requestMapper.selectOne(new LambdaQueryWrapper<MaterialRequestEntity>()
+                .eq(MaterialRequestEntity::getOrderId, orderId)
+                .in(MaterialRequestEntity::getRequestStatus, "PENDING", "PREPARING")
+                .orderByDesc(MaterialRequestEntity::getId).last("LIMIT 1 FOR UPDATE"));
+        if (request != null) voidRequest(actor, request.getId(), reason);
     }
 
     private RequestView existingOrConflict(MaterialRequestEntity existing, long installerId,
@@ -273,6 +286,27 @@ public class MaterialRequestService {
         item.setItemStatus("PENDING");
         item.setVersion(0);
         itemMapper.insert(item);
+    }
+
+    private void reserveStock(ProductEntity product, BigDecimal quantity, long actorId) {
+        BigDecimal stock = product.getDisplayStock() == null ? BigDecimal.ZERO : product.getDisplayStock();
+        product.setDisplayStock(stock.subtract(quantity));
+        product.setUpdatedBy(actorId);
+        product.setVersion((product.getVersion() == null ? 0 : product.getVersion()) + 1);
+        productMapper.updateById(product);
+    }
+
+    private void releaseReservedStock(List<MaterialRequestItemEntity> requestItems, long actorId) {
+        requestItems.stream().sorted(java.util.Comparator.comparing(MaterialRequestItemEntity::getProductId))
+                .forEach(item -> {
+                    ProductEntity product = productMapper.selectAnyForUpdate(item.getProductId());
+                    if (product == null) return;
+                    BigDecimal stock = product.getDisplayStock() == null ? BigDecimal.ZERO : product.getDisplayStock();
+                    product.setDisplayStock(stock.add(item.getRequestedQuantity()));
+                    product.setUpdatedBy(actorId);
+                    product.setVersion((product.getVersion() == null ? 0 : product.getVersion()) + 1);
+                    productMapper.updateById(product);
+                });
     }
 
     private WorkOrderEntity requireAccessibleOrder(AuthenticatedUser actor, long orderId) {

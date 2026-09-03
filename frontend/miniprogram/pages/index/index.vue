@@ -169,7 +169,10 @@ import { ref, computed, onMounted } from 'vue'
 import { onReachBottom, onPullDownRefresh, onShareAppMessage, onShareTimeline } from '@dcloudio/uni-app'
 import { consumablesApi } from '@/api/api.js'
 
-onMounted(() => fetchList(true))
+onMounted(async () => {
+	await fetchCategories()
+	await fetchList(true)
+})
 
 onShareAppMessage(() => ({ title: '鑫立创 — 专业空调安装与配件展示', path: '/pages/index/index' }))
 onShareTimeline(() => ({ title: '鑫立创 — 专业空调安装与配件展示' }))
@@ -198,10 +201,7 @@ const functionList = [
 
 const searchKeyword = ref('')
 const activeKeyword = ref('')
-const tabList = [
-	{ name: '全部', type: 'all' }, { name: '铜管', type: 'copper' }, { name: '支架', type: 'bracket' },
-	{ name: '电缆线', type: 'cable' }, { name: '辅材', type: 'aux' }, { name: '冷媒', type: 'refrigerant' }
-]
+const tabList = ref([{ name: '全部', type: 'all' }])
 const currentTab = ref(0)
 const activeTabId = computed(() => `product-tab-${currentTab.value}`)
 const allList = ref([])
@@ -212,6 +212,19 @@ const listLoading = ref(false)
 const loadStatus = ref('')
 const listError = ref(null)
 const displayList = computed(() => allList.value)
+
+const fetchCategories = async () => {
+	const res = await consumablesApi.getCategories()
+	if (res.code !== 200 || !Array.isArray(res.data)) return
+	const enabled = res.data.filter(item => item && item.enabled !== false && item.code && item.name)
+	const roots = enabled.filter(item => item.parentId == null || Number(item.level) === 1)
+	const visible = roots.length ? roots : enabled
+	tabList.value = [
+		{ name: '全部', type: 'all' },
+		...visible.map(item => ({ name: item.name, type: item.code }))
+	]
+	if (currentTab.value >= tabList.value.length) currentTab.value = 0
+}
 
 const performSearch = () => {
 	activeKeyword.value = searchKeyword.value.trim()
@@ -261,7 +274,7 @@ const fetchList = async (isRefresh = false) => {
 	listLoading.value = true
 	loadStatus.value = 'loading'
 	try {
-		const tab = tabList[currentTab.value]
+		const tab = tabList.value[currentTab.value] || tabList.value[0]
 		const params = { page: page.value, pageSize }
 		if (tab.type !== 'all') params.category = tab.type
 		if (activeKeyword.value) params.keyword = activeKeyword.value
@@ -293,6 +306,7 @@ onReachBottom(() => {
 })
 
 onPullDownRefresh(async () => {
+	await fetchCategories()
 	const success = await fetchList(true)
 	uni.stopPullDownRefresh()
 	if (success) uni.showToast({ title: '已刷新', icon: 'none', duration: 1000 })

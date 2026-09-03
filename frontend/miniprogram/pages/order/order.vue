@@ -149,7 +149,7 @@
 			<view class="guest-icon"><up-icon name="order" size="42" color="#0b63ce"></up-icon></view>
 			<text class="guest-title">登录后查看个人订单</text>
 			<text class="guest-desc">订单信息与手机号关联，用于展示上门时间、处理状态和服务记录。你也可以暂不登录，继续浏览产品和服务。</text>
-			<button class="guest-login-btn" hover-class="hover-press" @click="goLogin">手机号快捷登录</button>
+			<button class="guest-login-btn" hover-class="hover-press" @click="goLogin">一键快捷登录</button>
 			<button class="guest-home-btn" hover-class="hover-press" @click="goHome">暂不登录，返回首页</button>
 		</view>
 

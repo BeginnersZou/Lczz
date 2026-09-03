@@ -137,6 +137,13 @@ class WorkProgressIntegrationTests {
                 .andExpect(status().isBadRequest());
         long fileId = uploadImage();
         String body = "{\"description\":\"安装完成并试机正常\",\"fileIds\":[" + fileId + "]}";
+        jdbcTemplate.update("INSERT INTO material_request(request_no, order_id, installer_user_id, request_status) "
+                + "VALUES (?, ?, ?, 'PENDING')", "MR-PROGRESS-001", orderId, installerId);
+        mockMvc.perform(post("/api/orders/" + orderId + "/completion")
+                        .header("Authorization", "Bearer " + installerToken).contentType("application/json").content(body))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value("MATERIALS_NOT_PREPARED"));
+        jdbcTemplate.update("UPDATE material_request SET request_status='DONE' WHERE order_id=?", orderId);
         mockMvc.perform(post("/api/orders/" + orderId + "/completion")
                         .header("Authorization", "Bearer " + installerToken).contentType("application/json").content(body))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.type").value("COMPLETION"))

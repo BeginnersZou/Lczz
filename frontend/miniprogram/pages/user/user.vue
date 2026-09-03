@@ -51,7 +51,7 @@
 		<view class="guest-card" v-else>
 			<text class="guest-card-title">登录后管理个人服务</text>
 			<text class="guest-card-desc">手机号用于关联你的订单与服务记录；暂不登录不影响浏览产品、品牌服务和联系客服。</text>
-			<button class="guest-login-btn" hover-class="hover-press" @click="goLogin">手机号快捷登录</button>
+			<button class="guest-login-btn" hover-class="hover-press" @click="goLogin">一键快捷登录</button>
 			<button class="guest-browse-btn" hover-class="hover-press" @click="goToOfficial">暂不登录，浏览服务</button>
 		</view>
 

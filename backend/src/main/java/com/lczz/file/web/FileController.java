@@ -78,6 +78,14 @@ public class FileController {
         return ApiResponse.success(fileService.unbind(actor, id, relation), requestId(request));
     }
 
+    @DeleteMapping("/{id}")
+    @Operation(summary = "删除本人尚未绑定业务的临时上传文件")
+    ApiResponse<Boolean> deleteUnbound(@AuthenticationPrincipal AuthenticatedUser actor,
+                                       @PathVariable @Min(1) long id,
+                                       HttpServletRequest request) {
+        return ApiResponse.success(fileService.deleteUnboundOwned(actor, id), requestId(request));
+    }
+
     @GetMapping("/{id}/url")
     @Operation(summary = "校验权限并签发短时文件访问地址")
     ApiResponse<FileView> accessUrl(@AuthenticationPrincipal AuthenticatedUser actor,

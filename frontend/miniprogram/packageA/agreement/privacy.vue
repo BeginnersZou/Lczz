@@ -19,7 +19,7 @@
 		<view class="agreement-card">
 			<text class="chapter-title">一、信息收集范围</text>
 			<text class="chapter-text">在你使用本小程序过程中，开发者会处理以下必要信息：</text>
-			<text class="chapter-text">1. 手机号：仅当你主动点击“手机号快捷登录”并在微信授权界面明示同意后收集，用于注册、登录、身份验证、账号管理及关联订单服务；拒绝授权或选择暂不登录，不影响浏览产品、品牌服务及联系客服等公共功能；</text>
+			<text class="chapter-text">1. 手机号：仅当你主动点击“一键快捷登录”并在微信授权界面明示同意后收集，用于注册、登录、身份验证、账号管理及关联订单服务；拒绝授权或选择暂不登录，不影响浏览产品、品牌服务及联系客服等公共功能；</text>
 			<text class="chapter-text">2. 剪切板：仅在你主动点击复制时，将订单编号、服务名称或公司联系地址写入剪切板，不主动读取剪切板中的其他内容；</text>
 			<text class="chapter-text">3. 订单信息：用于查询和管理空调安装、维修等服务订单、施工进度、耗材及评价记录；</text>
 			<text class="chapter-text">4. 地址：用于安排安装维修人员上门服务，并向你展示订单对应的服务地址；</text>

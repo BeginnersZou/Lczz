@@ -10,7 +10,7 @@ public class FileStorageProperties {
     private String localRoot = "./data/uploads";
     private long maxBytes = 200L * 1024 * 1024;
     private long maxImageBytes = 10L * 1024 * 1024;
-    private long signedUrlMinutes = 5;
+    private long signedUrlMinutes = 60;
     private String accessSecret;
 
     public String getStorageType() { return storageType; }

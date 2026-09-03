@@ -348,12 +348,14 @@
 	import {
 		onBackPress,
 		onLoad,
-		onShow
+		onShow,
+		onUnload
 	} from '@dcloudio/uni-app'
 	import {
 	orderApi,
 	consumablesApi,
 	authApi,
+	uploadApi,
 	resolveMediaUrl
 	} from '@/api/api.js'
 	import { requireLogin } from '@/utils/auth-guard.js'
@@ -443,6 +445,11 @@ const statusClass = computed(() => {
 	const uploadedProgressMediaCount = computed(() => progressImages.value.filter(media => media.status === 'success' && media.id).length)
 	const failedProgressMediaCount = computed(() => progressImages.value.filter(media => media.status === 'failed').length)
 	const isUploadingProgressMedia = computed(() => progressImages.value.some(media => media.status === 'queued' || media.status === 'uploading'))
+	const materialsReadyForCompletion = computed(() => {
+		if (!materialRequest.value) return true
+		const status = String(materialRequest.value.statusCode || materialRequest.value.status || '').toUpperCase()
+		return status === 'DONE'
+	})
 	const canSubmitProgress = computed(() => {
 		if (!progressDescription.value.trim()) return false
 		if (isUploadingProgressMedia.value || failedProgressMediaCount.value > 0) return false
@@ -461,8 +468,16 @@ const statusClass = computed(() => {
 
 	const refreshOrderStatus = async () => {
 		if (!orderId.value) return
-		const orderRes = await orderApi.getDetail(orderId.value, { loading: false })
+		const [orderRes, progressRes] = await Promise.all([
+			orderApi.getDetail(orderId.value, { loading: false }),
+			orderApi.getProgress(orderId.value, { loading: false, silent: true })
+		])
 		if (orderRes.code === 200) orderInfo.value = orderRes.data || {}
+		if (progressRes.code === 200) progressRecords.value = progressRes.data || []
+		if (isInstaller.value && materialRequest.value) {
+			const materialRes = await orderApi.getMaterials(orderId.value, { loading: false, silent: true })
+			if (materialRes.code === 200) materialRequest.value = materialRes.data || null
+		}
 	}
 
 	onShow(() => refreshOrderStatus())
@@ -476,7 +491,8 @@ const statusClass = computed(() => {
 	}
 
 	const deleteProgressImage = (index) => {
-		progressImages.value.splice(index, 1)
+		const [removed] = progressImages.value.splice(index, 1)
+		if (removed?.id) uploadApi.deleteTemporary(removed.id, { loading: false, silent: true })
 	}
 
 	const createProgressMediaDraft = (selected) => {
@@ -536,7 +552,7 @@ const statusClass = computed(() => {
 		uploadProgress.value = ''
 	}
 
-	const chooseProgressMedia = () => {
+	const openProgressMediaPicker = (source) => {
 		const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 		const MAX_VIDEO_BYTES = 200 * 1024 * 1024
 		if (isUploadingProgressMedia.value) {
@@ -548,7 +564,7 @@ const statusClass = computed(() => {
 		uni.chooseMedia({
 			count: remaining,
 			mediaType: ['image', 'video'],
-			sourceType: ['album', 'camera'],
+			sourceType: [source],
 			maxDuration: 60,
 			camera: 'back',
 			success: async (res) => {
@@ -587,14 +603,29 @@ const statusClass = computed(() => {
 		})
 	}
 
+	const chooseProgressMedia = () => {
+		uni.showActionSheet({
+			itemList: ['从相册选择（支持长视频）', '现场拍摄（视频最长60秒）'],
+			success: ({ tapIndex }) => openProgressMediaPicker(tapIndex === 1 ? 'camera' : 'album')
+		})
+	}
+
 	const refreshProgress = async () => {
 		const res = await orderApi.getProgress(orderId.value, { loading: false })
 		if (res.code === 200) progressRecords.value = res.data || []
 	}
 
-	const handleProgressSubmit = () => {
+	const handleProgressSubmit = async () => {
 		if (progressType.value === 'COMPLETION' && hasMaterialDraft.value) {
 			uni.showToast({ title: '请先提交或清空耗材申请', icon: 'none' })
+			return
+		}
+		if (progressType.value === 'COMPLETION' && materialRequest.value) {
+			const materialRes = await orderApi.getMaterials(orderId.value, { loading: false, silent: true })
+			if (materialRes.code === 200) materialRequest.value = materialRes.data || null
+		}
+		if (progressType.value === 'COMPLETION' && !materialsReadyForCompletion.value) {
+			uni.showToast({ title: '耗材尚未完成备货，暂不能提交完工', icon: 'none' })
 			return
 		}
 		if (isUploadingProgressMedia.value) {
@@ -657,6 +688,12 @@ const statusClass = computed(() => {
 			}
 		})
 		return true
+	})
+
+	onUnload(() => {
+		progressImages.value.filter(media => media.id).forEach(media => {
+			uploadApi.deleteTemporary(media.id, { loading: false, silent: true })
+		})
 	})
 
 	// ===== 耗材选择弹出框 =====
