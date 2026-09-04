@@ -48,6 +48,7 @@ class OrderIntegrationTests {
 
     @BeforeEach
     void resetData() {
+        jdbcTemplate.update("DELETE FROM sms_notification");
         jdbcTemplate.update("DELETE FROM work_order_status_history");
         jdbcTemplate.update("DELETE FROM work_order_assignment");
         jdbcTemplate.update("DELETE FROM work_order");
@@ -69,6 +70,12 @@ class OrderIntegrationTests {
         assertThat(first.path("orderNo").asText()).isNotEqualTo(second.path("orderNo").asText());
         assertThat(first.path("customerUserId").asLong()).isEqualTo(customerId);
         assertThat(first.path("selectedMasterList").size()).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM sms_notification WHERE event_type = 'INSTALLER_ASSIGNED'", Long.class))
+                .isEqualTo(2L);
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM sms_notification WHERE notification_status = 'SKIPPED' "
+                        + "AND last_error = 'SMS_DISABLED'", Long.class)).isEqualTo(2L);
 
         assertListTotal(adminToken, 2);
         assertListTotal(token(customerId, RoleCode.CUSTOMER), 2);

@@ -16,3 +16,7 @@ lczz:
   file:
     access-secret: test-only-file-access-secret-long-enough
     signed-url-minutes: 5
+  sms:
+    enabled: false
+    max-attempts: 2
+    retry-delay-ms: 60000

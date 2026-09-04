@@ -68,6 +68,17 @@ lczz:
   dev-auth:
     enabled: ${DEV_AUTH_ENABLED:false}
     password: ${DEV_AUTH_PASSWORD:}
+  sms:
+    enabled: ${SMS_ENABLED:false}
+    access-key-id: ${SMS_ACCESS_KEY_ID:${ALIBABA_CLOUD_ACCESS_KEY_ID:}}
+    access-key-secret: ${SMS_ACCESS_KEY_SECRET:${ALIBABA_CLOUD_ACCESS_KEY_SECRET:}}
+    sign-name: ${SMS_SIGN_NAME:}
+    dealer-appointment-template-code: ${SMS_DEALER_APPOINTMENT_TEMPLATE_CODE:}
+    installer-assignment-template-code: ${SMS_INSTALLER_ASSIGNMENT_TEMPLATE_CODE:}
+    admin-phones: ${SMS_ADMIN_PHONES:}
+    pickup-contact-phone: ${SMS_PICKUP_CONTACT_PHONE:}
+    max-attempts: ${SMS_MAX_ATTEMPTS:3}
+    retry-delay-ms: ${SMS_RETRY_DELAY_MS:60000}
   file:
     storage-type: ${FILE_STORAGE_TYPE:LOCAL}
     local-root: ${FILE_LOCAL_ROOT:./data/uploads}

@@ -49,6 +49,28 @@ CREATE TABLE operation_audit_log (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
+CREATE TABLE sms_notification (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  event_key VARCHAR(160) UNIQUE NOT NULL,
+  event_type VARCHAR(64) NOT NULL,
+  business_type VARCHAR(64) NOT NULL,
+  business_id VARCHAR(64) NOT NULL,
+  recipient_phone VARCHAR(20) NOT NULL,
+  template_code VARCHAR(128),
+  template_params_json CLOB,
+  notification_status VARCHAR(32) NOT NULL,
+  attempt_count INT DEFAULT 0 NOT NULL,
+  last_attempt_at TIMESTAMP,
+  next_attempt_at TIMESTAMP,
+  sent_at TIMESTAMP,
+  provider_request_id VARCHAR(128),
+  provider_biz_id VARCHAR(128),
+  provider_code VARCHAR(64),
+  last_error VARCHAR(1000),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
 CREATE TABLE user_wechat_identity (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
   user_id BIGINT NOT NULL, app_id VARCHAR(64) NOT NULL, open_id VARCHAR(128) NOT NULL,
