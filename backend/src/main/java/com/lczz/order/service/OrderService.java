@@ -12,6 +12,7 @@ import com.lczz.common.exception.BusinessException;
 import com.lczz.file.service.FileService;
 import com.lczz.file.service.FileService.FileView;
 import com.lczz.file.service.FileService.RelationCommand;
+import com.lczz.notification.service.SmsNotificationService;
 import com.lczz.order.persistence.WorkOrderAssignmentEntity;
 import com.lczz.order.persistence.WorkOrderAssignmentMapper;
 import com.lczz.order.persistence.WorkOrderEntity;
@@ -67,10 +68,12 @@ public class OrderService {
     private final RoleMapper roleMapper;
     private final FileService fileService;
     private final MaterialRequestService materialRequestService;
+    private final SmsNotificationService smsNotificationService;
 
     public OrderService(WorkOrderMapper orderMapper, WorkOrderAssignmentMapper assignmentMapper,
                         WorkOrderStatusHistoryMapper historyMapper, UserMapper userMapper, RoleMapper roleMapper,
-                        FileService fileService, MaterialRequestService materialRequestService) {
+                        FileService fileService, MaterialRequestService materialRequestService,
+                        SmsNotificationService smsNotificationService) {
         this.orderMapper = orderMapper;
         this.assignmentMapper = assignmentMapper;
         this.historyMapper = historyMapper;
@@ -78,6 +81,7 @@ public class OrderService {
         this.roleMapper = roleMapper;
         this.fileService = fileService;
         this.materialRequestService = materialRequestService;
+        this.smsNotificationService = smsNotificationService;
     }
 
     public OrderPage list(AuthenticatedUser actor, int page, int pageSize, String keyword, String status,
@@ -159,8 +163,9 @@ public class OrderService {
         order.setDeleted(false);
         apply(order, command, installerId, customer, actor.userId());
         orderMapper.insert(order);
-        recordAssignment(order.getId(), installerId, actor.userId(), "创建订单并指派");
+        long assignmentId = recordAssignment(order.getId(), installerId, actor.userId(), "创建订单并指派");
         recordStatus(order.getId(), null, "PENDING_VISIT", "创建订单", actor.userId());
+        notifyInstallerAssigned(order, assignmentId, installerId);
         return detail(actor, order.getId());
     }
 
@@ -174,7 +179,8 @@ public class OrderService {
         apply(order, command, installerId, customer, actor.userId());
         orderMapper.updateById(order);
         if (previousInstaller != installerId) {
-            reassign(order.getId(), installerId, actor.userId(), "管理员编辑订单");
+            long assignmentId = reassign(order.getId(), installerId, actor.userId(), "管理员编辑订单");
+            notifyInstallerAssigned(order, assignmentId, installerId);
         }
         return detail(actor, id);
     }
@@ -188,7 +194,9 @@ public class OrderService {
             order.setInstallerUserId(installerId);
             order.setUpdatedBy(actor.userId());
             orderMapper.updateById(order);
-            reassign(id, installerId, actor.userId(), reason == null ? "管理员重新指派" : reason.trim());
+            long assignmentId = reassign(id, installerId, actor.userId(),
+                    reason == null ? "管理员重新指派" : reason.trim());
+            notifyInstallerAssigned(order, assignmentId, installerId);
         }
         return detail(actor, id);
     }
@@ -293,16 +301,16 @@ public class OrderService {
         return user;
     }
 
-    private void reassign(long orderId, long installerId, long actorId, String reason) {
+    private long reassign(long orderId, long installerId, long actorId, String reason) {
         assignmentMapper.update(new LambdaUpdateWrapper<WorkOrderAssignmentEntity>()
                 .eq(WorkOrderAssignmentEntity::getOrderId, orderId)
                 .eq(WorkOrderAssignmentEntity::getIsActive, true)
                 .set(WorkOrderAssignmentEntity::getIsActive, false)
                 .set(WorkOrderAssignmentEntity::getUnassignedAt, LocalDateTime.now(ZoneOffset.UTC)));
-        recordAssignment(orderId, installerId, actorId, reason);
+        return recordAssignment(orderId, installerId, actorId, reason);
     }
 
-    private void recordAssignment(long orderId, long installerId, long actorId, String reason) {
+    private long recordAssignment(long orderId, long installerId, long actorId, String reason) {
         WorkOrderAssignmentEntity assignment = new WorkOrderAssignmentEntity();
         assignment.setOrderId(orderId);
         assignment.setInstallerUserId(installerId);
@@ -311,6 +319,13 @@ public class OrderService {
         assignment.setIsActive(true);
         assignment.setChangeReason(blankToNull(reason));
         assignmentMapper.insert(assignment);
+        return assignment.getId();
+    }
+
+    private void notifyInstallerAssigned(WorkOrderEntity order, long assignmentId, long installerId) {
+        UserEntity installer = userMapper.selectById(installerId);
+        smsNotificationService.queueInstallerAssignment(order.getId(), assignmentId, order.getOrderNo(),
+                installer == null ? null : installer.getPhone());
     }
 
     private void recordStatus(long orderId, String from, String to, String reason, long actorId) {
