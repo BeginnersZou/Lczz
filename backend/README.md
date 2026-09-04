@@ -20,6 +20,27 @@ $env:DB_PASSWORD="本地数据库密码"
 $env:JWT_SECRET="至少32字节的随机密钥"
 ```
 
+## 阿里云短信（#101）
+
+短信默认关闭；关闭、模板缺失或凭据缺失时，订单和派单仍可正常完成，系统会在
+`sms_notification` 留下 `SKIPPED` 审计记录。生产环境在 `lczz.env` 配置以下变量：
+
+```powershell
+$env:SMS_ENABLED="true"
+$env:SMS_ACCESS_KEY_ID="RAM 子账号 AccessKey ID"
+$env:SMS_ACCESS_KEY_SECRET="RAM 子账号 AccessKey Secret"
+$env:SMS_SIGN_NAME="已审核短信签名"
+$env:SMS_INSTALLER_ASSIGNMENT_TEMPLATE_CODE="SMS_..."
+$env:SMS_DEALER_APPOINTMENT_TEMPLATE_CODE="SMS_..."
+$env:SMS_ADMIN_PHONES="13900000001,13900000002"
+$env:SMS_PICKUP_CONTACT_PHONE="13900000001"
+```
+
+- 使用仅授予短信发送权限的 RAM 子账号；禁止使用主账号 AccessKey。
+- AccessKey、模板参数和完整手机号不得写入 Git、前端包或应用普通日志。
+- 首次派单、改派成功后会在订单事务提交后异步通知师傅；经销商预约的触发入口由 #100 调用。
+- 失败记录会按 `SMS_MAX_ATTEMPTS`（默认 3 次）受控重试，失败不会回滚订单业务。
+
 本机现有 `lczz_dev` 由 Flyway 管理；全新环境必须顺序执行 V1-V4，已有环境继续按版本增量迁移。
 
 ## 常用命令
