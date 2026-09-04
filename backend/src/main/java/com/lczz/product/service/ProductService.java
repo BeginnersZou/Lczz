@@ -15,11 +15,15 @@ import com.lczz.product.persistence.ProductCategoryEntity;
 import com.lczz.product.persistence.ProductCategoryMapper;
 import com.lczz.product.persistence.ProductEntity;
 import com.lczz.product.persistence.ProductMapper;
+import com.lczz.product.service.ProductSkuService.DimensionCommand;
+import com.lczz.product.service.ProductSkuService.ProductSpecsView;
+import com.lczz.product.service.ProductSkuService.SkuCommand;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -36,6 +40,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class ProductService {
     private static final String BUSINESS_TYPE = "PRODUCT";
     private static final String DETAIL_USAGE = "DETAIL";
+    private static final String CAROUSEL_USAGE = "CAROUSEL";
     private static final BigDecimal LOW_STOCK_THRESHOLD = BigDecimal.valueOf(5);
 
     private final ProductMapper productMapper;
@@ -44,16 +49,19 @@ public class ProductService {
     private final BusinessFileRelationMapper relationMapper;
     private final FileService fileService;
     private final OperationAuditService auditService;
+    private final ProductSkuService skuService;
 
     public ProductService(ProductMapper productMapper, ProductCategoryMapper categoryMapper,
                           FileAssetMapper fileMapper, BusinessFileRelationMapper relationMapper,
-                          FileService fileService, OperationAuditService auditService) {
+                          FileService fileService, OperationAuditService auditService,
+                          ProductSkuService skuService) {
         this.productMapper = productMapper;
         this.categoryMapper = categoryMapper;
         this.fileMapper = fileMapper;
         this.relationMapper = relationMapper;
         this.fileService = fileService;
         this.auditService = auditService;
+        this.skuService = skuService;
     }
 
     public ProductPage list(AuthenticatedUser actor, int page, int pageSize, String keyword,
@@ -144,7 +152,7 @@ public class ProductService {
     public ProductView create(AuthenticatedUser actor, ProductCommand command) {
         ProductCategoryEntity category = requireCategory(command.categoryId());
         validateProductCode(command.productCode(), null);
-        validateFiles(command.coverFileId(), command.detailFileIds());
+        validateFiles(command.coverFileId(), command.imageFileIds(), command.detailFileIds());
         ProductEntity product = new ProductEntity();
         product.setProductCode(normalizeProductCode(command.productCode()));
         applyProduct(product, command, category, actor.userId());
@@ -152,6 +160,9 @@ public class ProductService {
         product.setVersion(0);
         product.setDeleted(false);
         productMapper.insert(product);
+        skuService.replace(product.getId(), product.getProductCode(), product.getModelSpec(), product.getUnit(),
+                product.getDisplayStock(), command.specDimensions(), command.skus());
+        replaceFiles(product.getId(), CAROUSEL_USAGE, normalizedCarousel(command), actor.userId());
         replaceDetailFiles(product.getId(), command.detailFileIds(), actor.userId());
         return detail(actor, product.getId());
     }
@@ -161,12 +172,15 @@ public class ProductService {
         ProductEntity product = requireProduct(id);
         ProductCategoryEntity category = requireCategory(command.categoryId());
         validateProductCode(command.productCode(), id);
-        validateFiles(command.coverFileId(), command.detailFileIds());
+        validateFiles(command.coverFileId(), command.imageFileIds(), command.detailFileIds());
         if (command.productCode() != null && !command.productCode().isBlank()) {
             product.setProductCode(command.productCode().trim().toUpperCase(Locale.ROOT));
         }
         applyProduct(product, command, category, actor.userId());
         productMapper.updateById(product);
+        skuService.replace(product.getId(), product.getProductCode(), product.getModelSpec(), product.getUnit(),
+                product.getDisplayStock(), command.specDimensions(), command.skus());
+        replaceFiles(product.getId(), CAROUSEL_USAGE, normalizedCarousel(command), actor.userId());
         replaceDetailFiles(product.getId(), command.detailFileIds(), actor.userId());
         return detail(actor, product.getId());
     }
@@ -186,19 +200,17 @@ public class ProductService {
         ProductEntity product = productMapper.selectForUpdate(id);
         if (product == null) throw notFound("PRODUCT_NOT_FOUND", "产品不存在");
         String type = normalizeAdjustmentType(command.type());
-        BigDecimal before = product.getDisplayStock() == null ? BigDecimal.ZERO : product.getDisplayStock();
-        BigDecimal after = "IN".equals(type) ? before.add(command.quantity()) : before.subtract(command.quantity());
-        if (after.signum() < 0) {
-            throw new BusinessException(409, "INSUFFICIENT_PRODUCT_STOCK", "耗材库存不足，不能完成本次出库");
-        }
-        product.setDisplayStock(after);
-        product.setUpdatedBy(actor.userId());
-        productMapper.updateById(product);
+        skuService.ensureDefaultSku(product.getId(), product.getProductCode(), product.getModelSpec(),
+                product.getUnit(), product.getDisplayStock(), Boolean.TRUE.equals(product.getEnabled()));
+        ProductSkuService.StockAdjustmentResult adjustment = skuService.adjustStock(
+                id, command.skuId(), type, command.quantity());
         ProductView result = detail(actor, id);
         auditService.recordSuccess(actor.userId(), "PRODUCT_STOCK_ADJUSTMENT", "PRODUCT", id,
                 context.requestId(), context.clientIp(),
-                new StockAuditSnapshot(before, null, null, null),
-                new StockAuditSnapshot(after, type, command.quantity(), command.reason().trim()));
+                new StockAuditSnapshot(adjustment.skuId(), adjustment.skuCode(), adjustment.specLabel(),
+                        adjustment.before(), null, null, null),
+                new StockAuditSnapshot(adjustment.skuId(), adjustment.skuCode(), adjustment.specLabel(),
+                        adjustment.after(), type, command.quantity(), command.reason().trim()));
         return result;
     }
 
@@ -222,7 +234,11 @@ public class ProductService {
                 .filter(Objects::nonNull).collect(Collectors.toSet());
         Map<Long, FileAssetEntity> files = loadFiles(coverIds);
         Map<Long, List<FileView>> detailFiles = includeDetails
-                ? loadDetailFiles(actor, products.stream().map(ProductEntity::getId).toList()) : Map.of();
+                ? loadFilesByUsage(actor, products.stream().map(ProductEntity::getId).toList(), DETAIL_USAGE) : Map.of();
+        Map<Long, List<FileView>> carouselFiles = includeDetails
+                ? loadFilesByUsage(actor, products.stream().map(ProductEntity::getId).toList(), CAROUSEL_USAGE) : Map.of();
+        Map<Long, ProductSpecsView> specsByProduct = skuService.getBatch(
+                products.stream().map(ProductEntity::getId).toList(), isAdmin(actor));
         return products.stream().map(product -> {
             ProductCategoryEntity child = categories.get(product.getCategoryId());
             ProductCategoryEntity parent = child == null ? null : categories.get(child.getParentId());
@@ -230,20 +246,41 @@ public class ProductService {
             if (parent != null) categoryPath.add(parent.getCategoryName());
             if (child != null) categoryPath.add(child.getCategoryName());
             FileAssetEntity cover = product.getCoverFileId() == null ? null : files.get(product.getCoverFileId());
+            ProductSpecsView specs = specsByProduct.getOrDefault(product.getId(),
+                    new ProductSpecsView(List.of(), List.of()));
+            BigDecimal skuStock = specs.skus().stream().filter(ProductSkuService.SkuView::enabled)
+                    .map(ProductSkuService.SkuView::stock).filter(Objects::nonNull)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            Map<String, BigDecimal> stockByUnit = specs.skus().stream()
+                    .filter(ProductSkuService.SkuView::enabled)
+                    .collect(Collectors.groupingBy(ProductSkuService.SkuView::unit, LinkedHashMap::new,
+                            Collectors.reducing(BigDecimal.ZERO, ProductSkuService.SkuView::stock, BigDecimal::add)));
+            boolean mixedUnits = stockByUnit.size() > 1;
+            String stockSummary = stockByUnit.isEmpty()
+                    ? (product.getDisplayStock() == null ? BigDecimal.ZERO : product.getDisplayStock())
+                    .stripTrailingZeros().toPlainString() + " " + product.getUnit()
+                    : stockByUnit.entrySet().stream()
+                    .map(entry -> entry.getValue().stripTrailingZeros().toPlainString() + " " + entry.getKey())
+                    .collect(Collectors.joining("；"));
             return new ProductView(product.getId(), product.getProductCode(), product.getProductName(),
                     product.getCategoryId(), child == null ? null : child.getCategoryCode(), categoryPath,
-                    product.getModelSpec(), product.getUnit(), product.getDisplayStock(), product.getDisplayPrice(),
+                    product.getModelSpec(), mixedUnits ? "多单位" : stockByUnit.keySet().stream().findFirst().orElse(product.getUnit()),
+                    mixedUnits ? null : (specs.skus().isEmpty() ? product.getDisplayStock() : skuStock),
+                    product.getDisplayPrice(),
                     cover == null ? null : fileService.issueAccess(actor, cover.getId()).url(), product.getDescription(),
                     detailFiles.getOrDefault(product.getId(), List.of()), Boolean.TRUE.equals(product.getEnabled()),
-                    product.getSortOrder(), product.getCreatedAt(), product.getUpdatedAt());
+                    product.getSortOrder(), product.getCreatedAt(), product.getUpdatedAt(),
+                    specs.dimensions(), specs.skus(), carouselFiles.getOrDefault(product.getId(),
+                    cover == null ? List.of() : List.of(new FileView(cover.getId(), fileService.issueAccess(actor, cover.getId()).url()))),
+                    specs.skus().size(), stockSummary);
         }).toList();
     }
 
-    private Map<Long, List<FileView>> loadDetailFiles(AuthenticatedUser actor, List<Long> productIds) {
+    private Map<Long, List<FileView>> loadFilesByUsage(AuthenticatedUser actor, List<Long> productIds, String usage) {
         List<BusinessFileRelationEntity> relations = relationMapper.selectList(
                 new LambdaQueryWrapper<BusinessFileRelationEntity>()
                         .eq(BusinessFileRelationEntity::getBusinessType, BUSINESS_TYPE)
-                        .eq(BusinessFileRelationEntity::getUsageType, DETAIL_USAGE)
+                        .eq(BusinessFileRelationEntity::getUsageType, usage)
                         .in(BusinessFileRelationEntity::getBusinessId, productIds)
                         .orderByAsc(BusinessFileRelationEntity::getSortOrder));
         Map<Long, FileAssetEntity> files = loadFiles(relations.stream()
@@ -286,12 +323,14 @@ public class ProductService {
 
     private void applyStockStatus(LambdaQueryWrapper<ProductEntity> query, String rawStatus) {
         if (rawStatus == null || rawStatus.isBlank() || "all".equalsIgnoreCase(rawStatus.trim())) return;
+        String maxStock = "COALESCE((SELECT MAX(ps.stock) FROM product_sku ps "
+                + "WHERE ps.product_id=product.id AND ps.enabled=TRUE AND ps.deleted=FALSE), display_stock, 0)";
+        String minStock = "COALESCE((SELECT MIN(ps.stock) FROM product_sku ps "
+                + "WHERE ps.product_id=product.id AND ps.enabled=TRUE AND ps.deleted=FALSE), display_stock, 0)";
         switch (rawStatus.trim().toLowerCase(Locale.ROOT)) {
-            case "empty" -> query.and(wrapper -> wrapper.isNull(ProductEntity::getDisplayStock)
-                    .or().eq(ProductEntity::getDisplayStock, BigDecimal.ZERO));
-            case "low" -> query.gt(ProductEntity::getDisplayStock, BigDecimal.ZERO)
-                    .le(ProductEntity::getDisplayStock, LOW_STOCK_THRESHOLD);
-            case "normal" -> query.gt(ProductEntity::getDisplayStock, LOW_STOCK_THRESHOLD);
+            case "empty" -> query.apply(maxStock + " = 0");
+            case "low" -> query.apply(maxStock + " > 0 AND " + minStock + " <= {0}", LOW_STOCK_THRESHOLD);
+            case "normal" -> query.apply(minStock + " > {0}", LOW_STOCK_THRESHOLD);
             default -> throw new BusinessException("INVALID_STOCK_STATUS", "库存状态只支持 normal、low 或 empty");
         }
     }
@@ -334,16 +373,20 @@ public class ProductService {
     }
 
     private void replaceDetailFiles(long productId, List<Long> rawFileIds, long actorId) {
+        replaceFiles(productId, DETAIL_USAGE, rawFileIds, actorId);
+    }
+
+    private void replaceFiles(long productId, String usage, List<Long> rawFileIds, long actorId) {
         relationMapper.delete(new LambdaQueryWrapper<BusinessFileRelationEntity>()
                 .eq(BusinessFileRelationEntity::getBusinessType, BUSINESS_TYPE)
                 .eq(BusinessFileRelationEntity::getBusinessId, productId)
-                .eq(BusinessFileRelationEntity::getUsageType, DETAIL_USAGE));
+                .eq(BusinessFileRelationEntity::getUsageType, usage));
         List<Long> fileIds = distinctFileIds(rawFileIds);
         for (int index = 0; index < fileIds.size(); index++) {
             BusinessFileRelationEntity relation = new BusinessFileRelationEntity();
             relation.setBusinessType(BUSINESS_TYPE);
             relation.setBusinessId(productId);
-            relation.setUsageType(DETAIL_USAGE);
+            relation.setUsageType(usage);
             relation.setFileId(fileIds.get(index));
             relation.setSortOrder(index);
             relation.setCreatedBy(actorId);
@@ -351,14 +394,23 @@ public class ProductService {
         }
     }
 
-    private void validateFiles(Long coverFileId, List<Long> detailFileIds) {
+    private void validateFiles(Long coverFileId, List<Long> imageFileIds, List<Long> detailFileIds) {
+        List<Long> images = distinctFileIds(imageFileIds);
+        if (images.size() > 3) throw new BusinessException("PRODUCT_CAROUSEL_LIMIT", "耗材轮播图最多 3 张");
         List<Long> details = distinctFileIds(detailFileIds);
         if (details.size() > 9) throw new BusinessException("PRODUCT_IMAGES_LIMIT", "产品详情图最多 9 张");
         LinkedHashSet<Long> all = new LinkedHashSet<>(details);
+        all.addAll(images);
         if (coverFileId != null) all.add(coverFileId);
         if (!all.isEmpty() && fileMapper.selectBatchIds(all).size() != all.size()) {
             throw new BusinessException("FILE_NOT_FOUND", "存在无效或已删除的图片文件");
         }
+    }
+
+    private List<Long> normalizedCarousel(ProductCommand command) {
+        List<Long> images = distinctFileIds(command.imageFileIds());
+        if (!images.isEmpty()) return images;
+        return command.coverFileId() == null ? List.of() : List.of(command.coverFileId());
     }
 
     private List<Long> distinctFileIds(List<Long> values) {
@@ -425,13 +477,15 @@ public class ProductService {
 
     public record ProductCommand(String productCode, String name, Long categoryId, String spec, String unit,
                                  BigDecimal stock, BigDecimal price, String remark, Long coverFileId,
-                                 List<Long> detailFileIds, Boolean enabled, Integer sortOrder) { }
+                                 List<Long> imageFileIds, List<Long> detailFileIds, Boolean enabled, Integer sortOrder,
+                                 List<DimensionCommand> specDimensions, List<SkuCommand> skus) { }
 
-    public record StockAdjustmentCommand(String type, BigDecimal quantity, String reason) { }
+    public record StockAdjustmentCommand(Long skuId, String type, BigDecimal quantity, String reason) { }
 
     public record AuditContext(String requestId, String clientIp) { }
 
-    private record StockAuditSnapshot(BigDecimal stock, String type, BigDecimal quantity, String reason) { }
+    private record StockAuditSnapshot(Long skuId, String skuCode, String specLabel, BigDecimal stock,
+                                      String type, BigDecimal quantity, String reason) { }
 
     public record CategoryCommand(String code, String name, Long parentId, Integer sortOrder, Boolean enabled) { }
 
@@ -441,7 +495,9 @@ public class ProductService {
                               List<String> category, String spec, String unit, BigDecimal stock,
                               BigDecimal price, String image, String remark, List<FileView> detailImages,
                               boolean enabled, Integer sortOrder, LocalDateTime createdAt,
-                              LocalDateTime updatedAt) { }
+                              LocalDateTime updatedAt, List<ProductSkuService.DimensionView> specDimensions,
+                              List<ProductSkuService.SkuView> skus, List<FileView> images,
+                              int skuCount, String stockSummary) { }
 
     public record FileView(Long id, String url) { }
 

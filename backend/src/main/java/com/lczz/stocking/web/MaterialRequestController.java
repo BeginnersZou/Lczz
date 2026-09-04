@@ -5,9 +5,10 @@ import com.lczz.common.api.ApiResponse;
 import com.lczz.stocking.service.MaterialRequestService;
 import com.lczz.stocking.service.MaterialRequestService.ItemCommand;
 import com.lczz.stocking.service.MaterialRequestService.PreparedItemCommand;
-import com.lczz.stocking.service.MaterialRequestService.RequestPage;
 import com.lczz.stocking.service.MaterialRequestService.RequestView;
 import com.lczz.stocking.service.MaterialRequestService.SubmitCommand;
+import com.lczz.stocking.service.UnifiedPreparationService;
+import com.lczz.stocking.service.UnifiedPreparationService.ExportFile;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
@@ -19,7 +20,12 @@ import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
@@ -37,9 +43,11 @@ import org.springframework.web.bind.annotation.RestController;
 @Tag(name = "耗材申请与订单备货")
 public class MaterialRequestController {
     private final MaterialRequestService service;
+    private final UnifiedPreparationService unifiedService;
 
-    public MaterialRequestController(MaterialRequestService service) {
+    public MaterialRequestController(MaterialRequestService service, UnifiedPreparationService unifiedService) {
         this.service = service;
+        this.unifiedService = unifiedService;
     }
 
     @PostMapping("/orders/{orderId}/materials")
@@ -63,20 +71,45 @@ public class MaterialRequestController {
     @GetMapping("/preparation/list")
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "管理员分页查询订单备货申请")
-    ApiResponse<RequestPage> list(@RequestParam(defaultValue = "1") @Min(1) int page,
+    ApiResponse<?> list(@RequestParam(defaultValue = "1") @Min(1) int page,
                                   @RequestParam(defaultValue = "10") @Min(1) @Max(100) int pageSize,
                                   @RequestParam(required = false) @Size(max = 100) String keyword,
                                   @RequestParam(required = false) @Size(max = 32) String status,
+                                  @RequestParam(required = false) @Size(max = 1) String source,
                                   HttpServletRequest request) {
-        return ApiResponse.success(service.list(page, pageSize, keyword, status), requestId(request));
+        return ApiResponse.success(unifiedService.list(page, pageSize, keyword, status, source), requestId(request));
     }
 
     @GetMapping("/preparation/detail/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "管理员查询备货详情与产品快照")
-    ApiResponse<RequestView> detail(@AuthenticationPrincipal AuthenticatedUser actor,
-                                    @PathVariable @Min(1) long id, HttpServletRequest request) {
-        return ApiResponse.success(service.detail(actor, id), requestId(request));
+    ApiResponse<?> detail(@AuthenticationPrincipal AuthenticatedUser actor,
+                                    @PathVariable @Min(1) long id,
+                                    @RequestParam(required = false) @Size(max = 1) String source,
+                                    HttpServletRequest request) {
+        // Keep the original W-order response contract when legacy callers omit source.
+        // The unified preparation page always sends W/A explicitly.
+        Object detail = source == null || source.isBlank()
+                ? service.detail(actor, id)
+                : unifiedService.detail(source, id);
+        return ApiResponse.success(detail, requestId(request));
+    }
+
+    @GetMapping("/preparation/export")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "管理员按当前筛选导出W/A备货总表")
+    ResponseEntity<byte[]> export(@RequestParam(required = false) @Size(max = 100) String keyword,
+                                  @RequestParam(required = false) @Size(max = 32) String status,
+                                  @RequestParam(required = false) @Size(max = 1) String source) {
+        return download(unifiedService.exportList(keyword, status, source));
+    }
+
+    @GetMapping("/preparation/{source}/{id}/export")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "管理员导出单个W/A备货明细")
+    ResponseEntity<byte[]> exportDetail(@PathVariable @Size(max = 1) String source,
+                                        @PathVariable @Min(1) long id) {
+        return download(unifiedService.exportDetail(source, id));
     }
 
     @PostMapping("/preparation/{id}/prepare")
@@ -112,6 +145,16 @@ public class MaterialRequestController {
         return value == null ? "" : value.toString();
     }
 
+    private ResponseEntity<byte[]> download(ExportFile file) {
+        String encoded = URLEncoder.encode(file.filename(), StandardCharsets.UTF_8).replace("+", "%20");
+        return ResponseEntity.ok()
+                .contentType(new MediaType("text", "csv", StandardCharsets.UTF_8))
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=preparation.csv; filename*=UTF-8''" + encoded)
+                .header(HttpHeaders.CACHE_CONTROL, "no-store")
+                .body(file.content());
+    }
+
     record SubmitRequest(@NotEmpty @Size(max = 100) List<@Valid ItemRequest> items,
                          @Size(max = 500) String remark) {
         SubmitCommand toCommand() {
@@ -119,8 +162,9 @@ public class MaterialRequestController {
         }
     }
     record ItemRequest(@NotNull @Min(1) Long productId,
+                       @Min(1) Long skuId,
                        @NotNull @DecimalMin(value = "0", inclusive = false) BigDecimal quantity) {
-        ItemCommand toCommand() { return new ItemCommand(productId, quantity); }
+        ItemCommand toCommand() { return new ItemCommand(productId, skuId, quantity); }
     }
     record PrepareRequest(@NotEmpty @Size(max = 100) List<@Valid PreparedItemRequest> materials) {
         List<PreparedItemCommand> toCommands() {

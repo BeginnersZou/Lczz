@@ -225,6 +225,7 @@ const http = {
   get: (url, data = {}, options = {}) => request({ url, method: 'GET', data, ...options }),
   post: (url, data = {}, options = {}) => request({ url, method: 'POST', data, ...options }),
   put: (url, data = {}, options = {}) => request({ url, method: 'PUT', data, ...options }),
+  patch: (url, data = {}, options = {}) => request({ url, method: 'PATCH', data, ...options }),
   delete: (url, data = {}, options = {}) => request({ url, method: 'DELETE', data, ...options }),
   upload
 }

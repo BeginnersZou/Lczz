@@ -20,3 +20,5 @@ lczz:
     enabled: false
     max-attempts: 2
     retry-delay-ms: 60000
+  self-order:
+    pickup-phone: 027-82710326

@@ -11,7 +11,9 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.web.client.RestClient;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -30,9 +32,17 @@ class ProductIntegrationTests {
     @Autowired UserAccountService userAccountService;
     @Autowired JwtService jwtService;
     @Autowired ObjectMapper objectMapper;
+    @MockitoBean RestClient restClient;
 
     @BeforeEach
     void resetData() {
+        jdbcTemplate.update("DELETE FROM material_self_order_item");
+        jdbcTemplate.update("DELETE FROM material_self_order");
+        jdbcTemplate.update("DELETE FROM installer_cart_item");
+        jdbcTemplate.update("DELETE FROM product_sku_spec_value");
+        jdbcTemplate.update("DELETE FROM product_sku");
+        jdbcTemplate.update("DELETE FROM product_spec_value");
+        jdbcTemplate.update("DELETE FROM product_spec_dimension");
         jdbcTemplate.update("DELETE FROM operation_audit_log");
         jdbcTemplate.update("DELETE FROM business_file_relation");
         jdbcTemplate.update("DELETE FROM product");
@@ -41,6 +51,124 @@ class ProductIntegrationTests {
         jdbcTemplate.update("DELETE FROM user_wechat_identity");
         jdbcTemplate.update("DELETE FROM sys_user_role");
         jdbcTemplate.update("DELETE FROM sys_user");
+    }
+
+    @Test
+    void administratorCanConfigureArbitraryMultiDimensionSkusAndLegacyProductGetsDefaultSku() throws Exception {
+        String token = adminToken();
+        long parentId = createCategory(token, "pipes", "管状物", null);
+        long childId = createCategory(token, "elbows", "弯头", parentId);
+
+        String response = mockMvc.perform(post("/api/v1/consumables")
+                        .header("Authorization", bearer(token)).contentType("application/json")
+                        .content("""
+                                {"productCode":"PVC-ELBOW","name":"PVC弯头管","categoryId":%d,
+                                 "spec":"多规格","unit":"个","stock":20,"price":0,"enabled":true,
+                                 "specDimensions":[
+                                   {"name":"口径","values":[{"value":"25mm"},{"value":"35mm"}]},
+                                   {"name":"长度","values":[{"value":"1米"},{"value":"2米"}]}
+                                 ],
+                                 "skus":[
+                                   {"code":"PVC-25-1","specValues":{"口径":"25mm","长度":"1米"},"unit":"个","stock":3,"enabled":true},
+                                   {"code":"PVC-25-2","specValues":{"口径":"25mm","长度":"2米"},"unit":"个","stock":4,"enabled":true},
+                                   {"code":"PVC-35-1","specValues":{"口径":"35mm","长度":"1米"},"unit":"个","stock":5,"enabled":true},
+                                   {"code":"PVC-35-2","specValues":{"口径":"35mm","长度":"2米"},"unit":"个","stock":8,"enabled":false}
+                                 ]}
+                                """.formatted(childId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.specDimensions[0].name").value("口径"))
+                .andExpect(jsonPath("$.data.specDimensions[1].name").value("长度"))
+                .andExpect(jsonPath("$.data.skus.length()").value(4))
+                .andExpect(jsonPath("$.data.stock").value(12))
+                .andReturn().getResponse().getContentAsString();
+        long productId = objectMapper.readTree(response).at("/data/id").asLong();
+
+        mockMvc.perform(get("/api/v1/consumables/detail/{id}", productId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.skus.length()").value(3))
+                .andExpect(jsonPath("$.data.skus[0].specValues.口径").value("25mm"));
+
+        mockMvc.perform(post("/api/v1/consumables")
+                        .header("Authorization", bearer(token)).contentType("application/json")
+                        .content("""
+                                {"productCode":"LEGACY-1","name":"旧式耗材","categoryId":%d,
+                                 "spec":"通用","unit":"件","stock":9,"enabled":true}
+                                """.formatted(childId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.specDimensions.length()").value(0))
+                .andExpect(jsonPath("$.data.skus.length()").value(1))
+                .andExpect(jsonPath("$.data.skus[0].defaultSku").value(true))
+                .andExpect(jsonPath("$.data.skus[0].stock").value(9));
+    }
+
+    @Test
+    void adminSkuToInstallerCartToUnifiedPreparationFlowIsConsistentAndIdempotent() throws Exception {
+        String admin = adminToken();
+        long parentId = createCategory(admin, "pipes-flow", "管状物", null);
+        long childId = createCategory(admin, "elbows-flow", "PVC弯头管", parentId);
+        String productResponse = mockMvc.perform(post("/api/v1/consumables")
+                        .header("Authorization", bearer(admin)).contentType("application/json")
+                        .content("""
+                                {"productCode":"PVC-FLOW","name":"PVC弯头管","categoryId":%d,
+                                 "spec":"多规格","unit":"个","stock":10,"price":0,"enabled":true,
+                                 "specDimensions":[{"name":"口径","values":[{"value":"25mm"},{"value":"35mm"}]}],
+                                 "skus":[
+                                   {"code":"PVC-FLOW-25","specValues":{"口径":"25mm"},"unit":"个","stock":10,"enabled":true},
+                                   {"code":"PVC-FLOW-35","specValues":{"口径":"35mm"},"unit":"个","stock":6,"enabled":true}
+                                 ]}
+                                """.formatted(childId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.stockSummary").value("16 个"))
+                .andReturn().getResponse().getContentAsString();
+        long skuId = objectMapper.readTree(productResponse).at("/data/skus/0/id").asLong();
+        String installer = installerToken();
+
+        mockMvc.perform(post("/api/v1/installer/cart/items")
+                        .header("Authorization", bearer(installer)).contentType("application/json")
+                        .content("{\"skuId\":" + skuId + ",\"quantity\":3}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].specLabel").value("口径：25mm"))
+                .andExpect(jsonPath("$.data.items[0].quantity").value(3));
+
+        String requestBody = "{\"requestId\":\"flow-submit-once\"}";
+        String orderResponse = mockMvc.perform(post("/api/v1/installer/self-orders")
+                        .header("Authorization", bearer(installer)).contentType("application/json").content(requestBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.orderNo").value(org.hamcrest.Matchers.startsWith("A")))
+                .andExpect(jsonPath("$.data.items[0].quantity").value(3))
+                .andReturn().getResponse().getContentAsString();
+        long orderId = objectMapper.readTree(orderResponse).at("/data/id").asLong();
+
+        mockMvc.perform(post("/api/v1/installer/self-orders")
+                        .header("Authorization", bearer(installer)).contentType("application/json").content(requestBody))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.id").value(orderId));
+        mockMvc.perform(get("/api/preparation/list").header("Authorization", bearer(admin)).param("source", "A"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.list[0].source").value("A"));
+        mockMvc.perform(get("/api/preparation/detail/{id}", orderId)
+                        .header("Authorization", bearer(admin)).param("source", "A"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.materials[0].spec").value("口径：25mm"));
+        org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
+                "SELECT stock FROM product_sku WHERE id=?", java.math.BigDecimal.class, skuId))
+                .isEqualByComparingTo("10");
+    }
+
+    @Test
+    void rejectsIncompleteOrDuplicateDynamicSkuConfiguration() throws Exception {
+        String token = adminToken();
+        long parentId = createCategory(token, "dynamic", "动态规格", null);
+        long childId = createCategory(token, "dynamic-child", "任意属性", parentId);
+        mockMvc.perform(post("/api/v1/consumables")
+                        .header("Authorization", bearer(token)).contentType("application/json")
+                        .content("""
+                                {"name":"不完整组合","categoryId":%d,"unit":"件","stock":0,
+                                 "specDimensions":[{"name":"颜色","values":[{"value":"白"},{"value":"黑"}]}],
+                                 "skus":[{"specValues":{"颜色":"白"},"unit":"件","stock":1,"enabled":true}]}
+                                """.formatted(childId)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INCOMPLETE_SKU_COMBINATIONS"));
     }
 
     @Test
@@ -190,7 +318,7 @@ class ProductIntegrationTests {
                         .header("Authorization", bearer(token)).contentType("application/json")
                         .content("{\"type\":\"OUT\",\"quantity\":6,\"reason\":\"安装领用\"}"))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.error").value("INSUFFICIENT_PRODUCT_STOCK"));
+                .andExpect(jsonPath("$.error").value("INSUFFICIENT_SKU_STOCK"));
         String auditJson = jdbcTemplate.queryForObject(
                 "SELECT after_json FROM operation_audit_log WHERE business_type='PRODUCT' AND business_id=?",
                 String.class, Long.toString(lowId));
@@ -237,6 +365,19 @@ class ProductIntegrationTests {
         jdbcTemplate.update("""
                 INSERT INTO sys_user_role(user_id, role_id)
                 SELECT ?, id FROM sys_role WHERE role_code = 'CUSTOMER'
+                """, userId);
+        return jwtService.issue(userAccountService.requireActive(userId)).value();
+    }
+
+    private String installerToken() {
+        jdbcTemplate.update("""
+                INSERT INTO sys_user(nickname, phone, account_status, audit_status, blacklist, deleted)
+                VALUES ('安装师傅', '13800138001', 'ENABLED', 'APPROVED', FALSE, FALSE)
+                """);
+        Long userId = jdbcTemplate.queryForObject("SELECT id FROM sys_user WHERE phone = '13800138001'", Long.class);
+        jdbcTemplate.update("""
+                INSERT INTO sys_user_role(user_id, role_id)
+                SELECT ?, id FROM sys_role WHERE role_code = 'INSTALLER'
                 """, userId);
         return jwtService.issue(userAccountService.requireActive(userId)).value();
     }

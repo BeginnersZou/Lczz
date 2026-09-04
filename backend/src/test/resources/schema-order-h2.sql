@@ -87,8 +87,11 @@ CREATE TABLE material_request_item (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
   request_id BIGINT NOT NULL,
   product_id BIGINT NOT NULL,
+  sku_id BIGINT,
   product_code_snapshot VARCHAR(64) NOT NULL,
+  sku_code_snapshot VARCHAR(96),
   product_name_snapshot VARCHAR(255) NOT NULL,
+  sku_spec_snapshot VARCHAR(2000),
   model_spec_snapshot VARCHAR(255),
   unit_snapshot VARCHAR(32) NOT NULL,
   display_price_snapshot DECIMAL(10,2),
@@ -98,5 +101,5 @@ CREATE TABLE material_request_item (
   version INT DEFAULT 0 NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
-  UNIQUE(request_id, product_id)
+  UNIQUE(request_id, sku_id)
 );
