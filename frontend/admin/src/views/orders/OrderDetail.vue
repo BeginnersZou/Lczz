@@ -29,6 +29,7 @@
           </el-descriptions-item>
           <el-descriptions-item label="订单类型">{{ order.taskType || '-' }}</el-descriptions-item>
           <el-descriptions-item label="创建时间">{{ formatDateTime(order.createdAt) }}</el-descriptions-item>
+          <el-descriptions-item label="客户确认时间" :span="descriptionColumns">{{ order.customerConfirmedAt ? formatDateTime(order.customerConfirmedAt) : '暂无客户确认记录' }}</el-descriptions-item>
           <el-descriptions-item label="客户姓名">{{ order.customerName || '-' }}</el-descriptions-item>
           <el-descriptions-item label="客户手机号">{{ formatPhone(order.customerPhone) }}</el-descriptions-item>
           <el-descriptions-item label="预约时间" :span="descriptionColumns">

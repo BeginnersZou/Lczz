@@ -55,8 +55,8 @@ public class OrderService {
     private static final Set<String> FINISHED_ORDER_STATUSES = Set.of("REVIEWED", "CANCELLED");
     private static final Map<String, Set<String>> ALLOWED_TRANSITIONS = Map.of(
             "PENDING_VISIT", Set.of("IN_PROGRESS", "CANCELLED"),
-            "IN_PROGRESS", Set.of("PENDING_REVIEW", "CANCELLED"),
-            "PENDING_REVIEW", Set.of("REVIEWED", "CANCELLED"),
+            "IN_PROGRESS", Set.of("CANCELLED"),
+            "PENDING_REVIEW", Set.of("CANCELLED"),
             "REVIEWED", Set.of(),
             "CANCELLED", Set.of());
 
@@ -237,8 +237,7 @@ public class OrderService {
     }
 
     private WorkOrderEntity requireOrder(long id) {
-        WorkOrderEntity order = orderMapper.selectOne(new LambdaQueryWrapper<WorkOrderEntity>()
-                .eq(WorkOrderEntity::getId, id).eq(WorkOrderEntity::getDeleted, false));
+        WorkOrderEntity order = orderMapper.selectForUpdate(id);
         if (order == null) throw notFound();
         return order;
     }
@@ -335,16 +334,27 @@ public class OrderService {
     }
 
     private List<OrderView> toViews(List<WorkOrderEntity> orders, Map<Long, List<FileView>> files) {
+        if (orders.isEmpty()) return List.of();
+        Map<Long, WorkOrderStatusHistoryEntity> confirmations = historyMapper.selectList(
+                        new LambdaQueryWrapper<WorkOrderStatusHistoryEntity>()
+                                .in(WorkOrderStatusHistoryEntity::getOrderId, orders.stream().map(WorkOrderEntity::getId).toList())
+                                .eq(WorkOrderStatusHistoryEntity::getFromStatus, "IN_PROGRESS")
+                                .eq(WorkOrderStatusHistoryEntity::getToStatus, "PENDING_REVIEW")
+                                .eq(WorkOrderStatusHistoryEntity::getChangeReason, OrderConfirmationService.CONFIRMATION_REASON)
+                                .orderByAsc(WorkOrderStatusHistoryEntity::getId)).stream()
+                .collect(Collectors.toMap(WorkOrderStatusHistoryEntity::getOrderId, Function.identity(), (first, later) -> first));
         Set<Long> userIds = orders.stream()
                 .flatMap(order -> java.util.stream.Stream.of(order.getCustomerUserId(), order.getInstallerUserId()))
                 .filter(java.util.Objects::nonNull).collect(Collectors.toSet());
         Map<Long, UserEntity> users = userIds.isEmpty() ? Map.of() : userMapper.selectByIds(userIds).stream()
                 .collect(Collectors.toMap(UserEntity::getId, Function.identity()));
-        return orders.stream().map(order -> toView(order, users, files.getOrDefault(order.getId(), List.of())))
+        return orders.stream().map(order -> toView(order, users, files.getOrDefault(order.getId(), List.of()),
+                        confirmations.get(order.getId())))
                 .toList();
     }
 
-    private OrderView toView(WorkOrderEntity order, Map<Long, UserEntity> users, List<FileView> fileList) {
+    private OrderView toView(WorkOrderEntity order, Map<Long, UserEntity> users, List<FileView> fileList,
+                             WorkOrderStatusHistoryEntity confirmation) {
         UserEntity installer = users.get(order.getInstallerUserId());
         InstallerView master = installer == null
                 ? new InstallerView(order.getInstallerUserId(), "安装师傅", null, 0, List.of())
@@ -360,7 +370,8 @@ public class OrderService {
                 statusLabel(order.getOrderStatus()), order.getOrderStatus(), List.of(master), List.of(master),
                 order.getAdminRemark(), order.getCancelReason(), order.getCreatedAt(), order.getUpdatedAt(),
                 "空调服务", taskLabel, order.getDescription(), order.getCustomerName(), order.getCustomerPhone(),
-                fileList);
+                fileList, confirmation == null ? null : confirmation.getOperatorUserId(),
+                confirmation == null ? null : confirmation.getCreatedAt().atOffset(ZoneOffset.UTC));
     }
 
     private String normalizePhone(String raw) {
@@ -482,5 +493,5 @@ public class OrderService {
                             List<InstallerView> selectedMasterList, List<InstallerView> masterList,
                             String adminRemark, String cancelReason, LocalDateTime createdAt, LocalDateTime updatedAt,
                             String serviceName, String productName, String productSpec, String name, String phone,
-                            List<FileView> fileList) { }
+                            List<FileView> fileList, Long customerConfirmedBy, OffsetDateTime customerConfirmedAt) { }
 }

@@ -191,18 +191,30 @@
 			</view>
 		</view>
 
-		<!-- ═══ 指派师傅提交施工进度或完工 ═══ -->
+		<view class="section-card" v-if="orderInfo.customerConfirmedAt">
+			<view class="info-row">
+				<text class="info-label">客户确认时间</text>
+				<text class="info-value">{{ orderInfo.customerConfirmedAt }}</text>
+			</view>
+			<text class="complete-text">订单已完成，施工进度已封存。</text>
+		</view>
+
+		<view class="section-card" v-if="canConfirmCompletion">
+			<view class="section-header"><text class="section-title">确认订单完成</text></view>
+			<text class="complete-text">确认服务完成后，施工进度将封存，您可以继续评价本次服务。</text>
+			<view class="inline-submit" :class="{ disabled: confirmingCompletion }" @click="handleConfirmCompletion">
+				<text>{{ confirmingCompletion ? '确认中...' : '确认订单完成' }}</text>
+			</view>
+		</view>
+
+		<!-- ═══ 指派师傅提交施工进度 ═══ -->
 		<view class="section-card" v-if="canOperateProgress">
 			<view class="section-header">
 				<view class="section-title-wrap"><text class="section-title">施工操作</text></view>
 			</view>
-			<view class="progress-tabs">
-				<view class="progress-tab" :class="{ active: progressType === 'PROGRESS' }" @click="progressType = 'PROGRESS'">提交进度</view>
-				<view class="progress-tab" :class="{ active: progressType === 'COMPLETION' }" @click="progressType = 'COMPLETION'">提交完工</view>
-			</view>
 			<view class="textarea-wrap">
 				<textarea class="complete-textarea" v-model="progressDescription"
-					:placeholder="progressType === 'COMPLETION' ? '必填：填写完工说明' : '必填：填写本次施工进度'"
+					placeholder="必填：填写本次施工进度"
 					placeholder-class="placeholder-style" maxlength="2000"></textarea>
 				<text class="text-count">{{ progressDescription.length }}/2000</text>
 			</view>
@@ -213,8 +225,7 @@
 						<view class="upload-title-copy">
 							<view class="upload-title-line">
 								<text class="upload-title">施工附件</text>
-								<text class="upload-required" v-if="progressType === 'COMPLETION'">至少上传1个</text>
-								<text class="upload-optional" v-else>选填</text>
+								<text class="upload-optional">选填</text>
 							</view>
 							<text class="upload-subtitle">图片与视频合计最多9个，可全选图片或全选视频</text>
 						</view>
@@ -260,7 +271,7 @@
 				</view>
 			</view>
 			<view class="inline-submit" :class="{ disabled: !canSubmitProgress || submittingProgress }" @click="handleProgressSubmit">
-				<text>{{ submittingProgress ? '提交中...' : (progressType === 'COMPLETION' ? '确认完工' : '提交进度') }}</text>
+				<text>{{ submittingProgress ? '提交中...' : '提交进度' }}</text>
 			</view>
 		</view>
 
@@ -393,11 +404,16 @@
 	const materialRequest = ref(null)
 	// 耗材申请仅允许指派师傅提交一次；重复提交由服务端幂等/冲突规则兜底。
 	const userRole = ref('')
+	const currentUserId = ref(null)
+	const confirmingCompletion = ref(false)
 	const isInstaller = computed(() => userRole.value === 'installer')
 	const isReviewer = computed(() => ['customer', 'dealer'].includes(userRole.value))
-	const canReview = computed(() => isReviewer.value && orderInfo.value.statusCode === 'PENDING_REVIEW')
-	const hasReviewed = computed(() => isReviewer.value && orderInfo.value.statusCode === 'REVIEWED')
-	const materialReadonly = computed(() => !isInstaller.value || !['待上门', '处理中'].includes(orderInfo.value.status) || Boolean(materialRequest.value))
+	const isBoundCustomer = computed(() => isReviewer.value && currentUserId.value != null &&
+		String(orderInfo.value.customerUserId) === String(currentUserId.value))
+	const canConfirmCompletion = computed(() => isBoundCustomer.value && orderInfo.value.statusCode === 'IN_PROGRESS')
+	const canReview = computed(() => isBoundCustomer.value && orderInfo.value.statusCode === 'PENDING_REVIEW')
+	const hasReviewed = computed(() => isBoundCustomer.value && orderInfo.value.statusCode === 'REVIEWED')
+	const materialReadonly = computed(() => !isInstaller.value || !['PENDING_VISIT', 'IN_PROGRESS'].includes(orderInfo.value.statusCode) || Boolean(materialRequest.value))
 
 const statusClass = computed(() => {
 		const s = orderInfo.value.status
@@ -433,27 +449,21 @@ const statusClass = computed(() => {
 
 	const materialRemark = ref('')
 	const progressRecords = ref([])
-	const progressType = ref('PROGRESS')
 	const progressDescription = ref('')
 	const progressImages = ref([])
 	const uploadProgress = ref('')
 	const submittingProgress = ref(false)
 	let progressMediaUid = 0
 	const allowLeave = ref(false)
-	const canOperateProgress = computed(() => isInstaller.value && ['待上门', '处理中'].includes(orderInfo.value.status))
+	const canOperateProgress = computed(() => isInstaller.value && ['PENDING_VISIT', 'IN_PROGRESS'].includes(orderInfo.value.statusCode))
 	const hasMaterialDraft = computed(() => !materialReadonly.value && (toolList.value.length > 0 || Boolean(materialRemark.value.trim())))
 	const uploadedProgressMediaCount = computed(() => progressImages.value.filter(media => media.status === 'success' && media.id).length)
 	const failedProgressMediaCount = computed(() => progressImages.value.filter(media => media.status === 'failed').length)
 	const isUploadingProgressMedia = computed(() => progressImages.value.some(media => media.status === 'queued' || media.status === 'uploading'))
-	const materialsReadyForCompletion = computed(() => {
-		if (!materialRequest.value) return true
-		const status = String(materialRequest.value.statusCode || materialRequest.value.status || '').toUpperCase()
-		return status === 'DONE'
-	})
 	const canSubmitProgress = computed(() => {
-		if (!progressDescription.value.trim()) return false
+		if (!canOperateProgress.value || !progressDescription.value.trim()) return false
 		if (isUploadingProgressMedia.value || failedProgressMediaCount.value > 0) return false
-		return progressType.value !== 'COMPLETION' || uploadedProgressMediaCount.value > 0
+		return true
 	})
 
 	const previewRecordImages = (images, index) => {
@@ -472,7 +482,12 @@ const statusClass = computed(() => {
 			orderApi.getDetail(orderId.value, { loading: false }),
 			orderApi.getProgress(orderId.value, { loading: false, silent: true })
 		])
-		if (orderRes.code === 200) orderInfo.value = orderRes.data || {}
+		if (orderRes.code !== 200) {
+			setDetailError(orderRes)
+			return
+		}
+		detailError.value = null
+		orderInfo.value = orderRes.data || {}
 		if (progressRes.code === 200) progressRecords.value = progressRes.data || []
 		if (isInstaller.value && materialRequest.value) {
 			const materialRes = await orderApi.getMaterials(orderId.value, { loading: false, silent: true })
@@ -481,6 +496,27 @@ const statusClass = computed(() => {
 	}
 
 	onShow(() => refreshOrderStatus())
+
+	const handleConfirmCompletion = async () => {
+		if (!canConfirmCompletion.value || confirmingCompletion.value) return
+		confirmingCompletion.value = true
+		try {
+			const result = await new Promise((resolve, reject) => uni.showModal({
+				title: '确认订单完成', content: '是否确认订单已完成', success: resolve, fail: reject
+			}))
+			if (!result.confirm || !canConfirmCompletion.value) return
+			const response = await orderApi.confirmCompletion(orderId.value)
+			if (response.code === 200) {
+				orderInfo.value = { ...orderInfo.value, ...response.data }
+				uni.showToast({ title: '订单已确认完成', icon: 'success' })
+			}
+			await refreshOrderStatus()
+		} catch {
+			uni.showToast({ title: '确认失败，请刷新订单后重试', icon: 'none' })
+		} finally {
+			confirmingCompletion.value = false
+		}
+	}
 
 	const previewProgressImage = (media) => {
 		if (media.mimeType?.startsWith('video/')) return
@@ -546,13 +582,14 @@ const statusClass = computed(() => {
 	}
 
 	const retryProgressMedia = async (media) => {
-		if (isUploadingProgressMedia.value || media.status !== 'failed') return
+		if (!canOperateProgress.value || isUploadingProgressMedia.value || media.status !== 'failed') return
 		uploadProgress.value = '正在重新上传附件'
 		await uploadProgressMedia(media)
 		uploadProgress.value = ''
 	}
 
 	const openProgressMediaPicker = (source) => {
+		if (!canOperateProgress.value) return
 		const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 		const MAX_VIDEO_BYTES = 200 * 1024 * 1024
 		if (isUploadingProgressMedia.value) {
@@ -568,6 +605,7 @@ const statusClass = computed(() => {
 			maxDuration: 60,
 			camera: 'back',
 			success: async (res) => {
+				if (!canOperateProgress.value) return
 				const files = res.tempFiles || []
 				let oversized = 0
 				const accepted = []
@@ -604,30 +642,16 @@ const statusClass = computed(() => {
 	}
 
 	const chooseProgressMedia = () => {
+		if (!canOperateProgress.value) return
 		uni.showActionSheet({
 			itemList: ['从相册选择（支持长视频）', '现场拍摄（视频最长60秒）'],
 			success: ({ tapIndex }) => openProgressMediaPicker(tapIndex === 1 ? 'camera' : 'album')
 		})
 	}
 
-	const refreshProgress = async () => {
-		const res = await orderApi.getProgress(orderId.value, { loading: false })
-		if (res.code === 200) progressRecords.value = res.data || []
-	}
 
 	const handleProgressSubmit = async () => {
-		if (progressType.value === 'COMPLETION' && hasMaterialDraft.value) {
-			uni.showToast({ title: '请先提交或清空耗材申请', icon: 'none' })
-			return
-		}
-		if (progressType.value === 'COMPLETION' && materialRequest.value) {
-			const materialRes = await orderApi.getMaterials(orderId.value, { loading: false, silent: true })
-			if (materialRes.code === 200) materialRequest.value = materialRes.data || null
-		}
-		if (progressType.value === 'COMPLETION' && !materialsReadyForCompletion.value) {
-			uni.showToast({ title: '耗材尚未完成备货，暂不能提交完工', icon: 'none' })
-			return
-		}
+		if (!canOperateProgress.value || submittingProgress.value) return
 		if (isUploadingProgressMedia.value) {
 			uni.showToast({ title: '附件仍在上传，请稍候', icon: 'none' })
 			return
@@ -636,44 +660,36 @@ const statusClass = computed(() => {
 			uni.showToast({ title: '请重试或删除上传失败的附件', icon: 'none' })
 			return
 		}
-		if (!canSubmitProgress.value || submittingProgress.value) {
-			uni.showToast({
-				title: progressType.value === 'COMPLETION' && !uploadedProgressMediaCount.value ? '完工至少上传一个附件' : '请填写施工说明',
-				icon: 'none'
-			})
+		if (!canSubmitProgress.value) {
+			uni.showToast({ title: '请填写施工说明', icon: 'none' })
 			return
 		}
-		uni.showModal({
-			title: progressType.value === 'COMPLETION' ? '确认提交完工' : '确认提交进度',
-			content: progressType.value === 'COMPLETION' ? '提交后订单将进入待评价，且不能重复完工。' : '提交后客户可在订单详情查看本条进度。',
-			success: async ({ confirm }) => {
-				if (!confirm) return
-				submittingProgress.value = true
-				try {
-					const payload = {
-						description: progressDescription.value.trim(),
-						fileIds: progressImages.value.filter(media => media.status === 'success' && media.id).map(media => media.id)
-					}
-					const res = progressType.value === 'COMPLETION'
-						? await orderApi.complete(orderId.value, payload)
-						: await orderApi.submitProgress(orderId.value, payload)
-					if (res.code !== 200) return
-					progressDescription.value = ''
-					progressImages.value = []
-					await refreshProgress()
-					const orderRes = await orderApi.getDetail(orderId.value)
-					if (orderRes.code === 200) orderInfo.value = orderRes.data || {}
-					uni.showToast({ title: '提交成功', icon: 'success' })
-				} finally {
-					submittingProgress.value = false
-				}
+		submittingProgress.value = true
+		try {
+			const result = await new Promise((resolve, reject) => uni.showModal({
+				title: '确认提交进度', content: '提交后客户可在订单详情查看本条进度。', success: resolve, fail: reject
+			}))
+			if (!result.confirm || !canOperateProgress.value) return
+			const response = await orderApi.submitProgress(orderId.value, {
+				description: progressDescription.value.trim(),
+				fileIds: progressImages.value.filter(media => media.status === 'success' && media.id).map(media => media.id)
+			})
+			if (response.code === 200) {
+				progressDescription.value = ''
+				progressImages.value = []
+				uni.showToast({ title: '提交成功', icon: 'success' })
 			}
-		})
+			await refreshOrderStatus()
+		} catch {
+			uni.showToast({ title: '提交失败，请刷新订单后重试', icon: 'none' })
+		} finally {
+			submittingProgress.value = false
+		}
 	}
 
 	const hasUnsavedChanges = computed(() => {
 		return hasMaterialDraft.value ||
-			Boolean(progressDescription.value.trim()) || progressImages.value.length > 0
+			(canOperateProgress.value && (Boolean(progressDescription.value.trim()) || progressImages.value.length > 0))
 	})
 
 	onBackPress(() => {
@@ -944,6 +960,7 @@ const statusClass = computed(() => {
 			}
 			if (userRes.code === 200 && userRes.data) {
 				userRole.value = userRes.data.role || ''
+				currentUserId.value = userRes.data.id
 			}
 			// 订单字段已与模板对齐，res.data 直接赋值
 			const data = orderRes.data || {}
@@ -1535,30 +1552,6 @@ const statusClass = computed(() => {
 		line-height: 1.6;
 		color: $text-sub;
 		margin-bottom: 16rpx;
-	}
-
-	.progress-tabs {
-		display: flex;
-		padding: 6rpx;
-		background: #f1f5f9;
-		border-radius: 12rpx;
-		margin-bottom: 20rpx;
-	}
-
-	.progress-tab {
-		flex: 1;
-		padding: 16rpx 0;
-		border-radius: 10rpx;
-		text-align: center;
-		font-size: 26rpx;
-		color: $text-sub;
-
-		&.active {
-			background: #fff;
-			color: $primary;
-			font-weight: 600;
-			box-shadow: 0 2rpx 8rpx rgba(15, 23, 42, 0.08);
-		}
 	}
 
 	.upload-heading {

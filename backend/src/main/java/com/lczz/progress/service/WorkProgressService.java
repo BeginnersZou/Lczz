@@ -16,8 +16,6 @@ import com.lczz.order.persistence.WorkOrderStatusHistoryEntity;
 import com.lczz.order.persistence.WorkOrderStatusHistoryMapper;
 import com.lczz.progress.persistence.WorkOrderProgressEntity;
 import com.lczz.progress.persistence.WorkOrderProgressMapper;
-import com.lczz.stocking.persistence.MaterialRequestEntity;
-import com.lczz.stocking.persistence.MaterialRequestMapper;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -28,7 +26,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -38,19 +35,17 @@ public class WorkProgressService {
     private final WorkOrderProgressMapper progressMapper;
     private final WorkOrderMapper orderMapper;
     private final WorkOrderStatusHistoryMapper historyMapper;
-    private final MaterialRequestMapper materialRequestMapper;
     private final FileAssetRecordMapper fileMapper;
     private final FileRelationRecordMapper relationMapper;
     private final FileService fileService;
 
     public WorkProgressService(WorkOrderProgressMapper progressMapper, WorkOrderMapper orderMapper,
-                               WorkOrderStatusHistoryMapper historyMapper, MaterialRequestMapper materialRequestMapper,
+                               WorkOrderStatusHistoryMapper historyMapper,
                                FileAssetRecordMapper fileMapper,
                                FileRelationRecordMapper relationMapper, FileService fileService) {
         this.progressMapper = progressMapper;
         this.orderMapper = orderMapper;
         this.historyMapper = historyMapper;
-        this.materialRequestMapper = materialRequestMapper;
         this.fileMapper = fileMapper;
         this.relationMapper = relationMapper;
         this.fileService = fileService;
@@ -71,48 +66,9 @@ public class WorkProgressService {
         WorkOrderEntity order = requireAssignedOrder(actor, orderId);
         ensureActive(order, "ORDER_NOT_ACCEPTING_PROGRESS", "当前订单状态不能提交施工进度");
         WorkOrderProgressEntity progress = insert(actor, orderId, "PROGRESS", command.description());
-        bindFiles(actor, progress.getId(), "PROGRESS", normalizeFiles(command.fileIds(), false));
+        bindFiles(actor, progress.getId(), "PROGRESS", normalizeFiles(command.fileIds()));
         transitionToInProgress(order, actor.userId(), "安装师傅提交施工进度");
         return toViews(actor, List.of(progress)).getFirst();
-    }
-
-    @Transactional
-    public ProgressView complete(AuthenticatedUser actor, long orderId, ProgressCommand command) {
-        WorkOrderEntity order = requireAssignedOrder(actor, orderId);
-        ensureActive(order, "ORDER_NOT_COMPLETABLE", "当前订单状态不能提交完工信息");
-        ensureMaterialsPrepared(orderId);
-        List<Long> fileIds = normalizeFiles(command.fileIds(), true);
-        WorkOrderProgressEntity completion;
-        try {
-            completion = insert(actor, orderId, "COMPLETION", command.description());
-        } catch (DuplicateKeyException exception) {
-            throw new BusinessException(409, "ORDER_ALREADY_COMPLETED", "该订单已提交过完工信息");
-        }
-        bindFiles(actor, completion.getId(), "COMPLETION", fileIds);
-        transitionToInProgress(order, actor.userId(), "安装师傅开始提交完工信息");
-        int updated = orderMapper.update(null, new LambdaUpdateWrapper<WorkOrderEntity>()
-                .eq(WorkOrderEntity::getId, orderId)
-                .eq(WorkOrderEntity::getInstallerUserId, actor.userId())
-                .eq(WorkOrderEntity::getDeleted, false)
-                .in(WorkOrderEntity::getOrderStatus, ACTIVE_STATUSES)
-                .eq(WorkOrderEntity::getVersion, order.getVersion())
-                .set(WorkOrderEntity::getOrderStatus, "PENDING_REVIEW")
-                .set(WorkOrderEntity::getUpdatedBy, actor.userId())
-                .set(WorkOrderEntity::getVersion, order.getVersion() + 1));
-        if (updated != 1) throw new BusinessException(409, "ORDER_STATUS_CONFLICT", "订单状态已变化，请刷新后重试");
-        recordStatus(orderId, order.getOrderStatus(), "PENDING_REVIEW", "安装师傅提交完工信息", actor.userId());
-        return toViews(actor, List.of(completion)).getFirst();
-    }
-
-    private void ensureMaterialsPrepared(long orderId) {
-        MaterialRequestEntity request = materialRequestMapper.selectOne(
-                new LambdaQueryWrapper<MaterialRequestEntity>()
-                        .eq(MaterialRequestEntity::getOrderId, orderId)
-                        .in(MaterialRequestEntity::getRequestStatus, "PENDING", "PREPARING")
-                        .orderByDesc(MaterialRequestEntity::getId).last("LIMIT 1"));
-        if (request != null) {
-            throw new BusinessException(409, "MATERIALS_NOT_PREPARED", "耗材尚未完成备货，暂不能提交完工");
-        }
     }
 
     private WorkOrderProgressEntity insert(AuthenticatedUser actor, long orderId, String type, String description) {
@@ -149,9 +105,8 @@ public class WorkProgressService {
         }
     }
 
-    private List<Long> normalizeFiles(List<Long> fileIds, boolean required) {
+    private List<Long> normalizeFiles(List<Long> fileIds) {
         if (fileIds == null || fileIds.isEmpty()) {
-            if (required) throw new BusinessException("COMPLETION_IMAGE_REQUIRED", "完工至少需要一张图片");
             return List.of();
         }
         LinkedHashSet<Long> unique = new LinkedHashSet<>();

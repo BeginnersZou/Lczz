@@ -2,6 +2,7 @@ package com.lczz.progress.web;
 
 import com.lczz.auth.domain.AuthenticatedUser;
 import com.lczz.common.api.ApiResponse;
+import com.lczz.common.exception.BusinessException;
 import com.lczz.progress.service.WorkProgressService;
 import com.lczz.progress.service.WorkProgressService.ProgressCommand;
 import com.lczz.progress.service.WorkProgressService.ProgressView;
@@ -14,6 +15,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.util.List;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -26,7 +28,7 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 @RestController
 @RequestMapping({"/api/orders", "/api/v1/orders"})
-@Tag(name = "施工进度与完工")
+@Tag(name = "施工进度")
 public class WorkProgressController {
     private final WorkProgressService progressService;
 
@@ -50,11 +52,10 @@ public class WorkProgressController {
     }
 
     @PostMapping("/{orderId}/completion")
-    @Operation(summary = "指派安装师傅提交唯一完工记录；至少一张图片")
-    ApiResponse<ProgressView> complete(@AuthenticationPrincipal AuthenticatedUser actor,
-                                       @PathVariable @Min(1) long orderId,
-                                       @Valid @RequestBody CompletionRequest body, HttpServletRequest request) {
-        return ApiResponse.success(progressService.complete(actor, orderId, body.toCommand()), requestId(request));
+    @PreAuthorize("hasRole('INSTALLER')")
+    @Operation(summary = "已停用师傅完工提交，请由绑定客户确认订单完成", deprecated = true)
+    ApiResponse<Void> complete(@PathVariable @Min(1) long orderId) {
+        throw new BusinessException(410, "COMPLETION_ENDPOINT_RETIRED", "师傅完工提交已停用，请由绑定客户确认订单完成");
     }
 
     private String requestId(HttpServletRequest request) {
@@ -67,8 +68,4 @@ public class WorkProgressController {
         ProgressCommand toCommand() { return new ProgressCommand(description, fileIds); }
     }
 
-    record CompletionRequest(@NotBlank @Size(max = 2000) String description,
-                             @NotNull @Size(min = 1, max = 9) List<@NotNull @Min(1) Long> fileIds) {
-        ProgressCommand toCommand() { return new ProgressCommand(description, fileIds); }
-    }
 }

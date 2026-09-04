@@ -80,15 +80,22 @@ $env:JWT_SECRET="至少32字节的随机密钥"
 
 申请明细保存产品编码、名称、规格、单位和展示价格快照。相同申请重试返回原记录，不同内容的重复申请返回冲突；V4 迁移通过唯一索引保证每个订单只有一个未作废申请。展示价格和展示库存仅供参考，不收费、不自动扣减库存。
 
-## 施工进度与完工接口
+## 施工进度与客户确认完成接口
 
 | 方法 | 路径 | 权限 | 说明 |
 | --- | --- | --- | --- |
-| GET | `/api/v1/orders/{orderId}/progress` | 订单相关角色 | 按时间正序查询多条施工进度和唯一完工记录 |
+| GET | `/api/v1/orders/{orderId}/progress` | 订单相关角色 | 按时间正序查询施工进度，兼容展示历史完工记录 |
 | POST | `/api/v1/orders/{orderId}/progress` | 指派安装师傅 | 提交施工说明及可选图片，首次提交后订单进入处理中 |
-| POST | `/api/v1/orders/{orderId}/completion` | 指派安装师傅 | 提交唯一完工记录，必须包含说明和至少一张图片 |
+| POST | `/api/v1/orders/{orderId}/confirm-completion` | 订单绑定客户（CUSTOMER/DEALER） | 仅处理中可确认完成，无需请求体 |
+| POST | `/api/v1/orders/{orderId}/completion` | 安装师傅 | 已停用，返回 `410 COMPLETION_ENDPOINT_RETIRED` |
 
-施工图片先通过统一文件接口上传，再将返回的文件 ID 放入 `fileIds`。完工提交成功后订单原子流转到 `PENDING_REVIEW`（待评价）；订单行锁、版本条件和数据库唯一约束共同防止并发重复完工。首次耗材申请同样会把待上门订单流转为处理中。
+施工图片先通过统一文件接口上传，再将返回的文件 ID 放入 `fileIds`。首次进度或耗材申请会把待上门订单流转为处理中。绑定客户确认后订单原子流转到 `PENDING_REVIEW`（业务已完成、待评价），不新增师傅完工记录，不要求上传完工图片。接口同时兼容 `/api` 前缀。
+
+确认接口校验角色、客户绑定、订单状态，并通过订单行锁和版本条件防止重复确认；未绑定或不存在返回 404，角色不符返回 403，非处理中或重复确认返回 409。通用管理员状态接口不能进入 `PENDING_REVIEW` 或 `REVIEWED`，原取消规则保留。
+
+确认人与时间保存在 `work_order_status_history`，事件原因为固定的“客户确认订单完成”。确认响应、订单列表及详情增加 `customerConfirmedBy`、`customerConfirmedAt`（带时区的 ISO 8601 时间）；评价后仍保留原确认时间，历史师傅完工不补造客户确认记录，无需数据库迁移。
+
+确认、施工提交及施工附件写操作共用订单行锁。完成后追加施工返回 `409 ORDER_NOT_ACCEPTING_PROGRESS`，施工附件上传绑定、绑定和解绑返回 `409 PROGRESS_SEALED`，包括管理员操作。原施工文字和媒体仍可读取。后台列表和导出使用 `status=COMPLETED` 聚合 `PENDING_REVIEW` 与 `REVIEWED`，精确筛选继续可用。
 
 ## 统一文件服务
 

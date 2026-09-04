@@ -4,7 +4,7 @@
 			<view class="banner-icon"><up-icon name="order" size="28" color="#ffffff"></up-icon></view>
 			<view class="banner-copy">
 				<text class="banner-title">服务进度，随时掌握</text>
-				<text class="banner-desc">上门时间、处理状态与完工记录清晰可查</text>
+				<text class="banner-desc">上门时间、施工进度与完成状态清晰可查</text>
 			</view>
 			<view class="live-dot"><view class="dot"></view><text>实时更新</text></view>
 		</view>
@@ -171,7 +171,7 @@ import {
 import { orderApi, authApi } from '@/api/api.js'
 import { getAuthToken } from '@/utils/auth-session.js'
 
-// onShow 确保从详情页返回时刷新列表（完工提交后状态会变化）
+// onShow 确保从详情页返回时刷新列表（客户确认完成后状态会变化）
 // 同时处理从"我的"页统计项点击跳转时切换到对应 tab
 onShow(() => {
 	isGuest.value = !getAuthToken()
