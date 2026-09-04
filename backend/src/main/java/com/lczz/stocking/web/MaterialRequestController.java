@@ -85,9 +85,14 @@ public class MaterialRequestController {
     @Operation(summary = "管理员查询备货详情与产品快照")
     ApiResponse<?> detail(@AuthenticationPrincipal AuthenticatedUser actor,
                                     @PathVariable @Min(1) long id,
-                                    @RequestParam(defaultValue = "W") @Size(max = 1) String source,
+                                    @RequestParam(required = false) @Size(max = 1) String source,
                                     HttpServletRequest request) {
-        return ApiResponse.success(unifiedService.detail(source, id), requestId(request));
+        // Keep the original W-order response contract when legacy callers omit source.
+        // The unified preparation page always sends W/A explicitly.
+        Object detail = source == null || source.isBlank()
+                ? service.detail(actor, id)
+                : unifiedService.detail(source, id);
+        return ApiResponse.success(detail, requestId(request));
     }
 
     @GetMapping("/preparation/export")
