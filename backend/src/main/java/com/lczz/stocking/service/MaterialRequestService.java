@@ -88,6 +88,14 @@ public class MaterialRequestService {
         return toViews(List.of(request)).getFirst();
     }
 
+    public List<RequestView> listByOrder(AuthenticatedUser actor, long orderId) {
+        requireAccessibleOrder(actor, orderId);
+        return toViews(requestMapper.selectList(new LambdaQueryWrapper<MaterialRequestEntity>()
+                .eq(MaterialRequestEntity::getOrderId, orderId)
+                .orderByDesc(MaterialRequestEntity::getSubmittedAt)
+                .orderByDesc(MaterialRequestEntity::getId)));
+    }
+
     public RequestView byOrder(AuthenticatedUser actor, long orderId) {
         requireAccessibleOrder(actor, orderId);
         MaterialRequestEntity request = requestMapper.selectOne(new LambdaQueryWrapper<MaterialRequestEntity>()

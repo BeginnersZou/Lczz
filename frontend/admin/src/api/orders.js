@@ -73,6 +73,14 @@ export function getOrderDetailApi(id) {
   }).then(normalizeOrder)
 }
 
+/** 管理员只读详情：订单、施工进度、全部耗材申请及评价。 */
+export function getAdminOrderDetailApi(id) {
+  return request({
+    url: `/admin/orders/${encodeURIComponent(id)}`,
+    method: 'get'
+  })
+}
+
 /**
  * 管理员查看指定订单的客户评价。
  * 评价内容属于后台管理信息，服务端会拒绝非管理员角色访问。

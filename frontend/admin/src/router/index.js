@@ -36,6 +36,12 @@ const routes = [
         component: () => import('@/views/orders/OrderForm.vue'),
         meta: { title: '新增订单' }
       },
+      {
+        path: 'orders/detail/:id',
+        name: 'OrderDetail',
+        component: () => import('@/views/orders/OrderDetail.vue'),
+        meta: { title: '订单详情' }
+      },
       //编辑订单（与新增共用 OrderForm.vue，通过 route.params.id 判断编辑态）
       {
         path: 'orders/form/:id',

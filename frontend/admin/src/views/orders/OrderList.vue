@@ -103,9 +103,10 @@
           </template>
         </el-table-column>
         <!-- 操作：修改+删除 -->
-        <el-table-column label="操作" align="center" width="240" fixed="right">
+        <el-table-column label="操作" align="center" width="330" fixed="right">
           <template #default="scope">
             <div class="table-actions">
+              <el-button text type="primary" @click="router.push({ name: 'OrderDetail', params: { id: scope.row.id }, query: route.query })">查看详情</el-button>
               <el-button v-if="isReviewedStatus(scope.row.status)" text type="success" @click="handleViewReview(scope.row)">查看评价</el-button>
               <el-button text type="primary" @click="handleEditOrder(scope.row)">修改</el-button>
               <el-button v-if="!isCancelled(scope.row.status)" text type="danger" @click="handleDeleteOrder(scope.row)">作废</el-button>
