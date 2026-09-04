@@ -12,6 +12,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 @RestControllerAdvice
@@ -24,7 +25,8 @@ public class GlobalExceptionHandler {
                 exception.getStatus(), exception.getCode(), exception.getMessage(), requestId(request)));
     }
 
-    @ExceptionHandler({MethodArgumentNotValidException.class, ConstraintViolationException.class})
+    @ExceptionHandler({MethodArgumentNotValidException.class, ConstraintViolationException.class,
+            MethodArgumentTypeMismatchException.class})
     ResponseEntity<ApiResponse<Void>> handleValidation(Exception exception, HttpServletRequest request) {
         return ResponseEntity.badRequest().body(ApiResponse.failure(
                 400, "VALIDATION_ERROR", "请求参数不合法", requestId(request)));
