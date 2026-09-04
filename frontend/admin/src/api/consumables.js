@@ -9,6 +9,11 @@ function normalizeProduct(item = {}) {
     categoryId: item.categoryId == null ? null : Number(item.categoryId),
     category: Array.isArray(item.category) ? item.category : [],
     image: item.image || '',
+    images: (item.images || []).map(file => ({
+      ...file,
+      id: getFileId(file),
+      url: typeof file === 'string' ? file : (file.url || '')
+    })),
     coverFileId: item.coverFileId || getFileId(item.image),
     detailImages: (item.detailImages || []).map(file => ({
       ...file,
@@ -31,9 +36,27 @@ function toProductPayload(data = {}) {
     price: Number(data.price || 0),
     remark: data.remark || '',
     coverFileId: data.coverFileId || getFileId(data.image),
+    imageFileIds: (data.imageFileIds || data.productImages || []).map(getFileId).filter(Boolean),
     detailFileIds: (data.detailFileIds || data.detailImages || []).map(getFileId).filter(Boolean),
     enabled: data.enabled !== false,
-    sortOrder: Number(data.sortOrder || 0)
+    sortOrder: Number(data.sortOrder || 0),
+    specDimensions: (data.specDimensions || []).map((dimension, index) => ({
+      name: String(dimension.name || '').trim(),
+      sortOrder: dimension.sortOrder ?? index,
+      values: (dimension.values || []).map((value, valueIndex) => ({
+        value: String(value.value ?? value).trim(),
+        sortOrder: value.sortOrder ?? valueIndex
+      }))
+    })),
+    skus: (data.skus || []).map((sku, index) => ({
+      id: sku.id || undefined,
+      code: sku.code || undefined,
+      specValues: sku.specValues || {},
+      unit: sku.unit,
+      stock: Number(sku.stock || 0),
+      enabled: sku.enabled !== false,
+      sortOrder: sku.sortOrder ?? index
+    }))
   }
 }
 
@@ -147,6 +170,7 @@ export function adjustConsumableStockApi(id, data) {
     url: `/consumables/${id}/stock-adjustment`,
     method: 'post',
     data: {
+      skuId: data.skuId == null ? undefined : Number(data.skuId),
       type: String(data.type || '').toUpperCase(),
       quantity: Number(data.quantity),
       reason: String(data.reason || '').trim()

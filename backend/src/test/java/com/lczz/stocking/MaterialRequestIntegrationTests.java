@@ -20,9 +20,12 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.web.client.RestClient;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.hasItems;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -39,6 +42,7 @@ class MaterialRequestIntegrationTests {
     @Autowired ProductMapper productMapper;
     @Autowired JwtService jwtService;
     @Autowired ObjectMapper objectMapper;
+    @MockitoBean RestClient restClient;
 
     private long adminId;
     private long installerId;
@@ -52,6 +56,13 @@ class MaterialRequestIntegrationTests {
 
     @BeforeEach
     void resetData() {
+        jdbcTemplate.update("DELETE FROM material_self_order_item");
+        jdbcTemplate.update("DELETE FROM material_self_order");
+        jdbcTemplate.update("DELETE FROM installer_cart_item");
+        jdbcTemplate.update("DELETE FROM product_sku_spec_value");
+        jdbcTemplate.update("DELETE FROM product_sku");
+        jdbcTemplate.update("DELETE FROM product_spec_value");
+        jdbcTemplate.update("DELETE FROM product_spec_dimension");
         jdbcTemplate.update("DELETE FROM material_request_item");
         jdbcTemplate.update("DELETE FROM material_request");
         jdbcTemplate.update("DELETE FROM work_order_status_history");
@@ -78,10 +89,10 @@ class MaterialRequestIntegrationTests {
     @Test
     void assignedInstallerSubmitsSnapshotsAndIdenticalRetryIsIdempotent() throws Exception {
         jdbcTemplate.update("UPDATE work_order SET order_status='PENDING_VISIT' WHERE id=?", orderId);
-        JsonNode first = submit(orderId, installerToken, itemsJson("2.500", "1"));
+        JsonNode first = submit(orderId, installerToken, itemsJson("2", "1"));
         long requestId = first.path("id").asLong();
         assertThat(first.path("materials").get(0).path("name").asText()).isEqualTo("铜管");
-        assertThat(productMapper.selectById(product1Id).getDisplayStock()).isEqualByComparingTo("7.500");
+        assertThat(productMapper.selectById(product1Id).getDisplayStock()).isEqualByComparingTo("8");
         assertThat(orderMapper.selectById(orderId).getOrderStatus()).isEqualTo("IN_PROGRESS");
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM work_order_status_history WHERE order_id=? "
                 + "AND to_status='IN_PROGRESS'", Long.class, orderId)).isEqualTo(1L);
@@ -89,9 +100,9 @@ class MaterialRequestIntegrationTests {
         product.setProductName("已改名铜管");
         productMapper.updateById(product);
 
-        JsonNode retry = submit(orderId, installerToken, itemsJson("2.500", "1"));
+        JsonNode retry = submit(orderId, installerToken, itemsJson("2", "1"));
         assertThat(retry.path("id").asLong()).isEqualTo(requestId);
-        assertThat(productMapper.selectById(product1Id).getDisplayStock()).isEqualByComparingTo("7.500");
+        assertThat(productMapper.selectById(product1Id).getDisplayStock()).isEqualByComparingTo("8");
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM material_request", Long.class)).isEqualTo(1L);
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM work_order_status_history WHERE order_id=? "
                 + "AND to_status='IN_PROGRESS'", Long.class, orderId)).isEqualTo(1L);
@@ -125,7 +136,7 @@ class MaterialRequestIntegrationTests {
                         .header("Authorization", "Bearer " + installerToken)
                         .contentType("application/json").content(itemsJson("11", "1")))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.error").value("INSUFFICIENT_PRODUCT_STOCK"))
+                .andExpect(jsonPath("$.error").value("INSUFFICIENT_SKU_STOCK"))
                 .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("库存仅剩10")));
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM material_request", Long.class)).isZero();
         assertThat(productMapper.selectById(product1Id).getDisplayStock()).isEqualByComparingTo("10.000");
@@ -182,6 +193,87 @@ class MaterialRequestIntegrationTests {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(1));
     }
 
+    @Test
+    void multiSkuMaterialRequiresConcreteSkuAndOnlyChangesThatSkuStock() throws Exception {
+        jdbcTemplate.update("""
+                INSERT INTO product_sku(product_id,sku_code,spec_signature,spec_signature_hash,spec_label,unit,stock,
+                                        enabled,default_sku,sort_order,version,deleted)
+                VALUES (?,?,?,?,?,?,?,TRUE,FALSE,1,0,FALSE)
+                """, product1Id, "MAT-COPPER-35", "口径=35", "hash-copper-35", "口径=35", "米", new BigDecimal("4"));
+        mockMvc.perform(post("/api/orders/" + orderId + "/materials")
+                        .header("Authorization", "Bearer " + installerToken)
+                        .contentType("application/json")
+                        .content("{\"items\":[{\"productId\":" + product1Id + ",\"quantity\":2}]}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("SKU_REQUIRED"));
+        long skuId = jdbcTemplate.queryForObject(
+                "SELECT id FROM product_sku WHERE product_id=? AND sku_code='MAT-COPPER-35'", Long.class, product1Id);
+
+        JsonNode request = submit(orderId, installerToken,
+                "{\"items\":[{\"productId\":" + product1Id + ",\"skuId\":" + skuId + ",\"quantity\":2}]}");
+
+        assertThat(request.path("materials").get(0).path("skuId").asLong()).isEqualTo(skuId);
+        assertThat(request.path("materials").get(0).path("spec").asText()).isEqualTo("口径=35");
+        assertThat(jdbcTemplate.queryForObject("SELECT stock FROM product_sku WHERE id=?", BigDecimal.class, skuId))
+                .isEqualByComparingTo("2");
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT stock FROM product_sku WHERE product_id=? AND default_sku=TRUE", BigDecimal.class, product1Id))
+                .isEqualByComparingTo("10");
+    }
+
+    @Test
+    void adminListsFiltersViewsAndExportsUnifiedWAndASources() throws Exception {
+        submit(orderId, installerToken, itemsJson("2", "1"));
+        jdbcTemplate.update("""
+                INSERT INTO product_sku(product_id,sku_code,spec_signature,spec_signature_hash,spec_label,unit,stock,enabled,
+                                        default_sku,sort_order,version,deleted)
+                VALUES (?,?,?,?,?,?,10,TRUE,FALSE,0,0,FALSE)
+                """, product1Id, "PVC-25-2M", "口径=25mm|长度=2米", "test-hash-pvc", "口径：25mm / 长度：2米", "根");
+        long skuId = jdbcTemplate.queryForObject("SELECT id FROM product_sku WHERE sku_code='PVC-25-2M'", Long.class);
+        jdbcTemplate.update("INSERT INTO material_self_order(order_no,order_name,installer_id,request_token,order_status) "
+                + "VALUES ('A202609040001','客户下单',?,'integration-a-order','ORDERED')", installerId);
+        long selfOrderId = jdbcTemplate.queryForObject(
+                "SELECT id FROM material_self_order WHERE order_no='A202609040001'", Long.class);
+        jdbcTemplate.update("""
+                INSERT INTO material_self_order_item(self_order_id,sku_id,product_id,product_name_snapshot,
+                                                     sku_code_snapshot,spec_snapshot,unit_snapshot,quantity)
+                VALUES (?,?,?,?,?,?,?,?)
+                """, selfOrderId, skuId, product1Id, "PVC弯头管", "PVC-25-2M", "口径：25mm / 长度：2米", "根", 3);
+
+        mockMvc.perform(get("/api/preparation/list").header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(2))
+                .andExpect(jsonPath("$.data.list[*].source", hasItems("W", "A")))
+                .andExpect(jsonPath("$.data.list[?(@.source == 'A')].productName").value(hasItems("客户下单")))
+                .andExpect(jsonPath("$.data.list[?(@.source == 'A')].itemCount").value(hasItems(1)));
+        mockMvc.perform(get("/api/preparation/list").param("source", "A").param("status", "ORDERED")
+                        .param("keyword", "25mm").header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.list[0].orderId").doesNotExist());
+        mockMvc.perform(get("/api/preparation/detail/" + selfOrderId).param("source", "A")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.orderNo").value("A202609040001"))
+                .andExpect(jsonPath("$.data.productName").value("客户下单"))
+                .andExpect(jsonPath("$.data.materials[0].skuCode").value("PVC-25-2M"))
+                .andExpect(jsonPath("$.data.materials[0].spec").value("口径：25mm / 长度：2米"));
+
+        var exported = mockMvc.perform(get("/api/preparation/export").param("source", "A")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andReturn().getResponse();
+        assertThat(exported.getHeader("Content-Disposition")).contains("filename*=UTF-8''");
+        String csv = new String(exported.getContentAsByteArray(), java.nio.charset.StandardCharsets.UTF_8);
+        assertThat(csv).contains("A202609040001", "PVC弯头管", "PVC-25-2M", "口径：25mm / 长度：2米");
+        assertThat(csv).doesNotContain("20.00", "13810000001");
+        mockMvc.perform(get("/api/preparation/A/" + selfOrderId + "/export")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/preparation/export")
+                        .header("Authorization", "Bearer " + installerToken))
+                .andExpect(status().isForbidden());
+    }
+
     private JsonNode submit(long targetOrderId, String token, String body) throws Exception {
         String response = mockMvc.perform(post("/api/orders/" + targetOrderId + "/materials")
                         .header("Authorization", "Bearer " + token)
@@ -231,6 +323,11 @@ class MaterialRequestIntegrationTests {
         product.setVersion(0);
         product.setDeleted(false);
         productMapper.insert(product);
+        jdbcTemplate.update("""
+                INSERT INTO product_sku(product_id,sku_code,spec_signature,spec_signature_hash,spec_label,unit,stock,enabled,
+                                        default_sku,sort_order,version,deleted)
+                VALUES (?,?,?,?,?,?,?,TRUE,TRUE,0,0,FALSE)
+                """, product.getId(), code + "-DEFAULT", "", "empty-" + product.getId(), spec, unit, new BigDecimal(stock));
         return product.getId();
     }
 

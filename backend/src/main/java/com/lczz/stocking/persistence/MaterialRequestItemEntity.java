@@ -12,8 +12,11 @@ public class MaterialRequestItemEntity {
     private Long id;
     private Long requestId;
     private Long productId;
+    private Long skuId;
     private String productCodeSnapshot;
+    private String skuCodeSnapshot;
     private String productNameSnapshot;
+    private String skuSpecSnapshot;
     private String modelSpecSnapshot;
     private String unitSnapshot;
     private BigDecimal displayPriceSnapshot;
@@ -30,10 +33,16 @@ public class MaterialRequestItemEntity {
     public void setRequestId(Long requestId) { this.requestId = requestId; }
     public Long getProductId() { return productId; }
     public void setProductId(Long productId) { this.productId = productId; }
+    public Long getSkuId() { return skuId; }
+    public void setSkuId(Long skuId) { this.skuId = skuId; }
     public String getProductCodeSnapshot() { return productCodeSnapshot; }
     public void setProductCodeSnapshot(String productCodeSnapshot) { this.productCodeSnapshot = productCodeSnapshot; }
+    public String getSkuCodeSnapshot() { return skuCodeSnapshot; }
+    public void setSkuCodeSnapshot(String skuCodeSnapshot) { this.skuCodeSnapshot = skuCodeSnapshot; }
     public String getProductNameSnapshot() { return productNameSnapshot; }
     public void setProductNameSnapshot(String productNameSnapshot) { this.productNameSnapshot = productNameSnapshot; }
+    public String getSkuSpecSnapshot() { return skuSpecSnapshot; }
+    public void setSkuSpecSnapshot(String skuSpecSnapshot) { this.skuSpecSnapshot = skuSpecSnapshot; }
     public String getModelSpecSnapshot() { return modelSpecSnapshot; }
     public void setModelSpecSnapshot(String modelSpecSnapshot) { this.modelSpecSnapshot = modelSpecSnapshot; }
     public String getUnitSnapshot() { return unitSnapshot; }

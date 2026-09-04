@@ -2,7 +2,7 @@
   <div class="order-form-page">
     <!-- 顶部标题返回栏（与订单表单完全统一） -->
     <div class="page-header">
-      <el-button dashed plain type="default" :icon="ArrowLeft" @click="handleCancel" class="back-btn">
+      <el-button plain :icon="ArrowLeft" @click="handleCancel" class="back-btn">
         返回
       </el-button><!--  -->
       <h2 class="page-title">{{ isEdit ? '修改耗材' : '发布耗材' }}</h2>
@@ -38,23 +38,74 @@
           </div>
         </el-form-item>
 
-        <!-- 规格 -->
-        <el-form-item label="规格" prop="spec">
-          <el-input v-model="form.spec" placeholder="请输入耗材规格，如 Φ6.35mm" class="input-base" />
+        <el-form-item label="规格类型">
+          <el-radio-group v-model="form.hasSpecs" @change="handleSpecModeChange">
+            <el-radio-button :label="false">无规格商品</el-radio-button>
+            <el-radio-button :label="true">多规格商品</el-radio-button>
+          </el-radio-group>
+          <span class="spec-help">规格名称和值均可自定义，例如口径、长度、大小、材质、颜色等</span>
         </el-form-item>
 
-        <!-- 单位 -->
-        <el-form-item label="单位" prop="unit">
-          <el-select v-model="form.unit" placeholder="请选择单位" class="input-base" style="width: 100%">
-            <el-option v-for="u in unitOptions" :key="u" :label="u" :value="u" />
-          </el-select>
+        <template v-if="!form.hasSpecs">
+          <el-form-item label="规格说明">
+            <el-input v-model="form.spec" placeholder="选填，例如通用款" class="input-base" />
+          </el-form-item>
+          <el-form-item label="单位" prop="unit">
+            <el-select v-model="form.unit" filterable allow-create default-first-option placeholder="请选择或输入单位" class="input-base" style="width: 100%">
+              <el-option v-for="u in unitOptions" :key="u" :label="u" :value="u" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="库存数量" prop="stock">
+            <el-input-number v-model="form.stock" :min="0" :max="999999" controls-position="right" style="width: 220px" />
+            <span class="unit-suffix">{{ form.unit || '单位' }}</span>
+          </el-form-item>
+        </template>
+
+        <el-form-item v-else label="规格配置" required>
+          <div class="spec-editor">
+            <div v-for="(dimension, dimensionIndex) in form.specDimensions" :key="dimension.uid" class="dimension-card">
+              <div class="dimension-header">
+                <el-input v-model="dimension.name" maxlength="64" placeholder="规格名称，如：口径、长度、材质" @input="markSkuStructureDirty" />
+                <el-button type="danger" link :icon="Delete" @click="removeDimension(dimensionIndex)">删除维度</el-button>
+              </div>
+              <div class="dimension-values">
+                <div v-for="(value, valueIndex) in dimension.values" :key="value.uid" class="value-editor">
+                  <el-input v-model="value.text" maxlength="128" placeholder="规格值" @input="markSkuStructureDirty" />
+                  <el-button link type="danger" :icon="Delete" @click="removeSpecValue(dimensionIndex, valueIndex)">删除规格值</el-button>
+                </div>
+                <el-button plain type="primary" :icon="Plus" @click="addSpecValue(dimensionIndex)">添加规格值</el-button>
+              </div>
+            </div>
+            <el-button v-if="form.specDimensions.length < 8" plain type="primary" :icon="Plus" @click="addDimension">添加规格维度</el-button>
+            <el-button type="primary" plain :icon="Refresh" @click="generateSkuCombinations">生成/更新SKU组合</el-button>
+            <div class="combination-tip" :class="{ 'is-warning': skuStructureDirty }">
+              {{ skuStructureDirty ? '规格配置已变更，请生成/更新SKU组合后再提交。' : '最多500个组合；每个组合独立维护编码、单位、库存和状态。' }}
+            </div>
+          </div>
         </el-form-item>
 
-        <!-- 库存数量 -->
-        <el-form-item label="库存数量" prop="stock">
-          <el-input-number v-model="form.stock" :min="0" :max="99999" controls-position="right" class="input-base"
-            style="width: 200px" />
-          <span class="unit-suffix">{{ form.unit || '单位' }}</span>
+        <el-form-item v-if="form.hasSpecs" label="SKU组合" required>
+          <el-table :data="form.skus" border class="sku-table" empty-text="请先配置完整的规格维度和值">
+            <el-table-column v-for="dimension in validDimensions" :key="dimension.name" :label="dimension.name" min-width="110">
+              <template #default="{ row }">{{ row.specValues[dimension.name] }}</template>
+            </el-table-column>
+            <el-table-column label="SKU编码" min-width="170">
+              <template #default="{ row }"><el-input v-model="row.code" placeholder="可自动生成" /></template>
+            </el-table-column>
+            <el-table-column label="单位" width="130">
+              <template #default="{ row }">
+                <el-select v-model="row.unit" filterable allow-create default-first-option placeholder="单位">
+                  <el-option v-for="u in unitOptions" :key="u" :label="u" :value="u" />
+                </el-select>
+              </template>
+            </el-table-column>
+            <el-table-column label="库存" width="150">
+              <template #default="{ row }"><el-input-number v-model="row.stock" :min="0" :max="999999" controls-position="right" /></template>
+            </el-table-column>
+            <el-table-column label="启用" width="90" align="center">
+              <template #default="{ row }"><el-switch v-model="row.enabled" /></template>
+            </el-table-column>
+          </el-table>
         </el-form-item>
 
         <!-- 耗材图片（最多3张，小程序详情页轮播展示） -->
@@ -101,7 +152,7 @@
             <el-icon>
               <InfoFilled />
             </el-icon>
-            <span>上传耗材详情图片（jpg/png/gif/webp），至少1张，不超过5MB/张，已选 {{ form.detailImages.length }}/{{ maxDetailImageCount }} 张</span>
+            <span>上传耗材详情图片（jpg/png/gif/webp），至少1张，最多9张且不超过5MB/张，已选 {{ form.detailImages.length }}/{{ MAX_DETAIL_FILE_COUNT }} 张</span>
           </div>
           <div class="upload-wrap">
             <!-- 已上传图片卡片：hover 显示删除遮罩 -->
@@ -116,7 +167,7 @@
               </div>
             </div>
             <!-- 上传按钮：达到9张自动隐藏 -->
-            <div class="upload-add file-upload-box" v-if="form.detailImages.length < maxDetailImageCount" role="button" tabindex="0" @click="triggerDetailUpload" @keyup.enter="triggerDetailUpload">
+            <div class="upload-add file-upload-box" v-if="form.detailImages.length < MAX_DETAIL_FILE_COUNT" role="button" tabindex="0" @click="triggerDetailUpload" @keyup.enter="triggerDetailUpload">
               <el-icon :size="26" class="upload-icon">
                 <Plus />
               </el-icon>
@@ -132,8 +183,8 @@
       <div class="form-footer">
         <div class="footer-empty"></div>
         <div class="footer-right">
-          <el-button dashed plain type="default" :icon="ArrowLeft" @click="handleCancel">取消</el-button>
-          <el-button dashed plain type="primary" @click="handleSubmit" :icon="Check"
+          <el-button plain :icon="ArrowLeft" @click="handleCancel">取消</el-button>
+          <el-button type="primary" @click="handleSubmit" :icon="Check"
             :loading="submitLoading">确认提交</el-button>
         </div>
       </div>
@@ -148,9 +199,9 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  ArrowLeft, Plus, Box, Check, Delete, InfoFilled, Loading
+  ArrowLeft, Plus, Box, Check, Delete, InfoFilled, Loading, Refresh
 } from '@element-plus/icons-vue'
 import { useRouter, useRoute } from 'vue-router'
 import {
@@ -179,8 +230,10 @@ const previewVisible = ref(false)
 const previewImageUrl = ref('')
 const categoryLoading = ref(false)
 const categoryError = ref('')
+const skuStructureDirty = ref(false)
 // 详情图片唯一 uid 生成器（编辑回显与新增上传共用，避免冲突）
 let imageUid = 1
+let specUid = 1
 
 // 单位选项
 const unitOptions = ['米', '瓶', '个', '把', '套', '卷', '台', '件']
@@ -196,6 +249,9 @@ const form = reactive({
   spec: '',
   unit: '',
   stock: 0,
+  hasSpecs: false,
+  specDimensions: [],
+  skus: [],
   price: 0,
   enabled: true,
   sortOrder: 0,
@@ -213,8 +269,10 @@ const rules = {
   category: [
     { required: true, message: '请选择耗材分类', trigger: 'change' }
   ],
-  spec: [{ required: true, message: '请输入耗材规格', trigger: 'blur' }],
-  unit: [{ required: true, message: '请选择单位', trigger: 'change' }],
+  unit: [{ validator: (_rule, value, callback) => {
+    if (!form.hasSpecs && !String(value || '').trim()) callback(new Error('请选择或输入单位'))
+    else callback()
+  }, trigger: 'change' }],
   stock: [{ required: true, message: '请输入库存数量', trigger: 'blur' }],
   productImages: [{
     validator: (_rule, value, callback) => {
@@ -231,6 +289,148 @@ const rules = {
     },
     trigger: 'change'
   }]
+}
+
+const validDimensions = computed(() => form.specDimensions
+  .map(dimension => ({ ...dimension, name: String(dimension.name || '').trim(), values: dimension.values.filter(value => String(value.text || '').trim()) }))
+  .filter(dimension => dimension.name && dimension.values.length))
+
+function handleSpecModeChange(hasSpecs) {
+  if (hasSpecs && form.specDimensions.length === 0) addDimension()
+  if (!hasSpecs) form.skus = []
+}
+
+function addDimension() {
+  if (form.specDimensions.length >= 8) return
+  form.specDimensions.push({ uid: specUid++, name: '', values: [{ uid: specUid++, text: '' }] })
+  markSkuStructureDirty()
+}
+
+function removeDimension(index) {
+  form.specDimensions.splice(index, 1)
+  if (!form.specDimensions.length) form.hasSpecs = false
+  markSkuStructureDirty()
+}
+
+function addSpecValue(dimensionIndex) {
+  form.specDimensions[dimensionIndex].values.push({ uid: specUid++, text: '' })
+  markSkuStructureDirty()
+}
+
+function removeSpecValue(dimensionIndex, valueIndex) {
+  const values = form.specDimensions[dimensionIndex].values
+  values.splice(valueIndex, 1)
+  if (!values.length) values.push({ uid: specUid++, text: '' })
+  markSkuStructureDirty()
+}
+
+function markSkuStructureDirty() { skuStructureDirty.value = true }
+
+function skuSignature(values, dimensions = validDimensions.value) {
+  return dimensions.map(dimension => `${dimension.name}=${values[dimension.name] || ''}`).join('|')
+}
+
+function buildCartesian(dimensions, index = 0, current = {}, rows = []) {
+  if (index >= dimensions.length) {
+    rows.push({ ...current })
+    return rows
+  }
+  const dimension = dimensions[index]
+  dimension.values.forEach(value => buildCartesian(dimensions, index + 1,
+    { ...current, [dimension.name]: String(value.text).trim() }, rows))
+  return rows
+}
+
+async function generateSkuCombinations() {
+  if (!form.hasSpecs) return
+  const dimensions = validDimensions.value
+  if (dimensions.length !== form.specDimensions.length || dimensions.some(d => !d.values.length)) {
+    ElMessage.warning('请填写完整的规格名称和规格值')
+    return
+  }
+  const names = dimensions.map(d => d.name)
+  if (new Set(names).size !== names.length) {
+    ElMessage.warning('规格维度名称不能重复')
+    return
+  }
+  for (const dimension of dimensions) {
+    const values = dimension.values.map(value => String(value.text).trim())
+    if (new Set(values).size !== values.length) {
+      ElMessage.warning(`“${dimension.name}”的规格值不能重复`)
+      return
+    }
+  }
+  const combinations = buildCartesian(dimensions)
+  if (combinations.length > 500) {
+    ElMessage.warning('SKU组合最多500个，请减少规格值')
+    return
+  }
+  const existing = new Map(form.skus.map(sku => [skuSignature(sku.specValues, dimensions), sku]))
+  const next = combinations.map((specValues, index) => {
+    const old = existing.get(skuSignature(specValues, dimensions))
+    return old ? { ...old, specValues } : {
+      code: '', specValues, unit: form.unit || '件', stock: 0, enabled: true, sortOrder: index
+    }
+  })
+  const nextSignatures = new Set(next.map(sku => skuSignature(sku.specValues, dimensions)))
+  const preserved = next.filter(sku => existing.has(skuSignature(sku.specValues, dimensions))).length
+  const added = next.length - preserved
+  const removed = form.skus.filter(sku => !nextSignatures.has(skuSignature(sku.specValues, dimensions))).length
+  if (form.skus.length && (added || removed)) {
+    try {
+      await ElMessageBox.confirm(
+        `将保留 ${preserved} 个原组合，新增 ${added} 个，移除 ${removed} 个。被移除组合的编码、库存和启停状态不会继承给其他组合。`,
+        '确认更新SKU组合', { confirmButtonText: '确认更新', cancelButtonText: '取消', type: 'warning' })
+    } catch { return }
+  }
+  form.skus = next
+  skuStructureDirty.value = false
+  ElMessage.success(`已生成 ${next.length} 个SKU组合`)
+}
+
+function validateSkuEditor() {
+  if (!form.hasSpecs) return true
+  const dimensions = validDimensions.value
+  if (!dimensions.length || dimensions.length !== form.specDimensions.length) {
+    ElMessage.warning('请填写完整的规格名称和规格值')
+    return false
+  }
+  const names = dimensions.map(d => d.name)
+  if (new Set(names).size !== names.length) {
+    ElMessage.warning('规格维度名称不能重复')
+    return false
+  }
+  for (const dimension of dimensions) {
+    const values = dimension.values.map(value => value.text.trim())
+    if (new Set(values).size !== values.length) {
+      ElMessage.warning(`“${dimension.name}”的规格值不能重复`)
+      return false
+    }
+  }
+  const expected = buildCartesian(dimensions).map(values => skuSignature(values, dimensions))
+  const actual = form.skus.map(sku => skuSignature(sku.specValues, dimensions))
+  if (skuStructureDirty.value || expected.length !== actual.length || expected.some(value => !actual.includes(value))) {
+    ElMessage.warning('规格配置已变更，请先点击“生成/更新SKU组合”')
+    return false
+  }
+  if (!form.skus.length) {
+    ElMessage.warning('未生成有效SKU组合，组合总数不能超过500个')
+    return false
+  }
+  if (form.skus.some(sku => !String(sku.unit || '').trim() || Number(sku.stock) < 0)) {
+    ElMessage.warning('请完善每个SKU的单位和库存')
+    return false
+  }
+  if (!form.skus.some(sku => sku.enabled)) {
+    ElMessage.warning('至少保留一个启用的SKU')
+    return false
+  }
+  const codes = form.skus.map(sku => String(sku.code || '').trim().toUpperCase()).filter(Boolean)
+  if (new Set(codes).size !== codes.length) {
+    ElMessage.warning('SKU编码不能重复')
+    return false
+  }
+  return true
 }
 
 watch(form, () => {
@@ -293,14 +493,23 @@ async function loadEditData() {
       previewUrl: typeof item === 'string' ? item : (item.url || ''),
       uploading: false
     })).filter(item => item.previewUrl)
-    const carouselExtras = allDetailImages.slice(0, 2)
-    const coverImage = data.image ? [{
-      uid: imageUid++,
-      id: data.coverFileId || null,
-      file: null,
-      previewUrl: data.image,
-      uploading: false
-    }] : []
+    const loadedCarousel = (data.images?.length ? data.images : (data.image ? [{ id: data.coverFileId, url: data.image }] : [])).map(item => ({
+      uid: imageUid++, id: item.id || null, file: null, previewUrl: typeof item === 'string' ? item : (item.url || ''), uploading: false
+    })).filter(item => item.previewUrl)
+    const loadedDimensions = (data.specDimensions || []).map(dimension => ({
+      uid: specUid++,
+      name: dimension.name || '',
+      values: (dimension.values || []).map(value => ({ uid: specUid++, text: value.value || '' }))
+    }))
+    const loadedSkus = (data.skus || []).map((sku, index) => ({
+      id: sku.id,
+      code: sku.code || '',
+      specValues: { ...(sku.specValues || {}) },
+      unit: sku.unit || data.unit || '件',
+      stock: Number(sku.stock || 0),
+      enabled: sku.enabled !== false,
+      sortOrder: sku.sortOrder ?? index
+    }))
     Object.assign(form, {
       name: data.name || '',
       category: Array.isArray(data.category) ? [...data.category] : [],
@@ -308,16 +517,19 @@ async function loadEditData() {
       spec: data.spec || '',
       unit: data.unit || '',
       stock: data.stock != null ? data.stock : 0,
+      hasSpecs: loadedDimensions.length > 0,
+      specDimensions: loadedDimensions,
+      skus: loadedDimensions.length ? loadedSkus : [],
       price: data.price != null ? data.price : 0,
       enabled: data.enabled !== false,
       sortOrder: data.sortOrder || 0,
-      productImages: [...coverImage, ...carouselExtras],
+      productImages: loadedCarousel,
       remark: data.remark || '',
-      // 后端没有独立的轮播数组：前两张详情文件用于轮播，其余才是详情长图。
-      detailImages: allDetailImages.slice(carouselExtras.length)
+      detailImages: allDetailImages
     })
     const selectedId = categoryIdByName.get(form.category[form.category.length - 1])
     if (selectedId) form.categoryId = selectedId
+    skuStructureDirty.value = false
     formIsDirty.value = false
   } catch (err) {
     loadError.value = '耗材详情加载失败，请重试后再编辑。'
@@ -331,12 +543,6 @@ const ALLOW_IMG_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'i
 const MAX_IMG_SIZE = 5 * 1024 * 1024 // 5MB
 const MAX_PRODUCT_IMAGE_COUNT = 3
 const MAX_DETAIL_FILE_COUNT = 9
-// 后端 detailFileIds 最多9个；轮播的第2、3张也占用该数组名额。
-const maxDetailImageCount = computed(() => MAX_DETAIL_FILE_COUNT - Math.max(0, form.productImages.length - 1))
-const maxAllowedProductImageCount = computed(() => Math.min(
-  MAX_PRODUCT_IMAGE_COUNT,
-  MAX_DETAIL_FILE_COUNT - form.detailImages.length + 1
-))
 
 function triggerUpload() {
   fileInputRef.value.click()
@@ -346,7 +552,7 @@ async function handleUpload(event) {
   const files = Array.from(event.target.files || [])
   event.target.value = ''
   if (!files.length) return
-  const remaining = maxAllowedProductImageCount.value - form.productImages.length
+  const remaining = MAX_PRODUCT_IMAGE_COUNT - form.productImages.length
   if (remaining <= 0) return ElMessage.warning(`耗材图片最多上传${MAX_PRODUCT_IMAGE_COUNT}张`)
   const validFiles = []
   for (const file of files) {
@@ -358,8 +564,8 @@ async function handleUpload(event) {
       ElMessage.warning(`图片${file.name}超过5MB，禁止上传`)
       continue
     }
-    if (form.productImages.length + validFiles.length >= maxAllowedProductImageCount.value) {
-      ElMessage.warning('受详情图片总数限制，当前无法再添加更多耗材图片')
+    if (form.productImages.length + validFiles.length >= MAX_PRODUCT_IMAGE_COUNT) {
+      ElMessage.warning(`耗材图片最多上传${MAX_PRODUCT_IMAGE_COUNT}张`)
       break
     }
     validFiles.push(file)
@@ -403,9 +609,9 @@ function triggerDetailUpload() {
 async function handleDetailUpload(event) {
   const files = Array.from(event.target.files)
   event.target.value = ''
-  const remaining = maxDetailImageCount.value - form.detailImages.length
+  const remaining = MAX_DETAIL_FILE_COUNT - form.detailImages.length
   if (remaining <= 0) {
-    ElMessage.warning(`当前最多只能上传${maxDetailImageCount.value}张详情图片`)
+    ElMessage.warning(`当前最多只能上传${MAX_DETAIL_FILE_COUNT}张详情图片`)
     return
   }
   // 收集本轮通过校验的文件（保留原有 9 张上限、去重、类型/大小校验逻辑）
@@ -428,8 +634,8 @@ async function handleDetailUpload(event) {
       continue
     }
     // 4. 超过9张上限拦截
-    if (form.detailImages.length + toUpload.length >= maxDetailImageCount.value) {
-      ElMessage.warning(`当前最多只能上传${maxDetailImageCount.value}张详情图片，超出部分已忽略`)
+    if (form.detailImages.length + toUpload.length >= MAX_DETAIL_FILE_COUNT) {
+      ElMessage.warning(`当前最多只能上传${MAX_DETAIL_FILE_COUNT}张详情图片，超出部分已忽略`)
       break
     }
     toUpload.push(file)
@@ -487,6 +693,7 @@ async function handleSubmit() {
   if (submitLoading.value) return
   await formRef.value.validate(async valid => {
     if (!valid) return
+    if (!validateSkuEditor()) return
     // 图片上传完成校验：避免提交尚未上传完成的 blob url
     if (form.productImages.some(i => i.uploading || i.previewUrl?.startsWith('blob:'))) {
       ElMessage.warning('耗材图片正在上传，请稍候')
@@ -503,8 +710,8 @@ async function handleSubmit() {
         ElMessage.warning('请选择后端已启用的耗材分类')
         return
       }
-      const [coverImage, ...carouselExtras] = form.productImages
-      const storedDetailImages = [...carouselExtras, ...form.detailImages]
+      const [coverImage] = form.productImages
+      const storedDetailImages = [...form.detailImages]
       const submitData = {
         name: form.name,
         category: form.category,
@@ -514,6 +721,7 @@ async function handleSubmit() {
         price: form.price,
         image: coverImage.previewUrl,
         coverFileId: coverImage.id,
+        imageFileIds: form.productImages.map(item => item.id).filter(Boolean),
         remark: form.remark,
         // detailImages 转为 url 数组
         detailImages: storedDetailImages.map(item => ({ id: item.id, url: item.previewUrl })),
@@ -521,6 +729,35 @@ async function handleSubmit() {
         categoryId,
         enabled: form.enabled,
         sortOrder: form.sortOrder
+      }
+      if (form.hasSpecs) {
+        submitData.specDimensions = validDimensions.value.map((dimension, index) => ({
+          name: dimension.name,
+          sortOrder: index,
+          values: dimension.values.map((value, valueIndex) => ({ value: value.text.trim(), sortOrder: valueIndex }))
+        }))
+        submitData.skus = form.skus.map((sku, index) => ({
+          code: String(sku.code || '').trim() || undefined,
+          specValues: { ...sku.specValues },
+          unit: sku.unit,
+          stock: Number(sku.stock || 0),
+          enabled: sku.enabled !== false,
+          sortOrder: index
+        }))
+        const firstSku = submitData.skus[0]
+        submitData.spec = Object.entries(firstSku.specValues).map(([key, value]) => `${key}=${value}`).join(' / ')
+        submitData.unit = firstSku.unit
+        submitData.stock = submitData.skus.filter(sku => sku.enabled).reduce((total, sku) => total + sku.stock, 0)
+      } else {
+        submitData.specDimensions = []
+        submitData.skus = [{
+          code: undefined,
+          specValues: {},
+          unit: form.unit,
+          stock: Number(form.stock || 0),
+          enabled: true,
+          sortOrder: 0
+        }]
       }
       if (isEdit.value) {
         await updateConsumablesApi(consumablesId.value, submitData)
@@ -859,4 +1096,15 @@ function returnToConsumablesList() {
     justify-content: flex-end;
   }
 }
+
+.spec-help { margin-left: 16px; color: #64748b; font-size: 13px; }
+.spec-editor { width: 100%; display: flex; flex-direction: column; gap: 12px; }
+.dimension-card { padding: 14px; border: 1px solid #dce5ef; border-radius: 8px; background: #f8fafc; }
+.dimension-header { display: grid; grid-template-columns: minmax(240px, 1fr) auto; align-items: center; gap: 12px; }
+.dimension-values { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+.value-editor { display: flex; width: 300px; align-items: center; gap: 6px; }
+.value-editor :deep(.el-button) { flex-shrink: 0; }
+.combination-tip { color: #64748b; font-size: 13px; }
+.sku-table { width: 100%; }
+.sku-table :deep(.el-input-number) { width: 120px; }
 </style>

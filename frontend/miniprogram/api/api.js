@@ -53,9 +53,22 @@ const normalizeProduct = (item = {}) => ({
 	model: item.model || item.code || '',
 	category: Array.isArray(item.category) ? item.category[item.category.length - 1] : (item.category || ''),
 	tags: item.tags || [],
-	stock: Number(item.stock ?? item.quantity ?? 0),
+	stock: item.stock == null ? null : Number(item.stock),
+	stockSummary: item.stockSummary || '',
 	image: resolveMediaUrl(item.image || item.coverImage || item.thumbnail),
-	detailImages: (item.detailImages || item.images || []).map(resolveMediaUrl).filter(Boolean)
+	images: (item.images || []).map(resolveMediaUrl).filter(Boolean),
+	detailImages: (item.detailImages || item.images || []).map(resolveMediaUrl).filter(Boolean),
+	specDimensions: (item.specDimensions || []).map(dimension => ({
+		...dimension,
+		values: (dimension.values || []).map(value => ({ ...value, value: value.value || '' }))
+	})),
+	skus: (item.skus || []).map(sku => ({
+		...sku,
+		id: Number(sku.id),
+		stock: Number(sku.stock || 0),
+		specValues: sku.specValues || {},
+		enabled: sku.enabled !== false
+	}))
 })
 
 const normalizeOrder = (item = {}) => {
@@ -187,6 +200,18 @@ export const consumablesApi = {
 		return res
 	},
 	getCategories: () => http.get('/consumables/categories', {}, { auth: false, redirectOnUnauthorized: false })
+}
+
+// ====================== 安装师傅耗材购物车 / 自助取货订单 ======================
+export const installerMaterialApi = {
+	getCart: () => http.get('/installer/cart'),
+	addCartItem: (skuId, quantity = 1) => http.post('/installer/cart/items', { skuId, quantity }),
+	updateCartItem: (id, quantity) => http.patch(`/installer/cart/items/${id}`, { quantity }),
+	removeCartItem: (id) => http.delete(`/installer/cart/items/${id}`),
+	clearCart: () => http.delete('/installer/cart'),
+		submitOrder: (requestId) => http.post('/installer/self-orders', { requestId }),
+	getOrders: (params = {}) => http.get('/installer/self-orders', params),
+	getOrderDetail: (id) => http.get(`/installer/self-orders/${id}`)
 }
 
 // ====================== 仪表盘 / 工作台概览 ======================

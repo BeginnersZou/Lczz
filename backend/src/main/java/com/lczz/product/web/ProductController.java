@@ -10,6 +10,9 @@ import com.lczz.product.service.ProductService.ProductCommand;
 import com.lczz.product.service.ProductService.ProductPage;
 import com.lczz.product.service.ProductService.ProductView;
 import com.lczz.product.service.ProductService.StockAdjustmentCommand;
+import com.lczz.product.service.ProductSkuService.DimensionCommand;
+import com.lczz.product.service.ProductSkuService.SkuCommand;
+import com.lczz.product.service.ProductSkuService.ValueCommand;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
@@ -23,6 +26,7 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
@@ -167,13 +171,39 @@ public class ProductController {
             @DecimalMin("0") BigDecimal price,
             @Size(max = 5000) String remark,
             @Min(1) Long coverFileId,
+            @Size(max = 3) List<@Min(1) Long> imageFileIds,
             @Size(max = 9) List<@Min(1) Long> detailFileIds,
             Boolean enabled,
-            Integer sortOrder) {
+            Integer sortOrder,
+            @Size(max = 8) List<@Valid SpecDimensionRequest> specDimensions,
+            @Size(max = 500) List<@Valid SkuRequest> skus) {
         ProductCommand toCommand() {
             return new ProductCommand(productCode, name, categoryId, spec, unit, stock, price, remark,
-                    coverFileId, detailFileIds, enabled, sortOrder);
+                    coverFileId, imageFileIds, detailFileIds, enabled, sortOrder,
+                    specDimensions == null ? List.of() : specDimensions.stream().map(SpecDimensionRequest::toCommand).toList(),
+                    skus == null ? List.of() : skus.stream().map(SkuRequest::toCommand).toList());
         }
+    }
+
+    record SpecDimensionRequest(@NotBlank @Size(max = 64) String name,
+                                @NotNull @Size(min = 1, max = 100) List<@Valid SpecValueRequest> values,
+                                Integer sortOrder) {
+        DimensionCommand toCommand() {
+            return new DimensionCommand(name, values.stream().map(SpecValueRequest::toCommand).toList(), sortOrder);
+        }
+    }
+
+    record SpecValueRequest(@NotBlank @Size(max = 128) String value, Integer sortOrder) {
+        ValueCommand toCommand() { return new ValueCommand(value, sortOrder); }
+    }
+
+    record SkuRequest(@Min(1) Long id,
+                      @Pattern(regexp = "^[A-Za-z0-9_-]{1,96}$") String code,
+                      Map<@NotBlank @Size(max = 64) String, @NotBlank @Size(max = 128) String> specValues,
+                      @NotBlank @Size(max = 32) String unit,
+                      @NotNull @DecimalMin("0") BigDecimal stock,
+                      Boolean enabled, Integer sortOrder) {
+        SkuCommand toCommand() { return new SkuCommand(id, code, specValues, unit, stock, enabled, sortOrder); }
     }
 
     record CategoryRequest(
@@ -190,11 +220,12 @@ public class ProductController {
     record EnabledRequest(@NotNull Boolean enabled) { }
 
     record StockAdjustmentRequest(
+            @Min(1) Long skuId,
             @NotBlank @Pattern(regexp = "(?i)IN|OUT") String type,
             @NotNull @DecimalMin(value = "0", inclusive = false) BigDecimal quantity,
             @NotBlank @Size(min = 2, max = 500) String reason) {
         StockAdjustmentCommand toCommand() {
-            return new StockAdjustmentCommand(type, quantity, reason);
+            return new StockAdjustmentCommand(skuId, type, quantity, reason);
         }
     }
 }

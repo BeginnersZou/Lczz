@@ -83,13 +83,15 @@
           </template>
         </el-table-column>
         <!-- 规格 -->
-        <el-table-column prop="spec" label="规格" align="left" min-width="140" show-overflow-tooltip />
+        <el-table-column label="规格" align="left" min-width="140" show-overflow-tooltip>
+          <template #default="scope">{{ scope.row.skuCount > 1 ? (scope.row.skuCount + ' 个SKU') : (scope.row.spec || '通用规格') }}</template>
+        </el-table-column>
         <!-- 单位 -->
         <el-table-column prop="unit" label="单位" align="center" width="76" />
         <!-- 库存 -->
-        <el-table-column prop="stock" label="库存" align="center" width="96">
+        <el-table-column prop="stock" label="库存" align="center" min-width="180">
           <template #default="scope">
-            <span :class="['stock-num', isLowStock(scope.row) ? 'low' : '']">{{ scope.row.stock }}</span>
+            <span :class="['stock-num', isLowStock(scope.row) ? 'low' : '']">{{ scope.row.stockSummary || ((scope.row.stock ?? 0) + ' ' + (scope.row.unit || '')) }}</span>
             <div v-if="scope.row.safetyStock != null" class="secondary-cell">安全库存 {{ scope.row.safetyStock }}</div>
           </template>
         </el-table-column>
@@ -130,7 +132,17 @@
     <el-dialog v-model="stockDialogVisible" title="调整库存" width="480px" @closed="resetStockForm">
       <el-form label-width="90px">
         <el-form-item label="耗材"><strong>{{ currentStockRow?.name }}</strong></el-form-item>
-        <el-form-item label="当前库存">{{ currentStockRow?.stock }} {{ currentStockRow?.unit }}</el-form-item>
+        <el-form-item label="具体规格" required>
+          <el-select v-model="stockForm.skuId" placeholder="请选择要调整的SKU" style="width: 100%">
+            <el-option v-for="sku in currentStockSkus" :key="sku.id"
+              :label="`${sku.specLabel || '通用规格'} · ${sku.code}`" :value="sku.id"
+              :disabled="!sku.enabled">
+              <span>{{ sku.specLabel || '通用规格' }}</span><span class="sku-stock-option">库存 {{ sku.stock }} {{ sku.unit }}</span>
+            </el-option>
+          </el-select>
+          <div v-if="currentStockSkus.length > 1" class="stock-help">多规格耗材必须按具体SKU调整，避免库存错账。</div>
+        </el-form-item>
+        <el-form-item label="当前库存">{{ selectedStockSku?.stock ?? '-' }} {{ selectedStockSku?.unit || '' }}</el-form-item>
         <el-form-item label="调整方式">
           <el-radio-group v-model="stockForm.type"><el-radio-button value="IN">入库</el-radio-button><el-radio-button value="OUT">出库</el-radio-button></el-radio-group>
         </el-form-item>
@@ -150,7 +162,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
   Plus, Search, Refresh, Download
@@ -185,7 +197,9 @@ const currentDeleteRow = ref(null)
 const stockDialogVisible = ref(false)
 const currentStockRow = ref(null)
 const stockLoading = ref(false)
-const stockForm = reactive({ type: 'IN', quantity: 1, reason: '' })
+const stockForm = reactive({ skuId: null, type: 'IN', quantity: 1, reason: '' })
+const currentStockSkus = computed(() => currentStockRow.value?.skus || [])
+const selectedStockSku = computed(() => currentStockSkus.value.find(sku => sku.id === stockForm.skuId))
 
 // 耗材列表（数据全部来自接口）
 const pagedList = ref([])
@@ -344,6 +358,8 @@ function getCategory(row, index) {
 }
 
 function isLowStock(row) {
+  const enabledSkus = (row.skus || []).filter(sku => sku.enabled)
+  if (enabledSkus.length) return enabledSkus.some(sku => Number(sku.stock) <= 5)
   const stock = Number(row.stock)
   return Number.isFinite(stock) && stock <= 5
 }
@@ -365,11 +381,14 @@ async function loadCategoryFilters() {
 
 function openStockDialog(row) {
   currentStockRow.value = row
+  const skus = row.skus || []
+  stockForm.skuId = skus.length === 1 ? skus[0].id : null
   stockDialogVisible.value = true
 }
 
 function resetStockForm() {
   currentStockRow.value = null
+  stockForm.skuId = null
   stockForm.type = 'IN'
   stockForm.quantity = 1
   stockForm.reason = ''
@@ -378,13 +397,17 @@ function resetStockForm() {
 async function confirmStockChange() {
   const row = currentStockRow.value
   if (!row) return
+  if (!stockForm.skuId || !selectedStockSku.value) {
+    ElMessage.warning('请选择需要调整库存的具体SKU')
+    return
+  }
   const reason = stockForm.reason.trim()
   if (reason.length < 2) {
     ElMessage.warning('库存调整原因至少填写2个字符')
     return
   }
   const delta = stockForm.type === 'IN' ? stockForm.quantity : -stockForm.quantity
-  const nextStock = Number(row.stock || 0) + delta
+  const nextStock = Number(selectedStockSku.value.stock || 0) + delta
   if (nextStock < 0) {
     ElMessage.warning('出库数量不能大于当前库存')
     return
@@ -392,6 +415,7 @@ async function confirmStockChange() {
   stockLoading.value = true
   try {
     await adjustConsumableStockApi(row.id, {
+      skuId: stockForm.skuId,
       type: stockForm.type,
       quantity: stockForm.quantity,
       reason
@@ -412,6 +436,8 @@ onMounted(() => {
 </script>
 
 <style lang="scss" scoped>
+.sku-stock-option { float: right; margin-left: 24px; color: #64748b; }
+.stock-help { margin-top: 6px; color: #94a3b8; font-size: 12px; line-height: 1.5; }
 .order-page {
   padding: 20px;
   background-color: #f8fafc;

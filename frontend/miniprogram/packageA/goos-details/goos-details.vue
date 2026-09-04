@@ -35,7 +35,7 @@
 
 		<!-- ═══ 商品信息卡片 ═══ -->
 		<view class="info-card">
-			<view class="info-header"><view class="display-only-badge">产品展示 · 暂不支持线上购买</view></view>
+			<view class="info-header"><view class="display-only-badge">{{ isInstaller ? '安装耗材 · 请选择具体规格' : '产品展示 · 电话咨询' }}</view></view>
 
 			<text class="info-title">{{ goods.title }}</text>
 			<view class="info-tags">
@@ -44,18 +44,33 @@
 			<view class="info-desc">{{ goods.desc }}</view>
 		</view>
 
-		<!-- ═══ 规格选择 ═══ -->
+		<!-- ═══ 动态规格选择：规格名称和值完全由后台配置 ═══ -->
 		<view class="spec-card">
-			<view class="spec-row">
-				<text class="spec-label">规格</text>
-				<text class="spec-value">{{ goods.spec || '以实物标识为准' }}</text>
+			<view v-for="dimension in goods.specDimensions" :key="dimension.id || dimension.name" class="dynamic-spec-group">
+				<text class="dynamic-spec-title">{{ dimension.name }}</text>
+				<view class="dynamic-spec-options">
+					<view v-for="value in dimension.values" :key="value.id || value.value" class="dynamic-spec-option"
+						:class="{ selected: selectedSpecs[dimension.name] === value.value, disabled: isSpecValueDisabled(dimension.name, value.value) }"
+						@click="selectSpecValue(dimension.name, value.value)">{{ value.value }}</view>
+				</view>
+			</view>
+			<view v-if="!goods.specDimensions?.length" class="spec-row">
+				<text class="spec-label">规格</text><text class="spec-value">{{ currentSku?.specLabel || goods.spec || '通用规格' }}</text>
 			</view>
 			<view class="spec-row">
-				<text class="spec-label">库存</text>
-				<text class="spec-value">{{ goods.stock }} {{ goods.unit || '件' }}</text>
-				<text class="spec-stock" :class="{ inStock: goods.stock > 0 }">
-					{{ goods.stock > 0 ? '库存充足' : '暂无库存' }}
+				<text class="spec-label">已选</text>
+				<text class="spec-value">{{ selectedSpecLabel }}</text>
+				<text class="spec-stock" :class="{ inStock: currentSku && currentSku.stock > 0 }">
+					{{ currentSku ? `${currentSku.stock} ${currentSku.unit}` : '请选择完整规格' }}
 				</text>
+			</view>
+			<view v-if="isInstaller" class="spec-row quantity-row">
+				<text class="spec-label">数量</text>
+				<view class="quantity-control">
+					<view class="quantity-button" :class="{ disabled: quantity <= 1 }" @click="changeQuantity(-1)">−</view>
+					<input class="quantity-input" type="number" :value="quantity" @blur="handleQuantityInput" />
+					<view class="quantity-button" :class="{ disabled: !currentSku || quantity >= currentSku.stock }" @click="changeQuantity(1)">＋</view>
+				</view>
 			</view>
 		</view>
 
@@ -103,8 +118,15 @@
 					<up-icon name="kefu-ermai" size="22" color="#475569"></up-icon>
 					<text class="bar-icon-text">客服</text>
 				</view>
+				<view v-if="isInstaller" class="bar-icon-item cart-entry" hover-class="hover-press" @click="goCart">
+					<up-icon name="shopping-cart" size="22" color="#475569"></up-icon>
+					<text class="bar-icon-text">购物车</text><text v-if="cartCount" class="cart-badge">{{ cartCount > 99 ? '99+' : cartCount }}</text>
+				</view>
 			</view>
-			<view class="bar-actions"><view class="action-btn buy" hover-class="hover-mask" :hover-stay-time="80" @click="handleService">电话咨询</view></view>
+			<view class="bar-actions">
+				<view v-if="isInstaller" class="action-btn buy" :class="{ disabled: !canAddToCart }" @click="addToCart">{{ adding ? '加入中…' : '加入购物车' }}</view>
+				<view v-else class="action-btn buy" hover-class="hover-mask" :hover-stay-time="80" @click="handleService">电话咨询</view>
+			</view>
 		</view>
 		</template>
 	</view>
@@ -119,7 +141,8 @@ import {
 	onLoad,
 	onShareAppMessage
 } from '@dcloudio/uni-app'
-import { consumablesApi } from '@/api/api.js'
+import { consumablesApi, installerMaterialApi } from '@/api/api.js'
+import { getAuthUserInfo } from '@/utils/auth-session.js'
 
 // 商品 ID（onLoad 时获取，用于分享路径）
 const goodsId = ref('')
@@ -138,11 +161,33 @@ const goods = ref({
 })
 
 const detailImages = ref([])
+const selectedSpecs = ref({})
+const quantity = ref(1)
+const adding = ref(false)
+const cartCount = ref(0)
+const isInstaller = computed(() => getAuthUserInfo()?.role === 'installer')
+const currentSku = computed(() => {
+	const skus = goods.value.skus || []
+	const dimensions = goods.value.specDimensions || []
+	if (!dimensions.length) return skus.find(sku => sku.enabled) || null
+	if (dimensions.some(dimension => !selectedSpecs.value[dimension.name])) return null
+	return skus.find(sku => sku.enabled && dimensions.every(
+		dimension => sku.specValues?.[dimension.name] === selectedSpecs.value[dimension.name])) || null
+})
+const selectedSpecLabel = computed(() => {
+	if (currentSku.value?.specLabel) return currentSku.value.specLabel
+	const dimensions = goods.value.specDimensions || []
+	if (!dimensions.length) return goods.value.spec || '通用规格'
+	const selected = dimensions.filter(d => selectedSpecs.value[d.name]).map(d => `${d.name}：${selectedSpecs.value[d.name]}`)
+	return selected.length ? selected.join(' / ') : '请选择规格'
+})
+const canAddToCart = computed(() => isInstaller.value && currentSku.value && currentSku.value.stock > 0
+	&& quantity.value >= 1 && quantity.value <= Math.floor(currentSku.value.stock) && !adding.value)
 const carouselImages = computed(() => {
-	const images = [goods.value.image, ...detailImages.value.slice(0, 2)]
+	const images = goods.value.images?.length ? goods.value.images : [goods.value.image]
 	return [...new Set(images.filter(img => !isPlaceholderImage(img)))]
 })
-const displayDetailImages = computed(() => detailImages.value.slice(2).filter(img => !isPlaceholderImage(img)))
+const displayDetailImages = computed(() => detailImages.value.filter(img => !isPlaceholderImage(img)))
 const detailLoading = ref(true)
 const detailError = ref(null)
 
@@ -182,6 +227,13 @@ const loadDetail = async () => {
 		goods.value = res.data || {}
 		detailImages.value = (res.data && res.data.detailImages) || []
 		uni.setNavigationBarTitle({ title: goods.value.title || '耗材详情' })
+		const initial = {}
+		;(goods.value.specDimensions || []).forEach(dimension => {
+			if ((dimension.values || []).length === 1) initial[dimension.name] = dimension.values[0].value
+		})
+		selectedSpecs.value = initial
+		quantity.value = 1
+		if (isInstaller.value) loadCartCount()
 	} catch (err) {
 		setDetailError({ code: -1, msg: '请求异常，请稍后重试' })
 	} finally {
@@ -193,6 +245,59 @@ onLoad((options) => {
 	goodsId.value = options?.id || ''
 	loadDetail()
 })
+
+const isSpecValueDisabled = (name, value) => {
+	const dimensions = goods.value.specDimensions || []
+	const currentIndex = dimensions.findIndex(dimension => dimension.name === name)
+	const next = { [name]: value }
+	dimensions.slice(0, currentIndex).forEach(dimension => {
+		if (selectedSpecs.value[dimension.name]) next[dimension.name] = selectedSpecs.value[dimension.name]
+	})
+	return !(goods.value.skus || []).some(sku => sku.enabled && sku.stock > 0
+		&& Object.entries(next).every(([key, selected]) => sku.specValues?.[key] === selected))
+}
+
+const selectSpecValue = (name, value) => {
+	if (isSpecValueDisabled(name, value)) return
+	const dimensions = goods.value.specDimensions || []
+	const currentIndex = dimensions.findIndex(dimension => dimension.name === name)
+	const next = { ...selectedSpecs.value, [name]: value }
+	dimensions.slice(currentIndex + 1).forEach(dimension => { delete next[dimension.name] })
+	selectedSpecs.value = next
+	quantity.value = 1
+}
+
+const changeQuantity = (delta) => {
+	const max = Math.max(1, Math.floor(currentSku.value?.stock || 1))
+	quantity.value = Math.min(max, Math.max(1, quantity.value + delta))
+}
+
+const handleQuantityInput = (event) => {
+	const max = Math.max(1, Math.floor(currentSku.value?.stock || 1))
+	const next = Number(event?.detail?.value)
+	quantity.value = Number.isInteger(next) ? Math.min(max, Math.max(1, next)) : 1
+}
+
+const loadCartCount = async () => {
+	const res = await installerMaterialApi.getCart()
+	if (res.code === 200) cartCount.value = Number(res.data?.totalQuantity || 0)
+}
+
+const addToCart = async () => {
+	if (adding.value) return
+	if (!currentSku.value) return uni.showToast({ title: '请先选择完整规格', icon: 'none' })
+	if (!canAddToCart.value) return uni.showToast({ title: '数量不能超过当前库存', icon: 'none' })
+	adding.value = true
+	try {
+		const res = await installerMaterialApi.addCartItem(currentSku.value.id, quantity.value)
+		if (res.code === 200) {
+			cartCount.value = Number(res.data?.totalQuantity || 0)
+			uni.showToast({ title: '已加入购物车', icon: 'success' })
+		}
+	} finally { adding.value = false }
+}
+
+const goCart = () => uni.navigateTo({ url: '/packageA/material-cart/material-cart' })
 
 // 分享商品详情给好友
 onShareAppMessage(() => ({
@@ -244,7 +349,7 @@ $text-light: #94a3b8;
 .state-icon { width: 96rpx; height: 96rpx; border-radius: 50%; background: #fff7e6; display: flex; align-items: center; justify-content: center; }
 .state-title { margin-top: 24rpx; font-size: 30rpx; font-weight: 700; color: $text-main; }
 .state-desc { margin-top: 10rpx; font-size: 24rpx; color: $text-light; line-height: 1.6; }
-.state-action { margin-top: 28rpx; padding: 14rpx 34rpx; border-radius: 30rpx; color: $primary; background: #eaf3ff; font-size: 24rpx; }
+.state-action { min-width: 180rpx; height: 76rpx; margin-top: 28rpx; padding: 0 34rpx; box-sizing: border-box; display: flex; align-items: center; justify-content: center; border: 2rpx solid $primary; border-radius: 38rpx; color: $primary; background: #fff; font-size: 24rpx; font-weight: 600; }
 
 /* 封面图 */
 .cover-section {
@@ -393,6 +498,18 @@ $text-light: #94a3b8;
 	box-shadow: 0 2rpx 12rpx rgba(30, 41, 59, 0.04);
 }
 
+.dynamic-spec-group { padding: 26rpx 0 8rpx; border-bottom: 1rpx solid #f0f1f3; }
+.dynamic-spec-title { display: block; margin-bottom: 18rpx; color: $text-main; font-size: 27rpx; font-weight: 650; }
+.dynamic-spec-options { display: flex; flex-wrap: wrap; gap: 14rpx; }
+.dynamic-spec-option { min-width: 104rpx; padding: 13rpx 20rpx; box-sizing: border-box; border: 2rpx solid transparent; border-radius: 12rpx; background: #f3f6fa; color: $text-sub; font-size: 24rpx; text-align: center; }
+.dynamic-spec-option.selected { border-color: $primary; background: #eaf3ff; color: $primary; font-weight: 650; }
+.dynamic-spec-option.disabled { background: #f7f7f8; color: #c4cbd4; text-decoration: line-through; }
+.quantity-row { justify-content: space-between; }
+.quantity-control { display: flex; align-items: center; overflow: hidden; border: 1rpx solid #dce4ed; border-radius: 12rpx; }
+.quantity-button { width: 72rpx; height: 72rpx; display: flex; align-items: center; justify-content: center; background: #f4f7fb; color: $text-main; font-size: 32rpx; }
+.quantity-button.disabled { color: #cbd2da; }
+.quantity-input { width: 92rpx; height: 72rpx; border-left: 1rpx solid #dce4ed; border-right: 1rpx solid #dce4ed; color: $text-main; font-size: 26rpx; text-align: center; }
+
 .spec-row {
 	display: flex;
 	align-items: center;
@@ -502,7 +619,7 @@ $text-light: #94a3b8;
 	bottom: 0;
 	left: 0;
 	right: 0;
-	height: calc(100rpx + env(safe-area-inset-bottom));
+	height: calc(112rpx + env(safe-area-inset-bottom));
 	padding-bottom: env(safe-area-inset-bottom);
 	background: #fff;
 	display: flex;
@@ -527,6 +644,8 @@ $text-light: #94a3b8;
 		opacity: 0.6;
 	}
 }
+.cart-entry { position: relative; }
+.cart-badge { position: absolute; top: -10rpx; right: -14rpx; min-width: 30rpx; height: 30rpx; padding: 0 6rpx; box-sizing: border-box; border-radius: 16rpx; background: #ef4444; color: #fff; font-size: 18rpx; line-height: 30rpx; text-align: center; }
 
 .bar-icon-text {
 	font-size: 20rpx;
@@ -540,9 +659,9 @@ $text-light: #94a3b8;
 .bar-actions {
 	flex: 1;
 	display: flex;
-	height: 80rpx;
+	height: 88rpx;
 	margin-right: 24rpx;
-	border-radius: 40rpx;
+	border-radius: 44rpx;
 	overflow: hidden;
 	box-shadow: 0 4rpx 20rpx rgba(60, 156, 255, 0.3);
 }
@@ -559,6 +678,7 @@ $text-light: #94a3b8;
 		opacity: 0.85;
 	}
 }
+.action-btn.disabled { background: #b8c8da; box-shadow: none; color: #eef3f8; }
 
 .cart {
 	background: linear-gradient(135deg, #ffd56e, #ffb340);
@@ -655,14 +775,14 @@ $text-light: #94a3b8;
 	gap: 4rpx;
 }
 
-.qty-btn {
-	width: 56rpx;
-	height: 56rpx;
+	.qty-btn {
+		width: 72rpx;
+		height: 72rpx;
 	display: flex;
 	align-items: center;
 	justify-content: center;
 	background: #f4f7fb;
-	border-radius: 8rpx;
+		border-radius: 12rpx;
 	font-size: 32rpx;
 	color: $text-sub;
 

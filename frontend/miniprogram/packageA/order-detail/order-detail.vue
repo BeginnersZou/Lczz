@@ -96,9 +96,10 @@
 							<text class="tool-qty-value" v-else>{{ tool.qty }}</text>
 						</view>
 					</view>
-					<view class="tool-delete" @click="deleteTool(index)" v-if="!materialReadonly">
-						<up-icon name="trash" size="18" color="#ff4d4f"></up-icon>
-					</view>
+						<view class="tool-delete" @click="deleteTool(index)" v-if="!materialReadonly">
+							<up-icon name="trash" size="18" color="#dc2626"></up-icon>
+							<text>删除</text>
+						</view>
 				</view>
 			</view>
 
@@ -292,10 +293,9 @@
 				<!-- 搜索框 -->
 				<view class="popup-search">
 					<up-search v-model="searchKeyword" placeholder="搜索耗材名称" :showAction="false" bgColor="#f5f5f5"
-						shape="round" height="40">
+						@search="fetchTools" @clear="fetchTools" shape="round" height="40">
 					</up-search>
-					<view class="search-btn">搜索</view>
-					<!-- <up-button style="width:160rpx;height:80rpx" type="primary" plain shape="circle"   text="搜索"></up-button> -->
+					<view class="search-btn" :class="{ disabled: popupLoading }" @click="fetchTools">{{ popupLoading ? '搜索中' : '搜索' }}</view>
 				</view>
 
 				<!-- 分类标签 — 小程序scroll-x必须用inline-block -->
@@ -316,17 +316,25 @@
 							<image class="popup-tool-img" :src="tool.image" mode="aspectFill"></image>
 							<text class="popup-tool-name">{{ tool.title }}</text>
 						</view>
+						<view class="popup-sku-list" v-if="tool.skus && tool.skus.length">
+							<view v-for="sku in tool.skus" :key="sku.id" class="popup-sku-chip"
+								:class="{ active: selectedSkuIds[tool.id] === sku.id, disabled: !sku.enabled || Number(sku.stock) <= 0 }"
+								@click="selectToolSku(tool, sku)">
+								<text>{{ sku.specLabel || '通用规格' }}</text>
+								<text class="popup-sku-stock">{{ Number(sku.stock) > 0 ? ('余' + sku.stock + sku.unit) : '售罄' }}</text>
+							</view>
+						</view>
 						<view class="popup-tool-row2">
-							<text class="popup-tool-spec">{{ tool.spec }} · 库存 {{ tool.stock }}{{ tool.unit || '' }}</text>
-							<text class="popup-tool-price">¥{{ tool.price }}</text>
+							<text class="popup-tool-spec">{{ getSelectedSku(tool)?.spec || (tool.skus?.length > 1 ? '请先选择具体规格' : '通用规格') }}</text>
 							<view class="popup-tool-action">
-								<view class="popup-qty-wrap" v-if="getToolQty(tool) > 0">
-									<view class="popup-qty-btn" @click="changePopupQty(tool, -1)"><text>-</text></view>
-									<text class="popup-qty-num">{{ getToolQty(tool) }}</text>
-									<view class="popup-qty-btn" @click="changePopupQty(tool, 1)"><text>+</text></view>
+								<view class="popup-qty-wrap" v-if="getToolQty(getSelectedSku(tool)) > 0">
+									<view class="popup-qty-btn" @click="changePopupQty(getSelectedSku(tool), -1)"><text>-</text></view>
+									<text class="popup-qty-num">{{ getToolQty(getSelectedSku(tool)) }}</text>
+									<view class="popup-qty-btn" @click="changePopupQty(getSelectedSku(tool), 1)"><text>+</text></view>
 								</view>
-								<view class="popup-add-btn" :class="{ disabled: tool.stock <= 0 }" v-else @click="addToolToCart(tool)">
-									<text class="popup-add-label">{{ tool.stock > 0 ? '添加' : '无库存' }}</text>
+								<view class="popup-add-btn" :class="{ disabled: !getSelectedSku(tool) || getSelectedSku(tool).stock <= 0 }"
+									v-else @click="addToolToCart(getSelectedSku(tool))">
+									<text class="popup-add-label">{{ getSelectedSku(tool) ? (getSelectedSku(tool).stock > 0 ? '添加' : '已售罄') : '选择规格' }}</text>
 								</view>
 							</view>
 						</view>
@@ -340,8 +348,8 @@
 
 				<!-- 底部确认 -->
 				<view class="popup-footer">
-					<text class="popup-selected">已选 {{ selectedCount }} 件</text>
-					<view class="popup-confirm-btn" @click="confirmTools">
+					<text class="popup-selected">已选 {{ selectedKindCount }} 种规格</text>
+					<view class="popup-confirm-btn" :class="{ disabled: selectedKindCount === 0 }" @click="confirmTools">
 						<text>确认添加</text>
 					</view>
 				</view>
@@ -741,11 +749,13 @@ const statusClass = computed(() => {
 
 	// 拉取耗材列表（同时构建分类标签）
 	const fetchTools = async () => {
+		if (popupLoading.value) return
 		popupLoading.value = true
 		try {
 			const res = await consumablesApi.getList({
 				page: 1,
-				pageSize: 100
+				pageSize: 100,
+				keyword: searchKeyword.value.trim() || undefined
 			})
 			if (res.code !== 200) return
 			// 耗材字段已与弹窗对齐（id/title/spec/price/image/category），res.data.list 直接使用
@@ -766,12 +776,43 @@ const statusClass = computed(() => {
 
 	// 用 id 作为唯一 key（后端耗材有 id；兼容无 id 场景回退 title+spec）
 	const getToolKey = (tool) => {
+		if (tool && tool.skuId != null) return 'sku-' + tool.skuId
 		if (tool && tool.id != null) return String(tool.id)
 		return `${tool.title}_${tool.spec}`
 	}
 
+	const toSelectableSku = (tool, sku) => ({
+		id: tool.id,
+		productId: tool.id,
+		skuId: sku.id,
+		title: tool.title,
+		spec: sku.specLabel || tool.spec || '通用规格',
+		unit: sku.unit || tool.unit || '',
+		stock: Number(sku.stock || 0),
+		price: Number(tool.price || 0),
+		image: tool.image
+	})
+
+	const getSelectedSku = (tool) => {
+		if (!tool) return null
+		const enabled = (tool.skus || []).filter(sku => sku.enabled !== false)
+		const selected = enabled.find(sku => sku.id === selectedSkuIds.value[tool.id])
+		if (selected) return toSelectableSku(tool, selected)
+		if (enabled.length === 1) return toSelectableSku(tool, enabled[0])
+		return null
+	}
+
+	const selectToolSku = (tool, sku) => {
+		if (!sku.enabled || Number(sku.stock || 0) <= 0) {
+			uni.showToast({ title: '该规格已售罄', icon: 'none' })
+			return
+		}
+		selectedSkuIds.value[tool.id] = sku.id
+	}
+
 	// popupSelected 存储完整对象 { [key]: { ...tool, qty } }，避免反解 key 丢失字段
 	const popupSelected = ref({})
+	const selectedSkuIds = ref({})
 
 	const openToolPopup = async () => {
 		// 用已选工具初始化弹窗选中态（保留完整对象）
@@ -780,6 +821,7 @@ const statusClass = computed(() => {
 			popupSelected.value[getToolKey(tool)] = {
 				...tool
 			}
+			if (tool.productId && tool.skuId) selectedSkuIds.value[tool.productId] = tool.skuId
 		})
 		searchKeyword.value = ''
 		currentCategory.value = 0
@@ -795,11 +837,16 @@ const statusClass = computed(() => {
 	}
 
 	const getToolQty = (tool) => {
+		if (!tool) return 0
 		const item = popupSelected.value[getToolKey(tool)]
 		return (item && item.qty) || 0
 	}
 
 	const addToolToCart = (tool) => {
+		if (!tool) {
+			uni.showToast({ title: '请先选择具体规格', icon: 'none' })
+			return
+		}
 		if (Number(tool.stock || 0) <= 0) {
 			uni.showToast({ title: '该耗材暂无库存', icon: 'none' })
 			return
@@ -811,6 +858,7 @@ const statusClass = computed(() => {
 	}
 
 	const changePopupQty = (tool, delta) => {
+		if (!tool) return
 		const key = getToolKey(tool)
 		const item = popupSelected.value[key]
 		const current = (item && item.qty) || 0
@@ -834,6 +882,8 @@ const statusClass = computed(() => {
 		})
 		return count
 	})
+	const selectedKindCount = computed(() => Object.values(popupSelected.value)
+		.filter(item => item && item.qty > 0).length)
 
 	const confirmTools = () => {
 		if (selectedCount.value === 0) {
@@ -845,7 +895,9 @@ const statusClass = computed(() => {
 		}
 		// 直接用完整对象重建 toolList，保留 id/image/price 等字段
 		toolList.value = Object.values(popupSelected.value).map(item => ({
-			id: item.id,
+			id: item.productId,
+			productId: item.productId,
+			skuId: item.skuId,
 			title: item.title,
 			spec: item.spec,
 			unit: item.unit,
@@ -895,7 +947,7 @@ const statusClass = computed(() => {
 				})
 				try {
 					const submitRes = await orderApi.submitMaterials(orderId.value, {
-						items: toolList.value.map(t => ({ productId: t.id, quantity: t.qty })),
+						items: toolList.value.map(t => ({ productId: t.productId || t.id, skuId: t.skuId, quantity: t.qty })),
 						remark: materialRemark.value.trim()
 					})
 					if (submitRes.code !== 200) return
@@ -978,6 +1030,8 @@ const statusClass = computed(() => {
 					materialRemark.value = materialsRes.data.remark || ''
 					toolList.value = (materialsRes.data.materials || []).map(item => ({
 						id: item.productId,
+						productId: item.productId,
+						skuId: item.skuId,
 						title: item.name || '',
 						spec: item.spec || '',
 						unit: item.unit || '',
@@ -1394,10 +1448,10 @@ const statusClass = computed(() => {
 		align-items: center;
 	}
 
-	.qty-btn {
-		width: 44rpx;
-		height: 44rpx;
-		border-radius: 8rpx;
+		.qty-btn {
+			width: 64rpx;
+			height: 64rpx;
+			border-radius: 12rpx;
 		background-color: #fff;
 		border: 1rpx solid #ddd;
 		display: flex;
@@ -1423,14 +1477,21 @@ const statusClass = computed(() => {
 		text-align: center;
 	}
 
-	.tool-delete {
-		width: 60rpx;
-		height: 60rpx;
-		display: flex;
+		.tool-delete {
+			min-width: 112rpx;
+			height: 64rpx;
+			padding: 0 16rpx;
+			gap: 6rpx;
+			border: 2rpx solid #fecaca;
+			border-radius: 14rpx;
+			background: #fff7f7;
+			display: flex;
 		align-items: center;
 		justify-content: center;
 		flex-shrink: 0;
-		margin-left: 16rpx;
+			margin-left: 16rpx;
+			color: #dc2626;
+			font-size: 23rpx;
 
 		&:active {
 			opacity: 0.6;
@@ -2021,11 +2082,25 @@ const statusClass = computed(() => {
 		align-items: center;
 	}
 
-	.search-btn {
-		margin-left: 20rpx;
-		color: #0b63ce;
+		.search-btn {
+			margin-left: 20rpx;
+			min-width: 128rpx;
+			height: 72rpx;
+			padding: 0 20rpx;
+			box-sizing: border-box;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			border: 2rpx solid #0b63ce;
+			border-radius: 36rpx;
+			background: #fff;
+			color: #0b63ce;
+			font-size: 25rpx;
+			font-weight: 600;
 
-	}
+			&.disabled { opacity: .55; }
+			&:active { background: #edf5ff; }
+		}
 
 	/* 分类标签 — 小程序scroll-x必须用inline-block + white-space:nowrap */
 	.category-bar {
@@ -2116,6 +2191,30 @@ const statusClass = computed(() => {
 		/* flex:1必须配合min-width:0才能真正收缩 */
 	}
 
+	.popup-sku-list {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 12rpx;
+		margin: 10rpx 0 14rpx 92rpx;
+	}
+
+	.popup-sku-chip {
+		display: flex;
+		align-items: center;
+		gap: 8rpx;
+		padding: 10rpx 16rpx;
+		border: 2rpx solid #dbe5f1;
+		border-radius: 12rpx;
+		background: #fff;
+		color: $text-main;
+		font-size: 22rpx;
+
+		&.active { border-color: $primary; background: #eaf3ff; color: $primary; }
+		&.disabled { opacity: .45; background: #f5f7fa; }
+	}
+
+	.popup-sku-stock { font-size: 19rpx; color: $text-light; }
+
 	/* 下行：规格 + 价格 + 操作按钮 — overflow:hidden防止溢出 */
 	.popup-tool-row2 {
 		display: flex;
@@ -2156,10 +2255,10 @@ const statusClass = computed(() => {
 		align-items: center;
 	}
 
-	.popup-qty-btn {
-		width: 40rpx;
-		height: 40rpx;
-		border-radius: 6rpx;
+		.popup-qty-btn {
+			width: 64rpx;
+			height: 64rpx;
+			border-radius: 12rpx;
 		background-color: #f5f5f5;
 		display: flex;
 		align-items: center;
@@ -2179,17 +2278,21 @@ const statusClass = computed(() => {
 	.popup-qty-num {
 		font-size: 28rpx;
 		color: $text-main;
-		margin: 0 4rpx;
-		min-width: 24rpx;
+			margin: 0 10rpx;
+			min-width: 32rpx;
 		text-align: center;
 	}
 
-	.popup-add-btn {
-		padding: 6rpx 20rpx;
-		border-radius: 20rpx;
-		font-size: 30rpx;
-		background: linear-gradient(135deg, #ff6b6b, #ee5a24);
-		min-width: 56rpx;
+		.popup-add-btn {
+			height: 64rpx;
+			padding: 0 24rpx;
+			border-radius: 16rpx;
+		font-size: 24rpx;
+		background: $primary;
+		min-width: 112rpx;
+		display: flex;
+		align-items: center;
+		justify-content: center;
 
 		&.disabled {
 			background: #cbd5e1;
@@ -2245,8 +2348,8 @@ const statusClass = computed(() => {
 	.popup-confirm-btn {
 		flex: 1;
 		margin-left: 24rpx;
-		height: 72rpx;
-		border-radius: 36rpx;
+			height: 88rpx;
+			border-radius: 44rpx;
 		background: linear-gradient(135deg, #3b8eea, #0b63ce);
 		display: flex;
 		align-items: center;
@@ -2258,8 +2361,13 @@ const statusClass = computed(() => {
 			color: #fff;
 		}
 
-		&:active {
-			opacity: 0.85;
-		}
+			&:active {
+				opacity: 0.85;
+			}
+
+			&.disabled {
+				background: #b8c8da;
+				box-shadow: none;
+			}
 	}
 </style>

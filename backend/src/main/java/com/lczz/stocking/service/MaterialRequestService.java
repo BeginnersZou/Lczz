@@ -29,6 +29,7 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -42,15 +43,17 @@ public class MaterialRequestService {
     private final WorkOrderMapper orderMapper;
     private final WorkOrderStatusHistoryMapper historyMapper;
     private final ProductMapper productMapper;
+    private final JdbcTemplate jdbc;
 
     public MaterialRequestService(MaterialRequestMapper requestMapper, MaterialRequestItemMapper itemMapper,
                                   WorkOrderMapper orderMapper, ProductMapper productMapper,
-                                  WorkOrderStatusHistoryMapper historyMapper) {
+                                  WorkOrderStatusHistoryMapper historyMapper, JdbcTemplate jdbc) {
         this.requestMapper = requestMapper;
         this.itemMapper = itemMapper;
         this.orderMapper = orderMapper;
         this.productMapper = productMapper;
         this.historyMapper = historyMapper;
+        this.jdbc = jdbc;
     }
 
     public RequestPage list(int page, int pageSize, String keyword, String status) {
@@ -116,28 +119,18 @@ public class MaterialRequestService {
         if (!Set.of("PENDING_VISIT", "IN_PROGRESS").contains(order.getOrderStatus())) {
             throw new BusinessException(409, "ORDER_NOT_ACCEPTING_MATERIALS", "当前订单状态不能提交耗材申请");
         }
-        LinkedHashMap<Long, BigDecimal> requested = normalizeItems(command.items());
+        LinkedHashMap<Long, ResolvedSku> requested = resolveRequestedSkus(command.items());
         MaterialRequestEntity existing = findActive(orderId);
         if (existing != null) {
             transitionToInProgress(order, actor.userId());
             return existingOrConflict(existing, actor.userId(), requested);
         }
 
-        Map<Long, ProductEntity> productMap = new LinkedHashMap<>();
-        requested.keySet().stream().sorted().forEach(productId -> {
-            ProductEntity product = productMapper.selectForUpdate(productId);
-            if (product != null && Boolean.TRUE.equals(product.getEnabled())) productMap.put(productId, product);
-        });
-        if (productMap.size() != requested.size()) {
-            throw new BusinessException("INVALID_MATERIAL_PRODUCT", "所选耗材不存在或已下架");
-        }
-        requested.forEach((productId, quantity) -> {
-            ProductEntity product = productMap.get(productId);
-            BigDecimal stock = product.getDisplayStock() == null ? BigDecimal.ZERO : product.getDisplayStock();
-            if (quantity.compareTo(stock) > 0) {
-                throw new BusinessException(409, "INSUFFICIENT_PRODUCT_STOCK",
-                        "耗材“" + product.getProductName() + "”库存仅剩" + stock.stripTrailingZeros().toPlainString()
-                                + product.getUnit() + "，请调整申请数量");
+        requested.values().forEach(row -> {
+            if (row.quantity().compareTo(row.stock()) > 0) {
+                throw new BusinessException(409, "INSUFFICIENT_SKU_STOCK",
+                        "耗材“" + row.productName() + "（" + fallbackSpec(row.specLabel()) + "）”库存仅剩"
+                                + row.stock().stripTrailingZeros().toPlainString() + row.unit() + "，请调整申请数量");
             }
         });
         MaterialRequestEntity request = new MaterialRequestEntity();
@@ -155,8 +148,8 @@ public class MaterialRequestService {
             if (concurrent != null) return existingOrConflict(concurrent, actor.userId(), requested);
             throw exception;
         }
-        requested.forEach((productId, quantity) -> reserveStock(productMap.get(productId), quantity, actor.userId()));
-        requested.forEach((productId, quantity) -> insertSnapshot(request.getId(), productMap.get(productId), quantity));
+        requested.values().forEach(row -> reserveStock(row, actor.userId()));
+        requested.values().forEach(row -> insertSnapshot(request.getId(), row));
         transitionToInProgress(order, actor.userId());
         return toViews(List.of(requestMapper.selectById(request.getId()))).getFirst();
     }
@@ -179,7 +172,7 @@ public class MaterialRequestService {
 
     @Transactional
     public RequestView prepare(AuthenticatedUser actor, long requestId, List<PreparedItemCommand> commands) {
-        MaterialRequestEntity request = requireProcessable(requestId);
+        MaterialRequestEntity request = requireProcessableForUpdate(requestId);
         List<MaterialRequestItemEntity> items = items(requestId);
         Map<Long, Boolean> checked = new HashMap<>();
         for (PreparedItemCommand command : commands) {
@@ -206,7 +199,7 @@ public class MaterialRequestService {
 
     @Transactional
     public RequestView finish(AuthenticatedUser actor, long requestId) {
-        MaterialRequestEntity request = requireRequest(requestId);
+        MaterialRequestEntity request = requireRequestForUpdate(requestId);
         if ("DONE".equals(request.getRequestStatus())) return detail(actor, requestId);
         if (!Set.of("PENDING", "PREPARING").contains(request.getRequestStatus())) {
             throw new BusinessException(409, "MATERIAL_REQUEST_NOT_PROCESSABLE", "该耗材申请不能完成备货");
@@ -225,7 +218,7 @@ public class MaterialRequestService {
 
     @Transactional
     public RequestView voidRequest(AuthenticatedUser actor, long requestId, String reason) {
-        MaterialRequestEntity request = requireRequest(requestId);
+        MaterialRequestEntity request = requireRequestForUpdate(requestId);
         if ("VOIDED".equals(request.getRequestStatus())) return detail(actor, requestId);
         if ("DONE".equals(request.getRequestStatus())) {
             throw new BusinessException(409, "MATERIAL_REQUEST_ALREADY_DONE", "已完成的备货申请不能作废");
@@ -255,66 +248,124 @@ public class MaterialRequestService {
     }
 
     private RequestView existingOrConflict(MaterialRequestEntity existing, long installerId,
-                                           LinkedHashMap<Long, BigDecimal> requested) {
+                                           LinkedHashMap<Long, ResolvedSku> requested) {
         if (!existing.getInstallerUserId().equals(installerId) || !sameItems(existing.getId(), requested)) {
             throw new BusinessException(409, "ACTIVE_MATERIAL_REQUEST_EXISTS", "该订单已有未作废的耗材申请");
         }
         return toViews(List.of(existing)).getFirst();
     }
 
-    private boolean sameItems(long requestId, Map<Long, BigDecimal> requested) {
+    private boolean sameItems(long requestId, Map<Long, ResolvedSku> requested) {
         List<MaterialRequestItemEntity> existing = items(requestId);
         if (existing.size() != requested.size()) return false;
-        return existing.stream().allMatch(item -> requested.containsKey(item.getProductId())
-                && requested.get(item.getProductId()).compareTo(item.getRequestedQuantity()) == 0);
+        return existing.stream().allMatch(item -> requested.containsKey(item.getSkuId())
+                && requested.get(item.getSkuId()).quantity().compareTo(item.getRequestedQuantity()) == 0);
     }
 
-    private LinkedHashMap<Long, BigDecimal> normalizeItems(List<ItemCommand> items) {
+    private LinkedHashMap<Long, ResolvedSku> resolveRequestedSkus(List<ItemCommand> items) {
         if (items == null || items.isEmpty()) throw new BusinessException("MATERIAL_ITEMS_REQUIRED", "请选择所需耗材");
-        LinkedHashMap<Long, BigDecimal> result = new LinkedHashMap<>();
+        List<RequestedSku> requestedSkus = new java.util.ArrayList<>();
         for (ItemCommand item : items) {
-            if (result.put(item.productId(), item.quantity()) != null) {
-                throw new BusinessException("DUPLICATE_MATERIAL_PRODUCT", "同一耗材不能重复提交");
+            if (item.quantity() == null || item.quantity().signum() <= 0
+                    || item.quantity().stripTrailingZeros().scale() > 0) {
+                throw new BusinessException("INVALID_MATERIAL_QUANTITY", "耗材数量必须为正整数");
+            }
+            List<Long> ids;
+            if (item.skuId() != null) {
+                ids = List.of(item.skuId());
+            } else {
+                ids = jdbc.query("""
+                        SELECT id FROM product_sku WHERE product_id=? AND enabled=TRUE AND deleted=FALSE
+                          AND default_sku=TRUE
+                          AND (SELECT COUNT(*) FROM product_sku x
+                               WHERE x.product_id=? AND x.enabled=TRUE AND x.deleted=FALSE)=1
+                        ORDER BY sort_order,id
+                        """, (rs, row) -> rs.getLong(1), item.productId(), item.productId());
+                if (ids.size() != 1) {
+                    throw new BusinessException("SKU_REQUIRED", "多规格耗材必须选择具体规格");
+                }
+            }
+            requestedSkus.add(new RequestedSku(ids.getFirst(), item.productId(), item.quantity()));
+        }
+        requestedSkus.sort(java.util.Comparator.comparing(RequestedSku::skuId));
+        List<ResolvedSku> resolved = requestedSkus.stream()
+                .map(item -> lockSku(item.skuId(), item.productId(), item.quantity()))
+                .toList();
+        LinkedHashMap<Long, ResolvedSku> result = new LinkedHashMap<>();
+        for (ResolvedSku row : resolved) {
+            if (result.put(row.skuId(), row) != null) {
+                throw new BusinessException("DUPLICATE_MATERIAL_SKU", "同一规格不能重复提交");
             }
         }
         return result;
     }
 
-    private void insertSnapshot(long requestId, ProductEntity product, BigDecimal quantity) {
+    private ResolvedSku lockSku(long skuId, long expectedProductId, BigDecimal quantity) {
+        List<ResolvedSku> rows = jdbc.query("""
+                SELECT s.id sku_id,s.product_id,s.sku_code,s.spec_label,s.unit,s.stock,
+                       p.product_code,p.product_name,p.display_price
+                FROM product_sku s JOIN product p ON p.id=s.product_id
+                WHERE s.id=? AND s.enabled=TRUE AND s.deleted=FALSE AND p.enabled=TRUE AND p.deleted=FALSE
+                FOR UPDATE
+                """, (rs, row) -> new ResolvedSku(rs.getLong("sku_id"), rs.getLong("product_id"),
+                rs.getString("product_code"), rs.getString("product_name"), rs.getString("sku_code"),
+                rs.getString("spec_label"), rs.getString("unit"), rs.getBigDecimal("stock"),
+                rs.getBigDecimal("display_price"), quantity), skuId);
+        if (rows.isEmpty() || rows.getFirst().productId() != expectedProductId) {
+            throw new BusinessException("INVALID_MATERIAL_SKU", "所选耗材规格不存在、已售罄或已下架");
+        }
+        return rows.getFirst();
+    }
+
+    private void insertSnapshot(long requestId, ResolvedSku row) {
         MaterialRequestItemEntity item = new MaterialRequestItemEntity();
         item.setRequestId(requestId);
-        item.setProductId(product.getId());
-        item.setProductCodeSnapshot(product.getProductCode());
-        item.setProductNameSnapshot(product.getProductName());
-        item.setModelSpecSnapshot(product.getModelSpec());
-        item.setUnitSnapshot(product.getUnit());
-        item.setDisplayPriceSnapshot(product.getDisplayPrice());
-        item.setRequestedQuantity(quantity);
+        item.setProductId(row.productId());
+        item.setSkuId(row.skuId());
+        item.setProductCodeSnapshot(row.productCode());
+        item.setSkuCodeSnapshot(row.skuCode());
+        item.setProductNameSnapshot(row.productName());
+        item.setModelSpecSnapshot(row.specLabel());
+        item.setSkuSpecSnapshot(row.specLabel());
+        item.setUnitSnapshot(row.unit());
+        item.setDisplayPriceSnapshot(row.displayPrice());
+        item.setRequestedQuantity(row.quantity());
         item.setPreparedQuantity(BigDecimal.ZERO);
         item.setItemStatus("PENDING");
         item.setVersion(0);
         itemMapper.insert(item);
     }
 
-    private void reserveStock(ProductEntity product, BigDecimal quantity, long actorId) {
-        BigDecimal stock = product.getDisplayStock() == null ? BigDecimal.ZERO : product.getDisplayStock();
-        product.setDisplayStock(stock.subtract(quantity));
-        product.setUpdatedBy(actorId);
-        product.setVersion((product.getVersion() == null ? 0 : product.getVersion()) + 1);
-        productMapper.updateById(product);
+    private void reserveStock(ResolvedSku row, long actorId) {
+        int changed = jdbc.update("UPDATE product_sku SET stock=stock-?,version=version+1 WHERE id=? AND stock>=?",
+                row.quantity(), row.skuId(), row.quantity());
+        if (changed != 1) throw new BusinessException(409, "INSUFFICIENT_SKU_STOCK", "所选规格库存不足");
+        syncProductStock(row.productId(), actorId);
     }
 
     private void releaseReservedStock(List<MaterialRequestItemEntity> requestItems, long actorId) {
-        requestItems.stream().sorted(java.util.Comparator.comparing(MaterialRequestItemEntity::getProductId))
+        requestItems.stream().sorted(java.util.Comparator.comparing(item ->
+                        item.getSkuId() == null ? Long.MAX_VALUE : item.getSkuId()))
                 .forEach(item -> {
-                    ProductEntity product = productMapper.selectAnyForUpdate(item.getProductId());
-                    if (product == null) return;
-                    BigDecimal stock = product.getDisplayStock() == null ? BigDecimal.ZERO : product.getDisplayStock();
-                    product.setDisplayStock(stock.add(item.getRequestedQuantity()));
-                    product.setUpdatedBy(actorId);
-                    product.setVersion((product.getVersion() == null ? 0 : product.getVersion()) + 1);
-                    productMapper.updateById(product);
+                    if (item.getSkuId() == null) return;
+                    jdbc.query("SELECT id FROM product_sku WHERE id=? FOR UPDATE", rs -> {}, item.getSkuId());
+                    jdbc.update("UPDATE product_sku SET stock=stock+?,version=version+1 WHERE id=?",
+                            item.getRequestedQuantity(), item.getSkuId());
+                    syncProductStock(item.getProductId(), actorId);
                 });
+    }
+
+    private void syncProductStock(long productId, long actorId) {
+        jdbc.update("""
+                UPDATE product SET display_stock=(SELECT CASE WHEN COUNT(DISTINCT unit)=1
+                    THEN COALESCE(SUM(stock),0) ELSE NULL END FROM product_sku
+                    WHERE product_id=? AND enabled=TRUE AND deleted=FALSE),updated_by=?
+                WHERE id=?
+                """, productId, actorId, productId);
+    }
+
+    private static String fallbackSpec(String value) {
+        return value == null || value.isBlank() ? "通用规格" : value;
     }
 
     private WorkOrderEntity requireAccessibleOrder(AuthenticatedUser actor, long orderId) {
@@ -335,8 +386,22 @@ public class MaterialRequestService {
         return request;
     }
 
+    private MaterialRequestEntity requireRequestForUpdate(long id) {
+        MaterialRequestEntity request = requestMapper.selectForUpdate(id);
+        if (request == null) throw new BusinessException(404, "MATERIAL_REQUEST_NOT_FOUND", "耗材申请不存在");
+        return request;
+    }
+
     private MaterialRequestEntity requireProcessable(long id) {
         MaterialRequestEntity request = requireRequest(id);
+        if (!Set.of("PENDING", "PREPARING").contains(request.getRequestStatus())) {
+            throw new BusinessException(409, "MATERIAL_REQUEST_NOT_PROCESSABLE", "该耗材申请不能继续备货");
+        }
+        return request;
+    }
+
+    private MaterialRequestEntity requireProcessableForUpdate(long id) {
+        MaterialRequestEntity request = requireRequestForUpdate(id);
         if (!Set.of("PENDING", "PREPARING").contains(request.getRequestStatus())) {
             throw new BusinessException(409, "MATERIAL_REQUEST_NOT_PROCESSABLE", "该耗材申请不能继续备货");
         }
@@ -378,10 +443,15 @@ public class MaterialRequestService {
     private RequestView toView(MaterialRequestEntity request, WorkOrderEntity order,
                                List<MaterialRequestItemEntity> items, Map<Long, ProductEntity> products) {
         List<MaterialView> materials = items.stream().map(item -> {
-            ProductEntity product = products.get(item.getProductId());
-            BigDecimal stock = product == null ? null : product.getDisplayStock();
+            ProductEntity legacyProduct = products.get(item.getProductId());
+            BigDecimal stock = item.getSkuId() == null
+                    ? (legacyProduct == null ? null : legacyProduct.getDisplayStock())
+                    : jdbc.query("SELECT stock FROM product_sku WHERE id=?",
+                    rs -> rs.next() ? rs.getBigDecimal(1) : null, item.getSkuId());
             return new MaterialView(item.getId(), item.getProductId(), item.getProductNameSnapshot(),
-                    item.getModelSpecSnapshot(), item.getRequestedQuantity(), item.getUnitSnapshot(),
+                    item.getSkuId(), firstNullable(item.getSkuCodeSnapshot(), item.getProductCodeSnapshot()),
+                    fallbackSpec(firstNullable(item.getSkuSpecSnapshot(), item.getModelSpecSnapshot())),
+                    item.getRequestedQuantity(), item.getUnitSnapshot(),
                     "PREPARED".equals(item.getItemStatus()), stock, item.getPreparedQuantity(),
                     item.getDisplayPriceSnapshot(), item.getItemStatus());
         }).toList();
@@ -410,16 +480,25 @@ public class MaterialRequestService {
     }
 
     private static String blankToNull(String value) { return value == null || value.isBlank() ? null : value.trim(); }
+    private static String firstNullable(String... values) {
+        for (String value : values) if (value != null && !value.isBlank()) return value;
+        return null;
+    }
     private static String firstNonBlank(String... values) {
         for (String value : values) if (value != null && !value.isBlank()) return value;
         return "安装订单";
     }
 
-    public record ItemCommand(long productId, BigDecimal quantity) { }
+    public record ItemCommand(long productId, Long skuId, BigDecimal quantity) { }
     public record SubmitCommand(List<ItemCommand> items, String remark) { }
     public record PreparedItemCommand(long id, boolean checked) { }
     public record RequestPage(List<RequestView> list, long total, int page, int pageSize) { }
-    public record MaterialView(long id, long productId, String name, String spec, BigDecimal count, String unit,
+    private record ResolvedSku(long skuId, long productId, String productCode, String productName,
+                               String skuCode, String specLabel, String unit, BigDecimal stock,
+                               BigDecimal displayPrice, BigDecimal quantity) { }
+    private record RequestedSku(long skuId, long productId, BigDecimal quantity) { }
+    public record MaterialView(long id, long productId, String name, Long skuId, String skuCode,
+                               String spec, BigDecimal count, String unit,
                                boolean checked, BigDecimal stock, BigDecimal preparedQuantity,
                                BigDecimal displayPrice, String itemStatus) { }
     public record RequestView(long id, String requestNo, long orderId, String orderNo, String productName,

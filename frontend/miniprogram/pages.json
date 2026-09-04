@@ -109,6 +109,33 @@
 					}
 				},
 				{
+					"path": "material-cart/material-cart",
+					"style": {
+						"navigationBarTitleText": "耗材购物车",
+						"navigationBarTextStyle": "black",
+						"backgroundColorTop": "#f4f7fb",
+						"backgroundColorBottom": "#f4f7fb"
+					}
+				},
+				{
+					"path": "self-order-list/self-order-list",
+					"style": {
+						"navigationBarTitleText": "我的取货订单",
+						"navigationBarTextStyle": "black",
+						"backgroundColorTop": "#f4f7fb",
+						"backgroundColorBottom": "#f4f7fb"
+					}
+				},
+				{
+					"path": "self-order-detail/self-order-detail",
+					"style": {
+						"navigationBarTitleText": "取货订单详情",
+						"navigationBarTextStyle": "black",
+						"backgroundColorTop": "#f4f7fb",
+						"backgroundColorBottom": "#f4f7fb"
+					}
+				},
+				{
 					"path": "settings/settings",
 					"style": {
 						"navigationBarTitleText": "设置",
