@@ -7,7 +7,7 @@ function normalizeOrder(item = {}) {
   return {
     ...item,
     taskType: item.taskType || item.productName || '',
-    status: item.status || item.statusLabel || item.statusCode || '',
+    status: item.statusCode || item.status || item.statusLabel || '',
     assignMaster: masters.map(master => master.masterName).filter(Boolean).join('、'),
     createTime: item.createTime || item.createdAt || '',
     visitTime: item.visitTime || item.orderStartTime || '',
@@ -219,7 +219,8 @@ export async function exportOrdersApi(params) {
     { label: '客户手机号', value: row => row.customerPhone },
     { label: '地址', value: row => row.address },
     { label: '安装师傅', value: row => row.assignMaster },
-    { label: '状态', value: row => row.status },
+    { label: '状态', value: row => ({ PENDING_VISIT: '待上门', IN_PROGRESS: '处理中', PENDING_REVIEW: '待评价', REVIEWED: '已评价', CANCELLED: '已作废' })[row.status] || row.status },
+    { label: '客户确认时间', value: row => row.customerConfirmedAt },
     { label: '创建时间', value: row => row.createTime }
   ], rows)
 }

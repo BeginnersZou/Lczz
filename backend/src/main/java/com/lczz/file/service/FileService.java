@@ -288,6 +288,7 @@ public class FileService {
     }
 
     private boolean canAccessBusiness(AuthenticatedUser actor, String type, long id, boolean write) {
+        if ("PROGRESS".equals(type) && write) return actor != null && canAccessProgress(actor, id, true);
         if (actor != null && actor.hasRole(RoleCode.ADMIN)) return businessExists(type, id);
         return switch (type) {
             case "PRODUCT" -> !write && count(
@@ -320,6 +321,23 @@ public class FileService {
     }
 
     private boolean canAccessProgress(AuthenticatedUser actor, long progressId, boolean write) {
+        if (write) {
+            // Serialize attachment changes with customer confirmation and new progress submissions.
+            List<Map<String, Object>> orders = jdbcTemplate.queryForList(
+                    "SELECT o.order_status, o.installer_user_id, p.installer_user_id AS progress_installer_id "
+                            + "FROM work_order o JOIN work_order_progress p ON p.order_id=o.id "
+                            + "WHERE p.id=? AND o.deleted=0 FOR UPDATE", progressId);
+            if (orders.isEmpty()) return false;
+            Map<String, Object> order = orders.getFirst();
+            boolean assignedAuthor = actor.hasRole(RoleCode.INSTALLER)
+                    && ((Number) order.get("installer_user_id")).longValue() == actor.userId()
+                    && ((Number) order.get("progress_installer_id")).longValue() == actor.userId();
+            if (!actor.hasRole(RoleCode.ADMIN) && !assignedAuthor) return false;
+            if (!Set.of("PENDING_VISIT", "IN_PROGRESS").contains(order.get("order_status"))) {
+                throw new BusinessException(409, "PROGRESS_SEALED", "该订单施工进度已封存，不能修改附件");
+            }
+            return true;
+        }
         if (actor.hasRole(RoleCode.INSTALLER)) {
             return count("SELECT COUNT(*) FROM work_order_progress p JOIN work_order o ON o.id=p.order_id "
                     + "WHERE p.id=? AND p.installer_user_id=? AND o.installer_user_id=? AND o.deleted=0",

@@ -47,7 +47,7 @@
 			<text class="chapter-title">四、订单处理规则</text>
 			<text class="chapter-text">1. 订单提交后，我们将在合理时间内安排师傅接单并与您确认上门时间；</text>
 			<text class="chapter-text">2. 订单状态包括待上门、备货中、处理中、已完成、已作废等，您可在订单列表实时查看；</text>
-			<text class="chapter-text">3. 服务完成后，师傅将提交完工信息及安装图片，您可进行查看与确认；</text>
+			<text class="chapter-text">3. 师傅提交施工进度及安装图片，您可查看并确认订单完成；确认后施工记录将封存，您可继续评价本次服务；</text>
 			<text class="chapter-text">4. 因故需取消订单的，请提前通过小程序申请作废。</text>
 		</view>
 

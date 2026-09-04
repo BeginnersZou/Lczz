@@ -146,7 +146,9 @@ class OrderIntegrationTests {
 
         JsonNode pendingReview = createOrder("13800138000", installerId);
         updateStatus(pendingReview.path("id").asLong(), "IN_PROGRESS");
-        updateStatus(pendingReview.path("id").asLong(), "PENDING_REVIEW");
+        mockMvc.perform(post("/api/orders/" + pendingReview.path("id").asLong() + "/confirm-completion")
+                        .header("Authorization", "Bearer " + token(customerId, RoleCode.CUSTOMER)))
+                .andExpect(status().isOk());
 
         JsonNode cancelled = createOrder("13800138000", installerId);
         updateStatus(cancelled.path("id").asLong(), "CANCELLED");

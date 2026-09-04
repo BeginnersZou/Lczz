@@ -130,35 +130,17 @@ class WorkProgressIntegrationTests {
     }
 
     @Test
-    void completionRequiresImageTransitionsOnceAndReturnsSignedImages() throws Exception {
-        mockMvc.perform(post("/api/orders/" + orderId + "/completion")
-                        .header("Authorization", "Bearer " + installerToken).contentType("application/json")
-                        .content("{\"description\":\"安装完成并试机正常\",\"fileIds\":[]}"))
-                .andExpect(status().isBadRequest());
-        long fileId = uploadImage();
-        String body = "{\"description\":\"安装完成并试机正常\",\"fileIds\":[" + fileId + "]}";
-        jdbcTemplate.update("INSERT INTO material_request(request_no, order_id, installer_user_id, request_status) "
-                + "VALUES (?, ?, ?, 'PENDING')", "MR-PROGRESS-001", orderId, installerId);
-        mockMvc.perform(post("/api/orders/" + orderId + "/completion")
-                        .header("Authorization", "Bearer " + installerToken).contentType("application/json").content(body))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.error").value("MATERIALS_NOT_PREPARED"));
-        jdbcTemplate.update("UPDATE material_request SET request_status='DONE' WHERE order_id=?", orderId);
-        mockMvc.perform(post("/api/orders/" + orderId + "/completion")
-                        .header("Authorization", "Bearer " + installerToken).contentType("application/json").content(body))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.data.type").value("COMPLETION"))
-                .andExpect(jsonPath("$.data.images[0].url").isNotEmpty());
+    void legacyInstallerCompletionEndpointIsRetiredWithoutChangingOrder() throws Exception {
+        for (String prefix : new String[] {"/api", "/api/v1"}) {
+            mockMvc.perform(post(prefix + "/orders/" + orderId + "/completion")
+                            .header("Authorization", "Bearer " + installerToken)
+                            .contentType("application/json").content("{}"))
+                    .andExpect(status().isGone())
+                    .andExpect(jsonPath("$.error").value("COMPLETION_ENDPOINT_RETIRED"));
+        }
         assertThat(jdbcTemplate.queryForObject("SELECT order_status FROM work_order WHERE id=?", String.class, orderId))
-                .isEqualTo("PENDING_REVIEW");
-        mockMvc.perform(post("/api/orders/" + orderId + "/completion")
-                        .header("Authorization", "Bearer " + installerToken).contentType("application/json").content(body))
-                .andExpect(status().isConflict()).andExpect(jsonPath("$.error").value("ORDER_NOT_COMPLETABLE"));
-        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM work_order_progress WHERE order_id=? "
-                + "AND progress_type='COMPLETION'", Long.class, orderId)).isEqualTo(1L);
-
-        mockMvc.perform(get("/api/orders/" + orderId + "/progress")
-                        .header("Authorization", "Bearer " + customerToken))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.data[0].images[0].url").isNotEmpty());
+                .isEqualTo("PENDING_VISIT");
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM work_order_progress", Long.class)).isZero();
     }
 
     @Test

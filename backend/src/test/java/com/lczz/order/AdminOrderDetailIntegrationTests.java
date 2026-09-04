@@ -115,8 +115,9 @@ class AdminOrderDetailIntegrationTests {
                     + "VALUES (?, ?, 'P-98', '铜管快照', '6mm', '米', 2.5)", requestId, productId);
         }
         long completionImage = upload(installerToken, "completion.png");
-        postData("/api/orders/" + orderId + "/completion", installerToken,
+        postData("/api/orders/" + orderId + "/progress", installerToken,
                 "{\"description\":\"施工结束\",\"fileIds\":[" + completionImage + "]}");
+        postData("/api/orders/" + orderId + "/confirm-completion", customerToken, "{}");
         long reviewImage = upload(customerToken, "review.png");
         postData("/api/orders/evaluation", customerToken,
                 "{\"orderId\":" + orderId + ",\"score\":5,\"liked\":true,\"content\":\"安装细致\","
@@ -132,7 +133,8 @@ class AdminOrderDetailIntegrationTests {
         assertThat(detail.path("progress")).hasSize(3);
         assertThat(detail.at("/progress/0/description").asText()).isEqualTo("第一天铺设管线");
         assertThat(detail.at("/progress/1/description").asText()).isEqualTo("第二天调试设备");
-        assertThat(detail.at("/progress/2/type").asText()).isEqualTo("COMPLETION");
+        assertThat(detail.at("/progress/2/type").asText()).isEqualTo("PROGRESS");
+        assertThat(detail.at("/order/customerConfirmedAt").asText()).isNotBlank();
         assertThat(detail.at("/progress/0/images/0/id").asLong()).isEqualTo(progressImageId);
         JsonNode miniProgress = getData("/api/orders/" + orderId + "/progress", customerToken);
         for (int index = 0; index < miniProgress.size(); index++) {

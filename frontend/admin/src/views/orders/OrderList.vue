@@ -31,6 +31,7 @@
           <el-select v-model="searchStatus" placeholder="全部状态" clearable class="status-select" @change="handleSearch">
             <el-option label="待上门" value="PENDING_VISIT" />
             <el-option label="处理中" value="IN_PROGRESS" />
+            <el-option label="已完成" value="COMPLETED" />
             <el-option label="待评价" value="PENDING_REVIEW" />
             <el-option label="已评价" value="REVIEWED" />
             <el-option label="已作废" value="CANCELLED" />
@@ -96,13 +97,13 @@
             <el-tag :type="getStatusType(scope.row.status)" size="small">{{ getStatusText(scope.row.status) }}</el-tag>
           </template>
         </el-table-column>
-        <!-- 创建时间 -->
-        <el-table-column prop="createTime" label="创建时间" align="left" width="180">
+        <el-table-column label="创建 / 客户确认时间" align="left" width="200">
           <template #default="scope">
-            <span class="datetime-cell">{{ formatDateTime(scope.row.createTime) }}</span>
+            <div class="datetime-cell">创建：{{ formatDateTime(scope.row.createTime) }}</div>
+            <div class="datetime-cell">确认：{{ formatDateTime(scope.row.customerConfirmedAt) }}</div>
           </template>
         </el-table-column>
-        <!-- 操作：修改+删除 -->
+        <!-- 操作：查看、修改与作废 -->
         <el-table-column label="操作" align="center" width="330" fixed="right">
           <template #default="scope">
             <div class="table-actions">

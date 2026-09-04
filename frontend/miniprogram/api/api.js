@@ -64,6 +64,7 @@ const normalizeOrder = (item = {}) => {
 	return {
 		...item,
 		visitTime: formatDateTime(item.visitTime || item.orderStartTime || ''),
+		customerConfirmedAt: item.customerConfirmedAt ? formatDateTime(item.customerConfirmedAt) : '',
 		quantity: item.quantity == null ? null : Number(item.quantity),
 		status: item.status || item.statusLabel || item.statusCode || '',
 		name: item.name || item.customerName || '',
@@ -127,7 +128,7 @@ export const orderApi = {
 		if (res.code === 200) res.data = normalizeOrder(res.data)
 		return res
 	},
-	// 编辑订单（更新订单状态、完工信息等）
+	// 管理员编辑订单基础信息
 	update: (id, data) => http.put(`/orders/${id}`, data),
 	// 作废订单
 	cancel: (id) => http.post(`/orders/${id}/cancel`),
@@ -141,7 +142,11 @@ export const orderApi = {
 		return res
 	},
 	submitProgress: (id, data) => http.post(`/orders/${id}/progress`, data),
-	complete: (id, data) => http.post(`/orders/${id}/completion`, data),
+	confirmCompletion: async (id) => {
+		const res = await http.post(`/orders/${id}/confirm-completion`)
+		if (res.code === 200 && res.data?.customerConfirmedAt) res.data.customerConfirmedAt = formatDateTime(res.data.customerConfirmedAt)
+		return res
+	},
 	// 上传订单附件 / 安装图片（返回 { url }）
 	uploadMedia: (filePath, formData = {}, options = {}) => {
 		return http.upload({
