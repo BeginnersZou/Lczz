@@ -154,6 +154,36 @@ public class FileService {
                 .toList();
     }
 
+    /** Internal creation path only; generic relation endpoints retain their existing authorization. */
+    @Transactional
+    public void bindDealerAppointmentFiles(AuthenticatedUser actor, long orderId, List<Long> fileIds) {
+        if (!actor.hasRole(RoleCode.DEALER) || count("SELECT COUNT(*) FROM work_order WHERE id=? "
+                + "AND dealer_user_id=? AND order_source='DEALER_APPOINTMENT' "
+                + "AND order_status='PENDING_ASSIGNMENT' AND deleted=0", orderId, actor.userId()) != 1) {
+            throw new BusinessException(403, "FILE_RELATION_FORBIDDEN", "无权关联预约附件");
+        }
+        if (fileIds.size() > USAGE_LIMITS.get("ATTACHMENT")) {
+            throw new BusinessException("FILE_COUNT_LIMIT", "预约附件最多 9 个");
+        }
+        for (Long fileId : fileIds.stream().sorted().toList()) {
+            FileAssetRecord file = fileMapper.selectOne(new LambdaQueryWrapper<FileAssetRecord>()
+                    .eq(FileAssetRecord::getId, fileId).last("FOR UPDATE"));
+            if (file == null || Boolean.TRUE.equals(file.getDeleted())) {
+                throw new BusinessException(404, "FILE_NOT_FOUND", "附件不存在或已删除");
+            }
+            if (!Objects.equals(file.getUploadedBy(), actor.userId())) {
+                throw new BusinessException(403, "FILE_BIND_FORBIDDEN", "只能提交自己上传的附件");
+            }
+            if (relationMapper.selectCount(new LambdaQueryWrapper<FileRelationRecord>()
+                    .eq(FileRelationRecord::getFileId, fileId)) > 0) {
+                throw new BusinessException(409, "FILE_ALREADY_BOUND", "附件已用于其他业务，请重新上传");
+            }
+        }
+        for (int index = 0; index < fileIds.size(); index++) {
+            addRelation(actor, fileIds.get(index), new RelationCommand("ORDER", orderId, "ATTACHMENT", index));
+        }
+    }
+
     @Transactional
     public boolean unbind(AuthenticatedUser actor, long fileId, RelationCommand relation) {
         requireFile(fileId);
@@ -187,6 +217,8 @@ public class FileService {
 
     @Transactional
     public boolean deleteUnboundOwned(AuthenticatedUser actor, long fileId) {
+        fileMapper.selectOne(new LambdaQueryWrapper<FileAssetRecord>()
+                .eq(FileAssetRecord::getId, fileId).last("FOR UPDATE"));
         FileAssetRecord file = requireFile(fileId);
         if (!actor.hasRole(RoleCode.ADMIN) && !Objects.equals(file.getUploadedBy(), actor.userId())) {
             throw new BusinessException(403, "FILE_DELETE_FORBIDDEN", "只能删除自己尚未提交的文件");

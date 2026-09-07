@@ -3,11 +3,15 @@ CREATE TABLE work_order (
   order_no VARCHAR(32) UNIQUE NOT NULL,
   task_type VARCHAR(64) NOT NULL,
   order_status VARCHAR(32) DEFAULT 'PENDING_VISIT' NOT NULL,
+  order_source VARCHAR(32) DEFAULT 'ADMIN' NOT NULL,
+  dealer_user_id BIGINT,
+  dealer_request_id VARCHAR(64),
+  dealer_request_hash VARCHAR(64),
   description VARCHAR(1000),
   customer_user_id BIGINT,
   customer_name VARCHAR(64) NOT NULL,
   customer_phone VARCHAR(20) NOT NULL,
-  installer_user_id BIGINT NOT NULL,
+  installer_user_id BIGINT,
   province_code VARCHAR(64), province_name VARCHAR(64),
   city_code VARCHAR(64), city_name VARCHAR(64),
   district_code VARCHAR(64), district_name VARCHAR(64),
@@ -21,7 +25,10 @@ CREATE TABLE work_order (
   created_by BIGINT NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
   updated_by BIGINT,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+  UNIQUE(dealer_user_id, dealer_request_id),
+  CHECK (order_status IN ('PENDING_ASSIGNMENT', 'PENDING_VISIT', 'IN_PROGRESS', 'PENDING_REVIEW', 'REVIEWED', 'CANCELLED')),
+  CHECK ((order_status IN ('PENDING_ASSIGNMENT', 'CANCELLED') AND order_source = 'DEALER_APPOINTMENT') OR installer_user_id IS NOT NULL)
 );
 
 CREATE TABLE work_order_assignment (

@@ -80,6 +80,13 @@ public class OrderController {
         return ApiResponse.success(orderService.create(actor, body.toCommand()), requestId(request));
     }
 
+    @GetMapping("/task-types")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DEALER')")
+    @Operation(summary = "查询后台与经销商预约共用的订单任务类型")
+    ApiResponse<List<OrderService.TaskTypeView>> taskTypes(HttpServletRequest request) {
+        return ApiResponse.success(orderService.taskTypes(), requestId(request));
+    }
+
     @PutMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "管理员编辑订单；已结束订单不可编辑")
@@ -137,9 +144,9 @@ public class OrderController {
             @NotBlank @Pattern(regexp = "^(?:\\+86)?1[3-9]\\d{9}$") String customerPhone,
             @NotNull @Size(min = 3, max = 3) List<@NotBlank @Size(max = 64) String> addressArea,
             @NotBlank @Size(max = 500) String addressDetail,
-            @NotBlank @Size(max = 40) String orderStartTime,
-            @NotBlank @Size(max = 40) String orderEndTime,
-            @NotNull @Size(min = 1, max = 1) List<@NotNull @Min(1) Long> masterIds,
+            @Size(max = 40) String orderStartTime,
+            @Size(max = 40) String orderEndTime,
+            @Size(max = 1) List<@NotNull @Min(1) Long> masterIds,
             @Size(max = 1000) String adminRemark) {
         OrderCommand toCommand() {
             return new OrderCommand(taskType, description, customerName, customerPhone, addressArea,
