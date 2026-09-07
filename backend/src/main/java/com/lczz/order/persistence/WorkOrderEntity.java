@@ -3,6 +3,8 @@ package com.lczz.order.persistence;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
 import java.time.LocalDateTime;
 
 @TableName("work_order")
@@ -12,7 +14,12 @@ public class WorkOrderEntity {
     private String orderNo;
     private String taskType;
     private String orderStatus;
+    private String orderSource;
+    private Long dealerUserId;
+    private String dealerRequestId;
+    private String dealerRequestHash;
     private String description;
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private Long customerUserId;
     private String customerName;
     private String customerPhone;
@@ -24,7 +31,9 @@ public class WorkOrderEntity {
     private String districtCode;
     private String districtName;
     private String detailedAddress;
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private LocalDateTime requiredStartAt;
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private LocalDateTime expectedEndAt;
     private String adminRemark;
     private Long cancelledBy;
@@ -46,6 +55,14 @@ public class WorkOrderEntity {
     public void setTaskType(String taskType) { this.taskType = taskType; }
     public String getOrderStatus() { return orderStatus; }
     public void setOrderStatus(String orderStatus) { this.orderStatus = orderStatus; }
+    public String getOrderSource() { return orderSource; }
+    public void setOrderSource(String orderSource) { this.orderSource = orderSource; }
+    public Long getDealerUserId() { return dealerUserId; }
+    public void setDealerUserId(Long dealerUserId) { this.dealerUserId = dealerUserId; }
+    public String getDealerRequestId() { return dealerRequestId; }
+    public void setDealerRequestId(String dealerRequestId) { this.dealerRequestId = dealerRequestId; }
+    public String getDealerRequestHash() { return dealerRequestHash; }
+    public void setDealerRequestHash(String dealerRequestHash) { this.dealerRequestHash = dealerRequestHash; }
     public String getDescription() { return description; }
     public void setDescription(String description) { this.description = description; }
     public Long getCustomerUserId() { return customerUserId; }

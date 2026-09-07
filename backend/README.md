@@ -85,7 +85,9 @@ $env:SMS_PICKUP_CONTACT_PHONE="13900000001"
 | PATCH | `/api/v1/orders/{id}/status` | 管理员 | 按状态机修改订单状态 |
 | POST | `/api/v1/orders/{id}/cancel` | 管理员 | 作废订单并保留业务历史 |
 
-订单按客户手机号绑定：客户已注册时创建即绑定；未注册时，在微信首次绑定手机号后自动认领同手机号的历史订单。一期每个订单必须且只能有一位有效安装师傅。订单附件由统一文件服务上传和授权访问。
+管理员直接新建订单仍须指定一位有效安装师傅和时间。订单按客户手机号绑定：客户已注册时创建即绑定；未注册时，在微信首次绑定手机号后自动认领同手机号的历史订单。订单附件由统一文件服务上传和授权访问。
+
+经销商预约接口 `POST /api/v1/dealer/appointments`（兼容 `/api/dealer/appointments` 及旧的 `/api/v1/mini/dealer/appointments`）创建 `PENDING_ASSIGNMENT` 订单。仅经销商可提交，任务类型从 `GET /api/v1/orders/task-types` 查询。预约按标准化手机号复用用户，未存在的手机号预创建客户；管理员通过既有编辑和派单接口处理。具体字段、幂等、权限与迁移说明见 [经销商预约安装](../docs/DEALER_APPOINTMENT.md)。
 
 ## 耗材申请与订单备货接口
 

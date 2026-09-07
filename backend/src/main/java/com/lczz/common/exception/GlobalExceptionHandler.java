@@ -26,7 +26,7 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler({MethodArgumentNotValidException.class, ConstraintViolationException.class,
-            MethodArgumentTypeMismatchException.class})
+            MethodArgumentTypeMismatchException.class, org.springframework.http.converter.HttpMessageNotReadableException.class})
     ResponseEntity<ApiResponse<Void>> handleValidation(Exception exception, HttpServletRequest request) {
         return ResponseEntity.badRequest().body(ApiResponse.failure(
                 400, "VALIDATION_ERROR", "请求参数不合法", requestId(request)));

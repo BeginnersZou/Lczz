@@ -9,6 +9,7 @@ import com.lczz.auth.persistence.RoleMapper;
 import com.lczz.auth.persistence.UserEntity;
 import com.lczz.auth.persistence.UserMapper;
 import com.lczz.common.exception.BusinessException;
+import com.lczz.common.audit.OperationAuditService;
 import com.lczz.file.service.FileService;
 import com.lczz.file.service.FileService.FileView;
 import com.lczz.file.service.FileService.RelationCommand;
@@ -48,6 +49,7 @@ public class OrderService {
             "AIR_CONDITIONING_CLEAN", "空调清洗",
             "AIR_CONDITIONING_RELOCATE", "空调移机");
     private static final Map<String, String> STATUS_LABELS = Map.of(
+            "PENDING_ASSIGNMENT", "待派单",
             "PENDING_VISIT", "待上门",
             "IN_PROGRESS", "处理中",
             "PENDING_REVIEW", "已完成",
@@ -55,6 +57,7 @@ public class OrderService {
             "CANCELLED", "已作废");
     private static final Set<String> FINISHED_ORDER_STATUSES = Set.of("REVIEWED", "CANCELLED");
     private static final Map<String, Set<String>> ALLOWED_TRANSITIONS = Map.of(
+            "PENDING_ASSIGNMENT", Set.of("CANCELLED"),
             "PENDING_VISIT", Set.of("IN_PROGRESS", "CANCELLED"),
             "IN_PROGRESS", Set.of("CANCELLED"),
             "PENDING_REVIEW", Set.of("CANCELLED"),
@@ -69,11 +72,12 @@ public class OrderService {
     private final FileService fileService;
     private final MaterialRequestService materialRequestService;
     private final SmsNotificationService smsNotificationService;
+    private final OperationAuditService auditService;
 
     public OrderService(WorkOrderMapper orderMapper, WorkOrderAssignmentMapper assignmentMapper,
                         WorkOrderStatusHistoryMapper historyMapper, UserMapper userMapper, RoleMapper roleMapper,
                         FileService fileService, MaterialRequestService materialRequestService,
-                        SmsNotificationService smsNotificationService) {
+                        SmsNotificationService smsNotificationService, OperationAuditService auditService) {
         this.orderMapper = orderMapper;
         this.assignmentMapper = assignmentMapper;
         this.historyMapper = historyMapper;
@@ -82,6 +86,7 @@ public class OrderService {
         this.fileService = fileService;
         this.materialRequestService = materialRequestService;
         this.smsNotificationService = smsNotificationService;
+        this.auditService = auditService;
     }
 
     public OrderPage list(AuthenticatedUser actor, int page, int pageSize, String keyword, String status,
@@ -109,7 +114,7 @@ public class OrderService {
         }
         query.orderByDesc(WorkOrderEntity::getCreatedAt).orderByDesc(WorkOrderEntity::getId);
         Page<WorkOrderEntity> result = orderMapper.selectPage(new Page<>(page, pageSize), query);
-        return new OrderPage(toViews(result.getRecords(), loadAttachments(actor, result.getRecords())),
+        return new OrderPage(toViews(actor, result.getRecords(), loadAttachments(actor, result.getRecords())),
                 result.getTotal(), page, pageSize);
     }
 
@@ -117,7 +122,7 @@ public class OrderService {
         WorkOrderEntity order = requireAccessible(actor, id);
         List<FileView> files = fileService.listBusinessFiles(actor,
                 new RelationCommand("ORDER", id, "ATTACHMENT", null));
-        return toViews(List.of(order), Map.of(id, files)).getFirst();
+        return toViews(actor, List.of(order), Map.of(id, files)).getFirst();
     }
 
     public List<InstallerView> installers(String keyword) {
@@ -153,11 +158,13 @@ public class OrderService {
 
     @Transactional
     public OrderView create(AuthenticatedUser actor, OrderCommand command) {
+        requireAdmin(actor);
         long installerId = requireSingleInstaller(command.masterIds());
         UserEntity customer = findCustomer(command.customerPhone());
         WorkOrderEntity order = new WorkOrderEntity();
         order.setOrderNo(newOrderNo());
         order.setOrderStatus("PENDING_VISIT");
+        order.setOrderSource("ADMIN");
         order.setCreatedBy(actor.userId());
         order.setVersion(0);
         order.setDeleted(false);
@@ -171,14 +178,29 @@ public class OrderService {
 
     @Transactional
     public OrderView update(AuthenticatedUser actor, long id, OrderCommand command) {
+        requireAdmin(actor);
         WorkOrderEntity order = requireOrder(id);
         ensureEditable(order);
-        long installerId = requireSingleInstaller(command.masterIds());
+        boolean pending = "PENDING_ASSIGNMENT".equals(order.getOrderStatus());
+        Long installerId = pending && (command.masterIds() == null || command.masterIds().isEmpty())
+                ? null : requireSingleInstaller(command.masterIds());
         UserEntity customer = findCustomer(command.customerPhone());
-        long previousInstaller = order.getInstallerUserId();
+        Long previousInstaller = order.getInstallerUserId();
+        Long previousCustomer = order.getCustomerUserId();
+        String previousPhone = order.getCustomerPhone();
         apply(order, command, installerId, customer, actor.userId());
+        if (pending && installerId != null) {
+            order.setOrderStatus("PENDING_VISIT");
+            recordStatus(id, "PENDING_ASSIGNMENT", "PENDING_VISIT", "管理员首次派单", actor.userId());
+        }
         orderMapper.updateById(order);
-        if (previousInstaller != installerId) {
+        if (!java.util.Objects.equals(previousCustomer, order.getCustomerUserId())
+                || !java.util.Objects.equals(previousPhone, order.getCustomerPhone())) {
+            auditService.recordSuccess(actor.userId(), "ORDER_CUSTOMER_REBIND", "ORDER", id, null, null,
+                    new CustomerBindingSnapshot(previousCustomer, maskPhone(previousPhone)),
+                    new CustomerBindingSnapshot(order.getCustomerUserId(), maskPhone(order.getCustomerPhone())));
+        }
+        if (installerId != null && !java.util.Objects.equals(previousInstaller, installerId)) {
             long assignmentId = reassign(order.getId(), installerId, actor.userId(), "管理员编辑订单");
             notifyInstallerAssigned(order, assignmentId, installerId);
         }
@@ -187,10 +209,19 @@ public class OrderService {
 
     @Transactional
     public OrderView assign(AuthenticatedUser actor, long id, List<Long> masterIds, String reason) {
+        requireAdmin(actor);
         WorkOrderEntity order = requireOrder(id);
         ensureEditable(order);
         long installerId = requireSingleInstaller(masterIds);
-        if (!order.getInstallerUserId().equals(installerId)) {
+        if ("PENDING_ASSIGNMENT".equals(order.getOrderStatus())) {
+            if (order.getRequiredStartAt() == null || order.getExpectedEndAt() == null
+                    || !order.getExpectedEndAt().isAfter(order.getRequiredStartAt())) {
+                throw new BusinessException("INVALID_ORDER_TIME", "请先编辑预约订单并补齐有效的上门时间范围");
+            }
+            order.setOrderStatus("PENDING_VISIT");
+            recordStatus(id, "PENDING_ASSIGNMENT", "PENDING_VISIT", "管理员首次派单", actor.userId());
+        }
+        if (!java.util.Objects.equals(order.getInstallerUserId(), installerId)) {
             order.setInstallerUserId(installerId);
             order.setUpdatedBy(actor.userId());
             orderMapper.updateById(order);
@@ -203,6 +234,7 @@ public class OrderService {
 
     @Transactional
     public OrderView changeStatus(AuthenticatedUser actor, long id, String requestedStatus, String reason) {
+        requireAdmin(actor);
         WorkOrderEntity order = requireOrder(id);
         String target = normalizeStatus(requestedStatus);
         String current = order.getOrderStatus();
@@ -250,14 +282,16 @@ public class OrderService {
         return order;
     }
 
-    private void apply(WorkOrderEntity order, OrderCommand command, long installerId,
+    private void apply(WorkOrderEntity order, OrderCommand command, Long installerId,
                        UserEntity customer, long actorId) {
         String phone = normalizePhone(command.customerPhone());
         String taskType = normalizeTaskType(command.taskType());
         List<String> area = command.addressArea() == null ? List.of() : command.addressArea();
-        LocalDateTime start = parseDateTime(command.orderStartTime(), "上门开始时间");
-        LocalDateTime end = parseDateTime(command.orderEndTime(), "预计结束时间");
-        if (!end.isAfter(start)) {
+        boolean unscheduled = installerId == null && blankToNull(command.orderStartTime()) == null
+                && blankToNull(command.orderEndTime()) == null;
+        LocalDateTime start = unscheduled ? null : parseDateTime(command.orderStartTime(), "上门开始时间");
+        LocalDateTime end = unscheduled ? null : parseDateTime(command.orderEndTime(), "预计结束时间");
+        if (!unscheduled && !end.isAfter(start)) {
             throw new BusinessException("INVALID_ORDER_TIME", "预计结束时间必须晚于上门开始时间");
         }
         order.setTaskType(taskType);
@@ -327,7 +361,7 @@ public class OrderService {
                 installer == null ? null : installer.getPhone());
     }
 
-    private void recordStatus(long orderId, String from, String to, String reason, long actorId) {
+    void recordStatus(long orderId, String from, String to, String reason, long actorId) {
         WorkOrderStatusHistoryEntity history = new WorkOrderStatusHistoryEntity();
         history.setOrderId(orderId);
         history.setFromStatus(from);
@@ -348,7 +382,7 @@ public class OrderService {
         return result;
     }
 
-    private List<OrderView> toViews(List<WorkOrderEntity> orders, Map<Long, List<FileView>> files) {
+    private List<OrderView> toViews(AuthenticatedUser actor, List<WorkOrderEntity> orders, Map<Long, List<FileView>> files) {
         if (orders.isEmpty()) return List.of();
         Map<Long, WorkOrderStatusHistoryEntity> confirmations = historyMapper.selectList(
                         new LambdaQueryWrapper<WorkOrderStatusHistoryEntity>()
@@ -359,21 +393,26 @@ public class OrderService {
                                 .orderByAsc(WorkOrderStatusHistoryEntity::getId)).stream()
                 .collect(Collectors.toMap(WorkOrderStatusHistoryEntity::getOrderId, Function.identity(), (first, later) -> first));
         Set<Long> userIds = orders.stream()
-                .flatMap(order -> java.util.stream.Stream.of(order.getCustomerUserId(), order.getInstallerUserId()))
+                .flatMap(order -> java.util.stream.Stream.of(order.getCustomerUserId(), order.getInstallerUserId(), order.getDealerUserId()))
                 .filter(java.util.Objects::nonNull).collect(Collectors.toSet());
         Map<Long, UserEntity> users = userIds.isEmpty() ? Map.of() : userMapper.selectByIds(userIds).stream()
                 .collect(Collectors.toMap(UserEntity::getId, Function.identity()));
-        return orders.stream().map(order -> toView(order, users, files.getOrDefault(order.getId(), List.of()),
+        return orders.stream().map(order -> toView(actor, order, users, files.getOrDefault(order.getId(), List.of()),
                         confirmations.get(order.getId())))
                 .toList();
     }
 
-    private OrderView toView(WorkOrderEntity order, Map<Long, UserEntity> users, List<FileView> fileList,
+    private OrderView toView(AuthenticatedUser actor, WorkOrderEntity order, Map<Long, UserEntity> users, List<FileView> fileList,
                              WorkOrderStatusHistoryEntity confirmation) {
-        UserEntity installer = users.get(order.getInstallerUserId());
-        InstallerView master = installer == null
+        UserEntity installer = order.getInstallerUserId() == null ? null : users.get(order.getInstallerUserId());
+        InstallerView master = order.getInstallerUserId() == null ? null : installer == null
                 ? new InstallerView(order.getInstallerUserId(), "安装师傅", null, 0, List.of())
                 : InstallerView.from(installer);
+        List<InstallerView> masters = master == null ? List.of() : List.of(master);
+        UserEntity dealer = order.getDealerUserId() == null ? null : users.get(order.getDealerUserId());
+        DealerView dealerView = actor.hasRole(RoleCode.ADMIN) && order.getDealerUserId() != null
+                ? new DealerView(order.getDealerUserId(), dealer == null ? "经销商" : InstallerView.from(dealer).masterName(),
+                    dealer == null ? null : dealer.getPhone()) : null;
         List<String> area = java.util.stream.Stream.of(
                         order.getProvinceName(), order.getCityName(), order.getDistrictName())
                 .filter(java.util.Objects::nonNull).toList();
@@ -382,14 +421,16 @@ public class OrderService {
         return new OrderView(order.getId(), order.getOrderNo(), taskLabel, order.getTaskType(),
                 order.getDescription(), order.getCustomerUserId(), order.getCustomerName(), order.getCustomerPhone(),
                 area, order.getDetailedAddress(), address, order.getRequiredStartAt(), order.getExpectedEndAt(),
-                statusLabel(order.getOrderStatus()), order.getOrderStatus(), List.of(master), List.of(master),
+                statusLabel(order.getOrderStatus()), order.getOrderStatus(), masters, masters,
                 order.getAdminRemark(), order.getCancelReason(), order.getCreatedAt(), order.getUpdatedAt(),
                 "空调服务", taskLabel, order.getDescription(), order.getCustomerName(), order.getCustomerPhone(),
                 fileList, confirmation == null ? null : confirmation.getOperatorUserId(),
-                confirmation == null ? null : confirmation.getCreatedAt().atOffset(ZoneOffset.UTC));
+                confirmation == null ? null : confirmation.getCreatedAt().atOffset(ZoneOffset.UTC),
+                order.getOrderSource(), "DEALER_APPOINTMENT".equals(order.getOrderSource()) ? "经销商预约" : "管理员创建",
+                dealerView == null ? null : dealerView.id(), dealerView == null ? null : dealerView.name(), dealerView);
     }
 
-    private String normalizePhone(String raw) {
+    String normalizePhone(String raw) {
         String value = raw == null ? "" : raw.replaceAll("\\s+", "");
         if (value.startsWith("+86")) value = value.substring(3);
         if (!PHONE_PATTERN.matcher(value).matches()) {
@@ -398,7 +439,7 @@ public class OrderService {
         return value;
     }
 
-    private String normalizeTaskType(String raw) {
+    String normalizeTaskType(String raw) {
         String value = raw == null ? "" : raw.trim();
         for (Map.Entry<String, String> entry : TASK_LABELS.entrySet()) {
             if (entry.getKey().equalsIgnoreCase(value) || entry.getValue().equals(value)) return entry.getKey();
@@ -409,6 +450,7 @@ public class OrderService {
     private String normalizeStatus(String raw) {
         String value = raw == null ? "" : raw.trim();
         Map<String, String> aliases = new LinkedHashMap<>();
+        aliases.put("待派单", "PENDING_ASSIGNMENT");
         aliases.put("待上门", "PENDING_VISIT");
         aliases.put("处理中", "IN_PROGRESS");
         aliases.put("已完成", "PENDING_REVIEW");
@@ -463,7 +505,7 @@ public class OrderService {
         }
     }
 
-    private String newOrderNo() {
+    String newOrderNo() {
         String time = java.time.format.DateTimeFormatter.ofPattern("yyyyMMddHHmmss")
                 .format(LocalDateTime.now(ZoneOffset.UTC));
         return "WO" + time + UUID.randomUUID().toString().replace("-", "").substring(0, 8).toUpperCase(Locale.ROOT);
@@ -474,6 +516,25 @@ public class OrderService {
     private static String blankToNull(String value) { return value == null || value.isBlank() ? null : value.trim(); }
     private static String nullToEmpty(String value) { return value == null ? "" : value; }
     private BusinessException notFound() { return new BusinessException(404, "ORDER_NOT_FOUND", "订单不存在"); }
+
+    private void requireAdmin(AuthenticatedUser actor) {
+        if (actor == null || !actor.hasRole(RoleCode.ADMIN)) {
+            throw new BusinessException(403, "FORBIDDEN", "仅管理员可以修改和指派订单");
+        }
+    }
+
+    public List<TaskTypeView> taskTypes() {
+        return List.of("AIR_CONDITIONING_INSTALL", "AIR_CONDITIONING_REPAIR", "AIR_CONDITIONING_CLEAN", "AIR_CONDITIONING_RELOCATE")
+                .stream().map(code -> new TaskTypeView(code, TASK_LABELS.get(code))).toList();
+    }
+
+    public record TaskTypeView(String code, String label) { }
+    public record DealerView(long id, String name, String phone) { }
+    private record CustomerBindingSnapshot(Long customerUserId, String maskedPhone) { }
+    private String maskPhone(String phone) {
+        return phone != null && phone.matches("1[3-9]\\d{9}")
+                ? phone.substring(0, 3) + "****" + phone.substring(7) : "已隐藏";
+    }
 
     public record OrderCommand(String taskType, String description, String customerName, String customerPhone,
                                List<String> addressArea, String addressDetail, String orderStartTime,
@@ -508,5 +569,7 @@ public class OrderService {
                             List<InstallerView> selectedMasterList, List<InstallerView> masterList,
                             String adminRemark, String cancelReason, LocalDateTime createdAt, LocalDateTime updatedAt,
                             String serviceName, String productName, String productSpec, String name, String phone,
-                            List<FileView> fileList, Long customerConfirmedBy, OffsetDateTime customerConfirmedAt) { }
+                            List<FileView> fileList, Long customerConfirmedBy, OffsetDateTime customerConfirmedAt,
+                            String orderSource, String orderSourceLabel, Long dealerUserId, String dealerName,
+                            DealerView dealer) { }
 }
