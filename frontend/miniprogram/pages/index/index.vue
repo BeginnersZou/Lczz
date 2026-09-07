@@ -166,8 +166,20 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { onReachBottom, onPullDownRefresh, onShareAppMessage, onShareTimeline } from '@dcloudio/uni-app'
-import { consumablesApi } from '@/api/api.js'
+import { onShow, onReachBottom, onPullDownRefresh, onShareAppMessage, onShareTimeline } from '@dcloudio/uni-app'
+import { authApi, consumablesApi } from '@/api/api.js'
+import { getAuthToken } from '@/utils/auth-session.js'
+import { isDealer } from '@/utils/dealer-booking.js'
+
+const dealerVisible = ref(false)
+onShow(async () => {
+	dealerVisible.value = false
+	if (!getAuthToken()) return
+	try {
+		const res = await authApi.getUserInfo({ redirectOnUnauthorized: false, loading: false, silent: true })
+		dealerVisible.value = res.code === 200 && isDealer(res.data)
+	} catch { dealerVisible.value = false }
+})
 
 onMounted(async () => {
 	await fetchCategories()
@@ -189,15 +201,15 @@ const trustList = [
 	{ icon: 'server-fill', text: '售后保障' }
 ]
 
-const functionList = [
-	{ title: '预约安装', tip: '专业施工', icon: 'calendar', tone: 'blue', color: '#0b63ce', action: 'service' },
+const functionList = computed(() => [
+	...(dealerVisible.value ? [{ title: '预约安装', tip: '经销商申请', icon: 'calendar', tone: 'blue', color: '#0b63ce', action: 'booking' }] : []),
 	{ title: '快速报修', tip: '及时响应', icon: 'setting-fill', tone: 'red', color: '#dc5b62', action: 'service' },
 	{ title: '配件展示', tip: '电话咨询', icon: 'bag', tone: 'cyan', color: '#0f9b91', action: 'shop' },
 	{ title: '清洗保养', tip: '节能健康', icon: 'reload', tone: 'green', color: '#189566', action: 'service' },
 	{ title: '我的订单', tip: '进度可查', icon: 'order', tone: 'blue', color: '#0b63ce', action: 'order' },
 	{ title: '服务保障', tip: '售后无忧', icon: 'server-fill', tone: 'amber', color: '#d47a18', action: 'official' },
 	{ title: '联系客服', tip: '电话咨询', icon: 'phone-fill', tone: 'cyan', color: '#0f9b91', action: 'phone' }
-]
+])
 
 const searchKeyword = ref('')
 const activeKeyword = ref('')
@@ -316,6 +328,10 @@ const handleHeroClick = (item) => handleAction(item.action, item.title)
 const handleItemClick = (item) => handleAction(item.action, item.title)
 
 const handleAction = (action, title) => {
+	if (action === 'booking') {
+		if (dealerVisible.value) uni.navigateTo({ url: '/packageA/dealer-booking/dealer-booking' })
+		return
+	}
 	if (action === 'shop') {
 		uni.pageScrollTo({ selector: '#product-section', duration: 320 })
 		return

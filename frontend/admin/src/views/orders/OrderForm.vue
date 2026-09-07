@@ -21,6 +21,8 @@
             </el-icon>订单基础信息</span>
         </template>
 
+        <el-form-item v-if="isEdit" label="订单来源"><OrderOrigin :order="orderOrigin" /></el-form-item>
+        <el-alert v-if="orderOrigin.statusCode === 'PENDING_ASSIGNMENT'" title="请核对经销商提交的信息，补充订单时间并指派师傅后提交。" type="info" :closable="false" show-icon style="margin-bottom:24px" />
         <!-- 任务类型下拉 -->
         <el-form-item label="任务类型" prop="taskType">
           <el-select v-model="form.taskType" placeholder="请选择任务类型" class="input-base" style="width: 100%">
@@ -33,7 +35,7 @@
 
         <!-- 描述 -->
         <el-form-item label="描述" prop="description">
-          <el-input v-model="form.description" type="textarea" :rows="3" maxlength="200" show-word-limit placeholder="请填写空调型号、故障或施工要求" class="textarea-base" />
+          <el-input v-model="form.description" type="textarea" :rows="3" maxlength="1000" show-word-limit placeholder="请填写空调型号、故障或施工要求" class="textarea-base" />
         </el-form-item>
 
         <!-- 客户姓名 -->
@@ -205,6 +207,9 @@ import {
 } from '@/api/orders'
 import { getRegionTreeApi } from '@/api/regions'
 import { useUnsavedChanges } from '@/composables/useUnsavedChanges'
+import OrderOrigin from './OrderOrigin.vue'
+
+const orderOrigin = ref({})
 
 const router = useRouter()
 const route = useRoute()
@@ -261,7 +266,7 @@ const rules = {
   taskType: [{ required: true, message: '请选择任务类型', trigger: 'change' }],
   customerName: [
     { required: true, message: '请输入客户姓名', trigger: 'blur' },
-    { min: 2, max: 20, message: '姓名长度2~20字符', trigger: 'blur' }
+    { min: 1, max: 64, message: '姓名长度1~64字符', trigger: 'blur' }
   ],
   customerPhone: [
     { required: true, message: '请输入客户手机号', trigger: 'blur' },
@@ -338,6 +343,7 @@ async function loadEditData() {
   loadError.value = ''
   try {
     const res = await getOrderDetailApi(orderId.value)
+    orderOrigin.value = { orderSource: res.orderSource, dealerName: res.dealerName, statusCode: res.statusCode }
     pendingUnbindFileIds.value = []
     // 回显 fileList：远程图片 url 直接作为 previewUrl，file 为 null
     const remoteFiles = res.fileList || res.images || []
