@@ -147,7 +147,7 @@
           <el-descriptions-item label="注册时间" :span="2">{{ formatDateTime(form.createdAt) }}</el-descriptions-item>
         </el-descriptions>
 
-        <el-form v-else ref="userFormRef" :model="form" :rules="formRules" label-width="96px">
+        <el-form v-else ref="userFormRef" :model="form" :rules="formRules" :disabled="submitting" label-width="96px">
           <el-form-item label="昵称" prop="nickname">
             <el-input v-model="form.nickname" maxlength="64" show-word-limit placeholder="请输入昵称" />
           </el-form-item>
@@ -165,10 +165,32 @@
             <el-input v-model="form.phone" maxlength="11" placeholder="请输入11位手机号" inputmode="numeric" />
           </el-form-item>
           <el-form-item label="角色" prop="role">
-            <el-select v-model="form.role" placeholder="请选择角色">
+            <el-select v-model="form.role" placeholder="请选择角色" @change="handleRoleChange">
               <el-option v-for="item in roleOptions" :key="item.value" :label="item.label" :value="item.value" />
             </el-select>
           </el-form-item>
+          <div v-if="isCreatingAdmin" class="password-section">
+            <div class="password-section-header">
+              <div>
+                <p>后台登录信息</p>
+                <span>创建成功后，可使用此账号和密码登录后台管理系统。</span>
+              </div>
+            </div>
+            <el-form-item label="登录账号" prop="username" required>
+              <el-input v-model="form.username" maxlength="64" autocomplete="off"
+                placeholder="4-64 位字母、数字、点、下划线或短横线" />
+              <span class="credential-hint">账号不区分大小写，保存时统一为小写。</span>
+            </el-form-item>
+            <el-form-item label="登录密码" prop="password" required>
+              <el-input v-model="form.password" type="password" show-password maxlength="72"
+                autocomplete="new-password" placeholder="请输入至少 8 位密码" />
+              <span class="credential-hint">至少 8 个字符；英文和数字最多 72 位，中文等字符会占用更多长度。</span>
+            </el-form-item>
+            <el-form-item label="确认密码" prop="confirmPassword" required>
+              <el-input v-model="form.confirmPassword" type="password" show-password maxlength="72"
+                autocomplete="new-password" placeholder="请再次输入登录密码" />
+            </el-form-item>
+          </div>
           <div v-if="canChangeOwnPassword" class="password-section">
             <div class="password-section-header">
               <div>
@@ -201,7 +223,9 @@
           />
           <el-alert
             v-else
-            title="用户首次在小程序授权相同手机号后，将自动绑定此账号并保留当前角色。"
+            :title="isCreatingAdmin
+              ? '管理员创建后即可登录后台。请妥善保存账号密码，密码不会在用户详情中显示。'
+              : '用户首次在小程序授权相同手机号后，将自动绑定此账号并保留当前角色。'"
             type="info"
             show-icon
             :closable="false"
@@ -307,6 +331,7 @@ const blacklistLoading = ref(false)
 const form = reactive({
   id: '',
   username: '',
+  password: '',
   nickname: '',
   realName: '',
   gender: '',
@@ -326,6 +351,32 @@ const canChangeOwnPassword = computed(() => dialogType.value === 'edit'
   && userStore.isAdmin
   && Number(form.id) === Number(userStore.user?.id)
   && originalRole.value === 'ADMIN')
+
+const isCreatingAdmin = computed(() => dialogType.value === 'create' && form.role === 'ADMIN')
+
+function handleRoleChange() {
+  if (dialogType.value !== 'create') return
+  form.username = ''
+  form.password = ''
+  form.confirmPassword = ''
+  userFormRef.value?.clearValidate(['username', 'password', 'confirmPassword'])
+}
+
+function validateUsername(rule, value, callback) {
+  if (!isCreatingAdmin.value) return callback()
+  if (!/^[a-zA-Z0-9._-]{4,64}$/.test(value.trim())) {
+    return callback(new Error('登录账号须为 4-64 位英文字母、数字、点、下划线或短横线'))
+  }
+  callback()
+}
+
+function validateCreationPassword(rule, value, callback) {
+  if (!isCreatingAdmin.value) return callback()
+  if (!value.trim() || value.length < 8 || new TextEncoder().encode(value).length > 72) {
+    return callback(new Error('密码至少 8 个字符，中文等字符合计不能超过 72 字节'))
+  }
+  callback()
+}
 
 function passwordChangeRequested() {
   return canChangeOwnPassword.value
@@ -347,6 +398,11 @@ function validateNewPassword(rule, value, callback) {
 }
 
 function validateConfirmPassword(rule, value, callback) {
+  if (isCreatingAdmin.value) {
+    if (!value) return callback(new Error('请再次输入登录密码'))
+    if (value !== form.password) return callback(new Error('两次输入的密码不一致'))
+    return callback()
+  }
   if (!passwordChangeRequested()) return callback()
   if (!value) return callback(new Error('请再次输入新密码'))
   if (value !== form.newPassword) return callback(new Error('两次输入的新密码不一致'))
@@ -360,6 +416,8 @@ const formRules = {
     { pattern: /^1\d{10}$/, message: '请输入正确的11位手机号', trigger: 'blur' }
   ],
   role: [{ required: true, message: '请选择角色', trigger: 'change' }],
+  username: [{ validator: validateUsername, trigger: ['blur', 'change'] }],
+  password: [{ validator: validateCreationPassword, trigger: ['blur', 'change'] }],
   originalPassword: [{ validator: validateOriginalPassword, trigger: 'blur' }],
   newPassword: [{ validator: validateNewPassword, trigger: 'blur' }],
   confirmPassword: [{ validator: validateConfirmPassword, trigger: ['blur', 'change'] }]
@@ -450,6 +508,7 @@ function fillForm(user = {}) {
   Object.assign(form, {
     id: user.id ?? '',
     username: user.username ?? '',
+    password: '',
     nickname: user.nickname ?? '',
     realName: user.realName ?? '',
     gender: user.gender ?? '',
@@ -470,7 +529,7 @@ function fillForm(user = {}) {
 function resetForm() {
   userFormRef.value?.clearValidate()
   Object.assign(form, {
-    id: '', username: '', nickname: '', realName: '', gender: '', phone: '', role: '',
+    id: '', username: '', password: '', nickname: '', realName: '', gender: '', phone: '', role: '',
     accountStatus: '', blacklist: false, installerStatus: '', lastLoginAt: '', createdAt: '',
     originalPassword: '', newPassword: '', confirmPassword: ''
   })
@@ -479,6 +538,7 @@ function resetForm() {
 
 async function submitForm() {
   if (submitting.value) return
+  submitting.value = true
   try {
     await userFormRef.value?.validate()
     if (dialogType.value === 'edit' && form.role !== originalRole.value) {
@@ -488,7 +548,6 @@ async function submitForm() {
         { type: 'warning', confirmButtonText: '确认保存', cancelButtonText: '取消' }
       )
     }
-    submitting.value = true
     const payload = {
       nickname: form.nickname.trim(),
       realName: form.realName.trim() || null,
@@ -504,13 +563,20 @@ async function submitForm() {
       })
     }
     if (dialogType.value === 'create') {
+      if (isCreatingAdmin.value) {
+        Object.assign(payload, {
+          username: form.username.trim().toLowerCase(),
+          password: form.password,
+          confirmPassword: form.confirmPassword
+        })
+      }
       await createUserApi({ ...payload, phone: form.phone.trim() })
     } else {
       await updateUserApi(form.id, payload)
     }
     dialogVisible.value = false
     ElMessage.success(dialogType.value === 'create'
-      ? '用户创建成功，可立即用于订单指派'
+      ? isCreatingAdmin.value ? '管理员创建成功，可使用设置的账号密码登录后台' : '用户创建成功'
       : changingPassword ? '用户资料及登录密码已更新' : '用户资料已更新')
     await loadList()
   } catch (error) {
@@ -753,6 +819,14 @@ onMounted(loadList)
   border: 1px solid #fde3b0;
   border-radius: 10px;
   background: #fffbf2;
+}
+
+.credential-hint {
+  display: block;
+  margin-top: 6px;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .password-section-header {
