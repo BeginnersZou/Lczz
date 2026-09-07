@@ -111,9 +111,9 @@ public class DealerAppointmentService {
 
     public record Command(String requestId, String taskType, String description, String customerName,
                           String customerPhone, List<String> addressArea, String addressDetail, List<Long> fileIds) { }
-    public record Receipt(long id, String orderNo, String statusCode) {
+    public record Receipt(long id, String orderNo, String statusCode, String orderSource) {
         static Receipt from(WorkOrderEntity order) {
-            return new Receipt(order.getId(), order.getOrderNo(), order.getOrderStatus());
+            return new Receipt(order.getId(), order.getOrderNo(), order.getOrderStatus(), order.getOrderSource());
         }
     }
 }

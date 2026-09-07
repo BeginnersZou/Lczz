@@ -74,6 +74,7 @@ class DealerAppointmentIntegrationTests {
         JsonNode receipt = create(dealer, body);
         long id = receipt.path("id").asLong();
         assertThat(receipt.path("statusCode").asText()).isEqualTo("PENDING_ASSIGNMENT");
+        assertThat(receipt.path("orderSource").asText()).isEqualTo("DEALER_APPOINTMENT");
         assertThat(receipt.has("customerPhone")).isFalse();
         JsonNode detail = data(get("/api/v1/admin/orders/" + id), admin).path("order");
         assertThat(detail.path("orderSource").asText()).isEqualTo("DEALER_APPOINTMENT");
@@ -225,6 +226,19 @@ class DealerAppointmentIntegrationTests {
         mvc.perform(auth(post("/api/files/" + extra + "/relations").contentType("application/json")
                         .content(json.writeValueAsString(Map.of("businessType", "ORDER", "businessId", id, "usageType", "ATTACHMENT"))), dealer))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void dealerCanAtomicallyBindTheMaximumNineAttachments() throws Exception {
+        var payload = body("13700137003");
+        List<Long> files = new ArrayList<>();
+        for (int index = 0; index < 9; index++) files.add(upload(dealer));
+        payload.put("fileIds", files);
+
+        long id = create(dealer, payload).path("id").asLong();
+        assertThat(data(get("/api/v1/admin/orders/" + id), admin).path("order").path("fileList").size()).isEqualTo(9);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM business_file_relation WHERE business_type='ORDER' AND business_id=?",
+                Integer.class, id)).isEqualTo(9);
     }
 
     @Test

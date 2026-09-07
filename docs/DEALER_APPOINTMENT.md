@@ -26,7 +26,7 @@
 
 提交字段：`requestId`（16–64 位字母、数字、下划线或横线）、`taskType`、必填 `description`（最多1000字）、`customerName`（1–64字）、`customerPhone`（11位，可带 +86）、`addressArea`（省市区三个非空名称）、`addressDetail`（1–500字）、可选 `fileIds`（最多9个不同的正整数）。未知字段返回400，包括师傅、状态、来源、经销商或客户用户ID。
 
-回执为 `{id,orderNo,statusCode}`，不会返回客户或经销商资料。管理员订单列表及详情新增 `orderSource`、`orderSourceLabel`、`dealerUserId`、`dealerName`、`dealer:{id,name,phone}`；经销商资料仅管理员响应包含。历史订单来源为 `ADMIN/管理员创建`，新预约为 `DEALER_APPOINTMENT/经销商预约`。
+回执为 `{id,orderNo,statusCode,orderSource}`，不会返回客户或经销商资料。管理员订单列表及详情新增 `orderSource`、`orderSourceLabel`、`dealerUserId`、`dealerName`、`dealer:{id,name,phone}`；经销商资料仅管理员响应包含。历史订单来源为 `ADMIN/管理员创建`，新预约为 `DEALER_APPOINTMENT/经销商预约`。
 
 待派单预约可通过原 `PUT /orders/{id}` 暂不指定师傅、暂不填写时间进行修改保存；填写时间时必须提供完整有效起止时间，选择师傅后时间必填。既有 `assign-master` 入口可以在时间补齐后首次派单。重复首次派单不会重复生成指派记录和通知。管理员直接 `POST /orders` 的师傅及时间要求保持不变。
 
