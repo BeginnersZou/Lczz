@@ -66,6 +66,14 @@
 			"root": "packageA",
 			"pages": [
 				{
+					"path": "dealer-booking/dealer-booking",
+					"style": {
+						"navigationBarTitleText": "预约安装",
+						"navigationBarTextStyle": "black",
+						"navigationBarBackgroundColor": "#ffffff"
+					}
+				},
+				{
 					"path": "order-detail/order-detail",
 					"style": {
 						"navigationBarTitleText": "订单详情",

@@ -203,6 +203,11 @@ export const consumablesApi = {
 }
 
 // ====================== 安装师傅耗材购物车 / 自助取货订单 ======================
+// #100 proposed contract; backend delivery is required before release.
+export const dealerBookingApi = {
+	create: (data) => http.post('/dealer/appointments', data, { silent: true, redirectOnUnauthorized: false })
+}
+
 export const installerMaterialApi = {
 	getCart: () => http.get('/installer/cart'),
 	addCartItem: (skuId, quantity = 1) => http.post('/installer/cart/items', { skuId, quantity }),

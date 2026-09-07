@@ -24,6 +24,7 @@
         <template #header><h3>基础信息</h3></template>
         <el-descriptions :column="descriptionColumns" border>
           <el-descriptions-item label="订单编号">{{ order.orderNo }}</el-descriptions-item>
+          <el-descriptions-item label="订单来源"><OrderOrigin :order="order" /></el-descriptions-item>
           <el-descriptions-item label="订单状态">
             <el-tag :type="statusType">{{ statusText }}</el-tag>
           </el-descriptions-item>
@@ -33,7 +34,8 @@
           <el-descriptions-item label="客户姓名">{{ order.customerName || '-' }}</el-descriptions-item>
           <el-descriptions-item label="客户手机号">{{ formatPhone(order.customerPhone) }}</el-descriptions-item>
           <el-descriptions-item label="预约时间" :span="descriptionColumns">
-            {{ formatDateTime(order.orderStartTime) }} 至 {{ formatDateTime(order.orderEndTime) }}
+            <template v-if="order.orderStartTime && order.orderEndTime">{{ formatDateTime(order.orderStartTime) }} 至 {{ formatDateTime(order.orderEndTime) }}</template>
+            <span v-else>待管理员安排</span>
           </el-descriptions-item>
           <el-descriptions-item label="安装地址" :span="descriptionColumns">{{ order.address || '-' }}</el-descriptions-item>
           <el-descriptions-item label="指派师傅" :span="descriptionColumns">
@@ -121,6 +123,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { getAdminOrderDetailApi } from '@/api/orders'
 import { formatDateTime, formatPhone } from '@/utils/format'
 import OrderDetailMedia from './OrderDetailMedia.vue'
+import OrderOrigin from './OrderOrigin.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -136,9 +139,11 @@ compactScreen.addEventListener('change', updateColumns)
 let requestVersion = 0
 const order = computed(() => detail.value?.order)
 const statusText = computed(() => ({
+  PENDING_ASSIGNMENT: '待派单',
   PENDING_VISIT: '待上门', IN_PROGRESS: '处理中', PENDING_REVIEW: '待评价', REVIEWED: '已评价', CANCELLED: '已作废'
 }[order.value?.statusCode] || order.value?.status || '-'))
 const statusType = computed(() => ({
+  PENDING_ASSIGNMENT: 'warning',
   PENDING_VISIT: 'warning', IN_PROGRESS: 'primary', PENDING_REVIEW: 'warning', REVIEWED: 'success', CANCELLED: 'info'
 }[order.value?.statusCode] || 'info'))
 const reviewImages = computed(() => (detail.value?.review?.images || []).map(url => ({ url })))

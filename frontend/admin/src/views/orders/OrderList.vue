@@ -89,6 +89,9 @@
             <div class="secondary-cell">{{ formatPhone(scope.row.customerPhone) }}</div>
           </template>
         </el-table-column>
+        <el-table-column label="订单来源" min-width="180">
+          <template #default="{ row }"><OrderOrigin :order="row" /></template>
+        </el-table-column>
         <el-table-column prop="assignMaster" label="指派师傅" align="left" min-width="160" show-overflow-tooltip>
           <template #default="scope">{{ scope.row.assignMaster || scope.row.masterName || '待指派' }}</template>
         </el-table-column>
@@ -109,7 +112,7 @@
             <div class="table-actions">
               <el-button text type="primary" @click="router.push({ name: 'OrderDetail', params: { id: scope.row.id }, query: route.query })">查看详情</el-button>
               <el-button v-if="isReviewedStatus(scope.row.status)" text type="success" @click="handleViewReview(scope.row)">查看评价</el-button>
-              <el-button text type="primary" @click="handleEditOrder(scope.row)">修改</el-button>
+              <el-button text type="primary" @click="handleEditOrder(scope.row)">{{ scope.row.status === 'PENDING_ASSIGNMENT' ? '完善并派单' : '修改' }}</el-button>
               <el-button v-if="!isCancelled(scope.row.status)" text type="danger" @click="handleDeleteOrder(scope.row)">作废</el-button>
             </div>
           </template>
@@ -174,6 +177,7 @@ import {
 import { useRouter, useRoute } from 'vue-router'
 import { getOrderListApi, cancelOrderApi, exportOrdersApi, getOrderEvaluationApi } from '@/api/orders'
 import { formatDateTime, formatPhone } from '@/utils/format'
+import OrderOrigin from './OrderOrigin.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -386,11 +390,13 @@ async function copyOrderId(id) {
 }
 
 function getStatusText(status) {
+  if (status === 'PENDING_ASSIGNMENT') return '待派单'
   const map = { pending: '待上门', assigned: '待上门', processing: '处理中', completed: '已完成', cancelled: '已作废', canceled: '已作废', PENDING_VISIT: '待上门', IN_PROGRESS: '处理中', PENDING_REVIEW: '待评价', REVIEWED: '已评价', CANCELLED: '已作废' }
   return map[status] || status || '待处理'
 }
 
 function getStatusType(status) {
+  if (status === 'PENDING_ASSIGNMENT') return 'warning'
   const map = { pending: 'warning', assigned: 'warning', processing: 'primary', completed: 'success', cancelled: 'info', canceled: 'info', '待上门': 'warning', '处理中': 'primary', '已完成': 'success', '待评价': 'warning', '已评价': 'success', '已作废': 'info', PENDING_VISIT: 'warning', IN_PROGRESS: 'primary', PENDING_REVIEW: 'warning', REVIEWED: 'success', CANCELLED: 'info' }
   return map[status] || 'warning'
 }
