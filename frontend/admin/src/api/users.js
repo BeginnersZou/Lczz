@@ -4,7 +4,7 @@ import request from '@/utils/request'
  * 用户管理模块 API
  * 后端接口对接说明：
  *   - 列表：GET /users/list，分页 + 搜索 + 角色/账号状态/黑名单筛选
- *   - 新增：POST /users，按手机号预创建用户
+ *   - 新增：POST /users，按手机号创建用户，管理员须提供登录凭据
  *   - 详情：GET /users/detail/:id
  *   - 更新：PUT /users/:id
  *   - 启用/停用：PATCH /users/:id/status
@@ -45,13 +45,16 @@ export function getUserDetailApi(id) {
 }
 
 /**
- * 按手机号预创建用户
+ * 按手机号创建用户；ADMIN 必须设置登录凭据，其他角色省略凭据字段。
  * @param {Object} data
  * @param {string} data.nickname
  * @param {string|null} data.realName
  * @param {'MALE'|'FEMALE'|'UNKNOWN'|null} data.gender
  * @param {string} data.phone
  * @param {'ADMIN'|'INSTALLER'|'CUSTOMER'|'DEALER'} data.role
+ * @param {string} [data.username] - 管理员登录账号
+ * @param {string} [data.password] - 管理员登录密码
+ * @param {string} [data.confirmPassword] - 确认密码
  * @returns {Promise<Object>}
  */
 export function createUserApi(data) {

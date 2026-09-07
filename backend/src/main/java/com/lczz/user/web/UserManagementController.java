@@ -10,6 +10,7 @@ import com.lczz.user.service.UserManagementService.UpdateCommand;
 import com.lczz.user.service.UserManagementService.UserPage;
 import com.lczz.user.service.UserManagementService.UserView;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -63,7 +64,8 @@ public class UserManagementController {
     }
 
     @PostMapping
-    @Operation(summary = "管理员按手机号预创建小程序用户")
+    @Operation(summary = "管理员创建用户；新增管理员须设置登录账号和密码",
+            description = "ADMIN 角色必须提供 username、password、confirmPassword；其他角色不得携带登录凭据。")
     ApiResponse<UserView> create(@AuthenticationPrincipal AuthenticatedUser actor,
                                  @Valid @RequestBody CreateRequest body,
                                  HttpServletRequest request) {
@@ -134,9 +136,14 @@ public class UserManagementController {
                          @Size(max = 64) String realName,
                          @Size(max = 16) String gender,
                          @NotBlank @Size(max = 20) String phone,
-                         @NotBlank @Size(max = 32) String role) {
+                         @NotBlank @Size(max = 32) String role,
+                         @Size(max = 64) String username,
+                         @Schema(accessMode = Schema.AccessMode.WRITE_ONLY, format = "password")
+                         @Size(max = 72) String password,
+                         @Schema(accessMode = Schema.AccessMode.WRITE_ONLY, format = "password")
+                         @Size(max = 72) String confirmPassword) {
         CreateCommand toCommand() {
-            return new CreateCommand(nickname, realName, gender, phone, role);
+            return new CreateCommand(nickname, realName, gender, phone, role, username, password, confirmPassword);
         }
     }
 

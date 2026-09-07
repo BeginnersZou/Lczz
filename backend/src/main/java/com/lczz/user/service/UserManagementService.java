@@ -14,6 +14,7 @@ import com.lczz.auth.persistence.UserRoleEntity;
 import com.lczz.auth.persistence.UserRoleMapper;
 import com.lczz.common.audit.OperationAuditService;
 import com.lczz.common.exception.BusinessException;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -35,6 +36,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class UserManagementService {
     private static final Pattern PHONE_PATTERN = Pattern.compile("^1\\d{10}$");
+    private static final Pattern USERNAME_PATTERN = Pattern.compile("^[a-z0-9._-]{4,64}$");
     private static final Set<String> ACCOUNT_STATUSES = Set.of("ENABLED", "DISABLED");
     private static final List<String> ROLE_PRIORITY = List.of("ADMIN", "INSTALLER", "DEALER", "CUSTOMER");
     private static final Map<String, String> GENDER_ALIASES = Map.of(
@@ -89,7 +91,11 @@ public class UserManagementService {
 
     @Transactional
     public UserView create(AuthenticatedUser actor, CreateCommand command, AuditContext context) {
+        if (actor == null || !actor.hasRole(RoleCode.ADMIN)) {
+            throw new BusinessException(403, "FORBIDDEN", "仅管理员可创建用户");
+        }
         RoleCode role = normalizeRole(command.role());
+        String username = validateCreationCredentials(role, command);
         String nickname = command.nickname().trim();
         String realName = blankToNull(command.realName());
         String gender = normalizeGender(command.gender());
@@ -100,6 +106,8 @@ public class UserManagementService {
 
         RoleEntity roleEntity = requireEnabledRole(role);
         UserEntity user = new UserEntity();
+        user.setUsername(username);
+        if (username != null) user.setPasswordHash(passwordEncoder.encode(command.password()));
         user.setNickname(nickname);
         user.setRealName(realName);
         user.setGender(gender);
@@ -114,7 +122,8 @@ public class UserManagementService {
         try {
             userMapper.insert(user);
         } catch (DuplicateKeyException exception) {
-            throw phoneAlreadyExists();
+            // The unique indexes also cover concurrent creates after the preflight checks.
+            throw new BusinessException(409, "USER_ALREADY_EXISTS", "账号或手机号已存在，请检查后重试");
         }
 
         UserRoleEntity link = new UserRoleEntity();
@@ -127,6 +136,32 @@ public class UserManagementService {
         auditService.recordSuccess(actor.userId(), "USER_CREATE", "USER", user.getId(),
                 context.requestId(), context.clientIp(), null, snapshot(result));
         return result;
+    }
+
+    private String validateCreationCredentials(RoleCode role, CreateCommand command) {
+        if (role != RoleCode.ADMIN) {
+            if (command.username() != null || command.password() != null || command.confirmPassword() != null) {
+                throw new BusinessException("ADMIN_CREDENTIALS_NOT_ALLOWED", "仅新增管理员可设置登录账号和密码");
+            }
+            return null;
+        }
+        String username = command.username() == null ? "" : command.username().trim().toLowerCase(Locale.ROOT);
+        if (!USERNAME_PATTERN.matcher(username).matches()) {
+            throw new BusinessException("INVALID_ADMIN_USERNAME", "登录账号须为 4-64 位英文字母、数字、点、下划线或短横线");
+        }
+        String password = command.password();
+        if (password == null || password.isBlank() || password.length() < 8
+                || password.getBytes(StandardCharsets.UTF_8).length > 72) {
+            throw new BusinessException("INVALID_ADMIN_PASSWORD", "密码至少 8 个字符，UTF-8 长度不能超过 72 字节");
+        }
+        if (!Objects.equals(password, command.confirmPassword())) {
+            throw new BusinessException("PASSWORD_CONFIRM_MISMATCH", "两次输入的密码不一致");
+        }
+        // Include disabled/deleted accounts because their usernames remain reserved by the unique index.
+        if (userMapper.selectCount(new LambdaQueryWrapper<UserEntity>().eq(UserEntity::getUsername, username)) > 0) {
+            throw new BusinessException(409, "USERNAME_ALREADY_EXISTS", "该登录账号已存在，请使用其他账号");
+        }
+        return username;
     }
 
     @Transactional
@@ -385,7 +420,8 @@ public class UserManagementService {
         return new BusinessException(409, "PHONE_ALREADY_EXISTS", "该手机号已存在，请直接编辑已有用户");
     }
 
-    public record CreateCommand(String nickname, String realName, String gender, String phone, String role) { }
+    public record CreateCommand(String nickname, String realName, String gender, String phone, String role,
+                                String username, String password, String confirmPassword) { }
     public record UpdateCommand(String nickname, String realName, String gender, String role) { }
     public record PasswordChangeCommand(String originalPassword, String newPassword, String confirmPassword) { }
     public record AuditContext(String requestId, String clientIp) { }
