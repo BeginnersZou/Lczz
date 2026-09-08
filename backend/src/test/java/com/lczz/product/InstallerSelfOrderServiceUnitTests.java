@@ -65,4 +65,17 @@ class InstallerSelfOrderServiceUnitTests {
         assertThatThrownBy(() -> service.add(installer, 101, 0)).isInstanceOf(BusinessException.class).hasMessageContaining("正整数");
         assertThatThrownBy(() -> service.add(installer, 101, 11)).isInstanceOf(BusinessException.class).hasMessageContaining("库存");
     }
+
+    @Test
+    void missingOptionalPickupPhoneDoesNotBlockOrderSubmission() {
+        InstallerSelfOrderService serviceWithoutPhone = new InstallerSelfOrderService(jdbc, "");
+        serviceWithoutPhone.add(installer, 101, 2);
+
+        var order = serviceWithoutPhone.submit(installer, "submit-without-phone");
+
+        assertThat(order.pickupPhone()).isEmpty();
+        assertThat(order.items()).singleElement().satisfies(item -> assertThat(item.quantity()).isEqualTo(2));
+        assertThat(serviceWithoutPhone.cart(installer).items()).isEmpty();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM material_self_order", Integer.class)).isEqualTo(1);
+    }
 }

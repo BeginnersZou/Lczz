@@ -131,6 +131,15 @@ class MaterialRequestIntegrationTests {
     }
 
     @Test
+    void assignedInstallerReadsEmptyMaterialDraftWithoutNotFoundError() throws Exception {
+        mockMvc.perform(get("/api/v1/orders/" + orderId + "/materials")
+                        .header("Authorization", "Bearer " + installerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data").doesNotExist());
+    }
+
+    @Test
     void rejectsRequestedQuantityAboveCurrentStock() throws Exception {
         mockMvc.perform(post("/api/orders/" + orderId + "/materials")
                         .header("Authorization", "Bearer " + installerToken)

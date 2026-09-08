@@ -41,7 +41,12 @@ function fixture(role = 'customer', statusCode = 'IN_PROGRESS', customerUserId =
         return { code: 200, data: { ...state } }
       },
       submitProgress: async (id, data) => { calls.progress.push({ id, data }); return progressReply ? await progressReply() : { code: 200 } }
-    }, consumablesApi: {}, uploadApi: { deleteTemporary: () => {} }, resolveMediaUrl: value => value
+    }, consumablesApi: {
+      getList: async () => ({ code: 200, data: { list: [{
+        id: 8, title: 'PPR弯头', category: 'PPR管材',
+        skus: [{ id: 18, specLabel: '25mm', unit: '个', stock: 12, enabled: true }]
+      }] } })
+    }, uploadApi: { deleteTemporary: () => {} }, resolveMediaUrl: value => value
   }
   const hooks = Object.fromEntries(['onLoad', 'onShow', 'onBackPress', 'onUnload'].map(name => [name, fn => { hook[name] = fn }]))
   const uni = { getSystemInfoSync: () => ({ windowHeight: 844 }), showModal: options => calls.modals.push(options), showToast: options => calls.toast.push(options) }
@@ -95,6 +100,11 @@ async function main() {
   console.log('PASS: network failure, stale 409 reconciliation, page-show permission failure and recovery')
 
   const installer = fixture('installer'); await installer.load()
+  assert.equal(installer.view.detailError.value, null)
+  await installer.view.openToolPopup()
+  assert.equal(installer.view.popupTools.value[0].title, 'PPR弯头')
+  assert.equal(installer.view.popupTools.value[0].skus[0].id, 18)
+  console.log('PASS: empty material request remains editable and selectable materials load')
   installer.view.progressDescription.value = '完成现场施工'
   action = installer.view.handleProgressSubmit()
   await installer.view.handleProgressSubmit(); assert.equal(installer.calls.modals.length, 1)

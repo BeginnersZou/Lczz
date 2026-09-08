@@ -3,7 +3,7 @@
 		<!-- ═══ 顶部品牌区 ═══ -->
 		<view class="hero-section">
 			<view class="status-bar"></view>
-			<view class="hero-navbar"><text>品牌服务</text></view>
+			<view class="hero-navbar"></view>
 			<view class="hero-content">
 				<view class="logo-area">
 					<view class="logo-circle">

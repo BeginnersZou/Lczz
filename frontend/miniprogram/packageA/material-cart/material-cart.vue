@@ -60,7 +60,15 @@ const confirmSubmit = () => {
 		if (!result.confirm || submitting.value) return
 		submitting.value = true
 		if (!submitRequestId.value) submitRequestId.value = `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`
-		try { const res = await installerMaterialApi.submitOrder(submitRequestId.value); if (res.code === 200) { submitRequestId.value = ''; uni.showModal({ title: '提交成功', content: `取货单号：${res.data.orderNo}`, showCancel: false, success: () => uni.redirectTo({ url: `/packageA/self-order-detail/self-order-detail?id=${res.data.id}` }) }) } }
+		try {
+			const res = await installerMaterialApi.submitOrder(submitRequestId.value)
+			if (res.code === 200) {
+				applyCart({ items: [] })
+				submitRequestId.value = ''
+				uni.showToast({ title: '取货申请已提交', icon: 'success' })
+				uni.switchTab({ url: '/pages/index/index' })
+			}
+		}
 		finally { submitting.value = false }
 	} })
 }

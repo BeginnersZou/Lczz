@@ -125,7 +125,6 @@
 						<text class="product-title">{{ item.title }}</text>
 						<text class="product-spec">库存 {{ item.stockSummary || ((item.stock ?? 0) + ' ' + (item.unit || '件')) }} · {{ item.skuCount > 1 ? (item.skuCount + '种规格') : (item.spec || '通用规格') }}</text>
 						<view class="product-meta">
-							<text class="product-price">产品展示</text>
 							<text class="product-sales">{{ (item.skus || []).some(sku => sku.enabled && sku.stock > 0) ? '有库存' : '暂无库存' }}</text>
 						</view>
 					</view>
