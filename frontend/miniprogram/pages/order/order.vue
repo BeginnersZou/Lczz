@@ -191,7 +191,7 @@ onShow(() => {
 
 // 分享给好友
 onShareAppMessage(() => ({
-	title: '鑫立创 — 我的订单',
+	title: '力创之尊 — 我的订单',
 	path: '/pages/index/index'
 }))
 

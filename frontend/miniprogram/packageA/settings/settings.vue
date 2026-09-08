@@ -62,7 +62,7 @@
 
 		<view class="footer">
 			<text class="footer-text">武汉力创之尊机电设备有限公司</text>
-			<text class="footer-copyright">© 2026 鑫立创 版权所有</text>
+			<text class="footer-copyright">© 2026 力创之尊 版权所有</text>
 		</view>
 	</view>
 </template>
@@ -125,7 +125,7 @@ const clearCache = () => {
 const showAbout = () => {
 	uni.showModal({
 		title: '关于我们',
-		content: '武汉力创之尊机电设备有限公司（鑫立创）\n专注于制冷技术、水系统配件及水系统中央空调安装与售后服务。\n\n以诚信之心，立潮流之品',
+		content: '武汉力创之尊机电设备有限公司（力创之尊）\n专注于制冷技术、水系统配件及水系统中央空调安装与售后服务。\n\n以诚信之心，立潮流之品',
 		showCancel: false,
 		confirmText: '知道了'
 	})

@@ -127,7 +127,7 @@
 		<!-- ═══ 底部版本信息 ═══ -->
 		<view class="footer">
 			<text class="version">v{{ version }}</text>
-			<text class="copyright">© 2026 鑫立创 版权所有</text>
+			<text class="copyright">© 2026 力创之尊 版权所有</text>
 		</view>
 	</view>
 </template>

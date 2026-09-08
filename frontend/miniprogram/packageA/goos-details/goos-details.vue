@@ -301,7 +301,7 @@ const goCart = () => uni.navigateTo({ url: '/packageA/material-cart/material-car
 
 // 分享商品详情给好友
 onShareAppMessage(() => ({
-	title: goods.value.title || '鑫立创配件详情',
+	title: goods.value.title || '力创之尊配件详情',
 	path: `/packageA/goos-details/goos-details?id=${goodsId.value}`
 }))
 

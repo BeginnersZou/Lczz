@@ -12,7 +12,7 @@
 			"path": "pages/index/index",
 			"style": {
 				"enablePullDownRefresh": true,
-				"navigationBarTitleText": "鑫立创",
+				"navigationBarTitleText": "力创之尊",
 				"navigationBarBackgroundColor": "#0b63ce",
 				"navigationBarTextStyle": "white",
 				"backgroundColorTop": "#0b63ce",
@@ -157,7 +157,7 @@
 	],
 	"globalStyle": {
 		"navigationBarTextStyle": "black",
-		"navigationBarTitleText": "鑫立创",
+		"navigationBarTitleText": "力创之尊",
 		"navigationBarBackgroundColor": "#ffffff",
 		"backgroundColor": "#f4f7fb",
 		"backgroundColorTop": "#f4f7fb",

@@ -5,11 +5,11 @@
       <view class="hero-circle circle-two"></view>
       <view class="brand-lockup">
         <view class="brand-icon-box">
-          <text class="brand-icon">鑫</text>
+          <text class="brand-icon">力</text>
           <view class="brand-dot"></view>
         </view>
         <view class="brand-copy">
-          <text class="brand-name">鑫立创</text>
+          <text class="brand-name">力创之尊</text>
           <text class="brand-en">HVAC SERVICE</text>
         </view>
       </view>

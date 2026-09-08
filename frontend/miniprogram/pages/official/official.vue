@@ -7,10 +7,10 @@
 			<view class="hero-content">
 				<view class="logo-area">
 					<view class="logo-circle">
-						<text class="logo-text">鑫</text>
+						<text class="logo-text">力</text>
 					</view>
 					<view class="company-name-area">
-						<text class="company-name">武汉鑫立创</text>
+						<text class="company-name">武汉力创之尊</text>
 						<text class="company-subname">制冷技术服务有限公司</text>
 					</view>
 				</view>
@@ -56,7 +56,7 @@
 			</view>
 			<view class="profile-card">
 				<text class="profile-text">
-					武汉力创之尊机电设备有限公司（鑫立创）专注于制冷技术、水系统配件、二联供材料销售及水系统中央空调安装与售后服务。我们始终秉持“以诚信之心，立潮流之品”的理念，为家庭与商业客户提供清晰、可靠的暖通服务方案。
+					武汉力创之尊机电设备有限公司（力创之尊）专注于制冷技术、水系统配件、二联供材料销售及水系统中央空调安装与售后服务。我们始终秉持“以诚信之心，立潮流之品”的理念，为家庭与商业客户提供清晰、可靠的暖通服务方案。
 				</text>
 				<view class="profile-tags">
 					<view class="profile-tag" v-for="(tag, i) in profileTags" :key="i">{{ tag }}</view>
@@ -143,13 +143,13 @@ import {
 
 // 分享官网给好友
 onShareAppMessage(() => ({
-	title: '武汉鑫立创制冷技术服务有限公司',
+	title: '武汉力创之尊机电设备有限公司',
 	path: '/pages/official/official'
 }))
 
 // 分享到朋友圈
 onShareTimeline(() => ({
-	title: '以诚信之心，立潮流之品 — 武汉鑫立创制冷'
+	title: '以诚信之心，立潮流之品 — 武汉力创之尊制冷'
 }))
 
 const serviceList = ref([{

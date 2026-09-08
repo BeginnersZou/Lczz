@@ -4,9 +4,9 @@
 		<view class="header-section">
 			<view class="welcome-row">
 				<view class="brand-group">
-					<view class="brand-mark">鑫</view>
+					<view class="brand-mark">力</view>
 					<view class="brand-copy">
-						<text class="brand-name">鑫立创制冷</text>
+						<text class="brand-name">力创之尊制冷</text>
 						<text class="brand-subtitle">安装 · 售后 · 配件一站式服务</text>
 					</view>
 				</view>
@@ -186,8 +186,8 @@ onMounted(async () => {
 	await fetchList(true)
 })
 
-onShareAppMessage(() => ({ title: '鑫立创 — 专业空调安装与配件展示', path: '/pages/index/index' }))
-onShareTimeline(() => ({ title: '鑫立创 — 专业空调安装与配件展示' }))
+onShareAppMessage(() => ({ title: '力创之尊 — 专业空调安装与配件展示', path: '/pages/index/index' }))
+onShareTimeline(() => ({ title: '力创之尊 — 专业空调安装与配件展示' }))
 
 const heroList = [
 	{ eyebrow: '专业暖通服务', title: '舒适，不止于冷暖', desc: '水系统中央空调安装、维修与保养', link: '立即咨询', icon: 'home-fill', theme: 'hero-blue', action: 'service' },
