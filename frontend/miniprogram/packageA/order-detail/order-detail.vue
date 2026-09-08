@@ -1020,7 +1020,7 @@ const statusClass = computed(() => {
 			if (progressRes.code === 200) progressRecords.value = progressRes.data || []
 			if (userRole.value === 'installer') {
 				const materialsRes = await orderApi.getMaterials(orderId.value, { loading: false, silent: true })
-				// 后端以 404 表示该订单尚未提交耗材申请，此时应展示可填写的空表单。
+				// 尚未提交耗材申请时后端返回 200 + null；兼容升级期间的旧版 404 响应。
 				if (![200, 404].includes(materialsRes.code)) {
 					setDetailError(materialsRes)
 					return

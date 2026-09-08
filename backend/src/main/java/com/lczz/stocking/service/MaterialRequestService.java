@@ -106,8 +106,7 @@ public class MaterialRequestService {
                 .orderByDesc(MaterialRequestEntity::getSubmittedAt)
                 .orderByDesc(MaterialRequestEntity::getId)
                 .last("LIMIT 1"));
-        if (request == null) throw new BusinessException(404, "MATERIAL_REQUEST_NOT_FOUND", "该订单尚未提交耗材申请");
-        return toViews(List.of(request)).getFirst();
+        return request == null ? null : toViews(List.of(request)).getFirst();
     }
 
     @Transactional

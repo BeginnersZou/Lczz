@@ -117,9 +117,6 @@ public class InstallerSelfOrderService {
         if (normalizedToken.isBlank() || normalizedToken.length() > 64) {
             throw new BusinessException("INVALID_REQUEST_TOKEN", "提交标识不合法，请刷新页面后重试");
         }
-        if (pickupPhone.isBlank()) {
-            throw new BusinessException(503, "PICKUP_PHONE_NOT_CONFIGURED", "取货联系电话尚未配置，请联系管理员");
-        }
         List<SubmitRow> rows = jdbc.query("""
                 SELECT c.id cart_id,c.sku_id,c.quantity,p.id product_id,p.product_name,
                        p.enabled product_enabled,p.deleted product_deleted,s.sku_code,s.spec_label,

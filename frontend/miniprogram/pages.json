@@ -32,7 +32,7 @@
 		{
 			"path": "pages/official/official",
 			"style": {
-				"navigationBarTitleText": "品牌服务",
+				"navigationBarTitleText": "服务",
 				"enablePullDownRefresh": false,
 				"navigationStyle": "custom",
 				"navigationBarTextStyle": "black",
