@@ -52,7 +52,7 @@ public class MaterialRequestController {
 
     @PostMapping("/orders/{orderId}/materials")
     @PreAuthorize("hasRole('INSTALLER')")
-    @Operation(summary = "安装师傅为指派给自己的订单提交耗材申请")
+    @Operation(summary = "安装师傅在首次施工进度前创建或更新订单耗材申请")
     ApiResponse<RequestView> submit(@AuthenticationPrincipal AuthenticatedUser actor,
                                     @PathVariable @Min(1) long orderId,
                                     @Valid @RequestBody SubmitRequest body,

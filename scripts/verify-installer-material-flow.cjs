@@ -8,6 +8,8 @@ const { parse, compileScript, compileTemplate } = requireVue('@vue/compiler-sfc'
 const vue = requireVue('vue')
 const cartSource = fs.readFileSync(path.resolve(__dirname,
   '../frontend/miniprogram/packageA/material-cart/material-cart.vue'), 'utf8')
+const orderDetailSource = fs.readFileSync(path.resolve(__dirname,
+  '../frontend/miniprogram/packageA/order-detail/order-detail.vue'), 'utf8')
 
 function compileCart() {
   const { descriptor, errors } = parse(cartSource)
@@ -56,13 +58,31 @@ function fixture(responses) {
 }
 
 async function submit(view, calls) {
-  view.confirmSubmit()
+  const pending = view.confirmSubmit()
   const modal = calls.modals.at(-1)
   assert.equal(modal.confirmText, '确认提交')
-  await modal.success({ confirm: true })
+  modal.success({ confirm: true })
+  await pending
+}
+
+function assertSfcCompiles(source, filename, id) {
+  const platformSource = source
+    .replace(/\s*\/\/ #ifdef MP-WEIXIN\r?\n([\s\S]*?)\s*\/\/ #endif/, '\n$1')
+    .replace(/\s*\/\/ #ifndef MP-WEIXIN\r?\n[\s\S]*?\s*\/\/ #endif/, '')
+  const { descriptor, errors } = parse(platformSource, { filename })
+  assert.deepEqual(errors, [])
+  const script = compileScript(descriptor, { id })
+  const template = compileTemplate({
+    source: descriptor.template.content,
+    filename,
+    id,
+    compilerOptions: { bindingMetadata: script.bindings }
+  })
+  assert.deepEqual(template.errors, [])
 }
 
 async function main() {
+  assertSfcCompiles(orderDetailSource, 'order-detail.vue', 'material-order-detail')
   const test = fixture([
     { code: 503, msg: '暂时失败' },
     { code: 200, data: { id: 12, orderNo: 'A202609080001' } }
@@ -73,6 +93,7 @@ async function main() {
   await submit(test.view, test.calls)
   assert.equal(test.view.items.value.length, 1)
   assert.equal(test.calls.tabs.length, 0)
+  assert.equal(test.calls.toasts.at(-1).title, '暂时失败')
 
   await submit(test.view, test.calls)
   assert.equal(test.calls.requests.length, 2)
@@ -82,7 +103,14 @@ async function main() {
   assert.equal(test.calls.toasts.at(-1).title, '取货申请已提交')
 
   assert.doesNotMatch(cartSource, /self-order-detail\/self-order-detail/)
-  console.log('PASS: cart retry is idempotent; success clears the cart and returns home')
+  assert.match(orderDetailSource, /t:\s*Date\.now\(\)/)
+  assert.match(orderDetailSource, /await fetchTools\(\)/)
+  assert.match(orderDetailSource, /progressRecords\.value\.length > 0/)
+  assert.match(orderDetailSource, /首次提交施工进度后将不能继续修改/)
+  assert.match(orderDetailSource, /selectedSkuIds\[tool\.id\] === sku\.id/)
+  assert.match(orderDetailSource, /materialSavedSignature/)
+  assert.match(orderDetailSource, /请先保存耗材清单，再提交施工进度/)
+  console.log('PASS: material list refresh, SKU selection, editable request and cart feedback are wired')
 }
 
 main().catch(error => {

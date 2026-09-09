@@ -124,8 +124,8 @@
 			</view>
 
 			<view class="material-submit" v-if="!materialReadonly && toolList.length > 0"
-				:class="{ disabled: submitting }" @click="handleSubmit">
-				<text>{{ submitting ? '提交中...' : '提交耗材申请' }}</text>
+				:class="{ disabled: submitting || !hasMaterialDraft }" @click="handleSubmit">
+				<text>{{ submitting ? '保存中...' : (hasMaterialDraft ? (materialRequest ? '保存耗材清单' : '提交耗材申请') : '耗材清单已保存') }}</text>
 			</view>
 		</view>
 
@@ -310,8 +310,12 @@
 
 				<!-- 工具列表 — 动态高度，内部滚动 -->
 				<scroll-view scroll-y class="popup-list" :style="{ height: popupListHeight + 'px' }">
+					<view class="popup-empty" v-if="popupLoading && filteredTools.length === 0">
+						<up-loading-icon color="#0b63ce"></up-loading-icon>
+						<text class="popup-empty-text">正在加载全部耗材</text>
+					</view>
 					<!-- 两行式布局：上行=图片+名称，下行=规格+价格+操作 -->
-					<view class="popup-tool-card" v-for="(tool, index) in filteredTools" :key="index">
+					<view class="popup-tool-card" v-for="tool in filteredTools" :key="tool.id">
 						<view class="popup-tool-row1">
 							<image class="popup-tool-img" :src="tool.image" mode="aspectFill"></image>
 							<text class="popup-tool-name">{{ tool.title }}</text>
@@ -339,9 +343,9 @@
 							</view>
 						</view>
 					</view>
-					<view class="popup-empty" v-if="filteredTools.length === 0">
+					<view class="popup-empty" v-if="!popupLoading && filteredTools.length === 0">
 						<up-icon name="empty-list" size="60" color="#9aa8b6"></up-icon>
-						<text class="popup-empty-text">暂无相关耗材</text>
+						<text class="popup-empty-text">{{ popupLoadError || '暂无相关耗材' }}</text>
 					</view>
 					<view style="height: 20rpx;"></view>
 				</scroll-view>
@@ -410,7 +414,8 @@
 	})
 
 	const materialRequest = ref(null)
-	// 耗材申请仅允许指派师傅提交一次；重复提交由服务端幂等/冲突规则兜底。
+	const progressRecords = ref([])
+	// 首次施工进度提交前允许师傅反复保存同一份耗材清单；进度提交后转为只读。
 	const userRole = ref('')
 	const currentUserId = ref(null)
 	const confirmingCompletion = ref(false)
@@ -421,7 +426,11 @@
 	const canConfirmCompletion = computed(() => isBoundCustomer.value && orderInfo.value.statusCode === 'IN_PROGRESS')
 	const canReview = computed(() => isBoundCustomer.value && orderInfo.value.statusCode === 'PENDING_REVIEW')
 	const hasReviewed = computed(() => isBoundCustomer.value && orderInfo.value.statusCode === 'REVIEWED')
-	const materialReadonly = computed(() => !isInstaller.value || !['PENDING_VISIT', 'IN_PROGRESS'].includes(orderInfo.value.statusCode) || Boolean(materialRequest.value))
+	const materialReadonly = computed(() => !isInstaller.value
+		|| !['PENDING_VISIT', 'IN_PROGRESS'].includes(orderInfo.value.statusCode)
+		|| progressRecords.value.length > 0
+		|| (materialRequest.value
+			&& String(materialRequest.value.statusCode || materialRequest.value.status || '').toUpperCase() !== 'PENDING'))
 
 const statusClass = computed(() => {
 		const s = orderInfo.value.status
@@ -456,7 +465,35 @@ const statusClass = computed(() => {
 	}
 
 	const materialRemark = ref('')
-	const progressRecords = ref([])
+	const materialSavedSignature = ref('{"items":[],"remark":""}')
+	const materialSignature = (items, remark) => JSON.stringify({
+		items: items.map(item => ({
+			productId: Number(item.productId || item.id),
+			skuId: item.skuId == null ? null : Number(item.skuId),
+			quantity: Number(item.qty || 0)
+		})).sort((left, right) => (left.skuId || left.productId) - (right.skuId || right.productId)),
+		remark: String(remark || '').trim()
+	})
+	const applyMaterialRequest = (data) => {
+		materialRequest.value = data || null
+		materialRemark.value = data?.remark || ''
+		toolList.value = (data?.materials || []).map(item => {
+			const quantity = Number(item.count || 1)
+			return {
+				id: item.productId,
+				productId: item.productId,
+				skuId: item.skuId,
+				title: item.name || '',
+				spec: item.spec || '',
+				unit: item.unit || '',
+				// 后端 stock 是扣除本申请预占后的库存；编辑时需加回当前申请量。
+				stock: Number(item.stock || 0) + quantity,
+				qty: quantity,
+				price: Number(item.displayPrice || 0)
+			}
+		})
+		materialSavedSignature.value = materialSignature(toolList.value, materialRemark.value)
+	}
 	const progressDescription = ref('')
 	const progressImages = ref([])
 	const uploadProgress = ref('')
@@ -464,7 +501,8 @@ const statusClass = computed(() => {
 	let progressMediaUid = 0
 	const allowLeave = ref(false)
 	const canOperateProgress = computed(() => isInstaller.value && ['PENDING_VISIT', 'IN_PROGRESS'].includes(orderInfo.value.statusCode))
-	const hasMaterialDraft = computed(() => !materialReadonly.value && (toolList.value.length > 0 || Boolean(materialRemark.value.trim())))
+	const hasMaterialDraft = computed(() => !materialReadonly.value
+		&& materialSignature(toolList.value, materialRemark.value) !== materialSavedSignature.value)
 	const uploadedProgressMediaCount = computed(() => progressImages.value.filter(media => media.status === 'success' && media.id).length)
 	const failedProgressMediaCount = computed(() => progressImages.value.filter(media => media.status === 'failed').length)
 	const isUploadingProgressMedia = computed(() => progressImages.value.some(media => media.status === 'queued' || media.status === 'uploading'))
@@ -499,7 +537,7 @@ const statusClass = computed(() => {
 		if (progressRes.code === 200) progressRecords.value = progressRes.data || []
 		if (isInstaller.value && materialRequest.value) {
 			const materialRes = await orderApi.getMaterials(orderId.value, { loading: false, silent: true })
-			if (materialRes.code === 200) materialRequest.value = materialRes.data || null
+			if (materialRes.code === 200 && !hasMaterialDraft.value) applyMaterialRequest(materialRes.data)
 		}
 	}
 
@@ -660,6 +698,10 @@ const statusClass = computed(() => {
 
 	const handleProgressSubmit = async () => {
 		if (!canOperateProgress.value || submittingProgress.value) return
+		if (hasMaterialDraft.value) {
+			uni.showToast({ title: '请先保存耗材清单，再提交施工进度', icon: 'none' })
+			return
+		}
 		if (isUploadingProgressMedia.value) {
 			uni.showToast({ title: '附件仍在上传，请稍候', icon: 'none' })
 			return
@@ -729,6 +771,7 @@ const statusClass = computed(() => {
 	// 耗材列表（由后端耗材接口拉取）
 	const popupTools = ref([])
 	const popupLoading = ref(false)
+	const popupLoadError = ref('')
 
 	// 按分类 + 关键词过滤
 	const filteredTools = computed(() => {
@@ -751,15 +794,30 @@ const statusClass = computed(() => {
 	const fetchTools = async () => {
 		if (popupLoading.value) return
 		popupLoading.value = true
+		popupLoadError.value = ''
 		try {
 			const res = await consumablesApi.getList({
 				page: 1,
 				pageSize: 100,
-				keyword: searchKeyword.value.trim() || undefined
+				keyword: searchKeyword.value.trim() || undefined,
+				t: Date.now()
 			})
-			if (res.code !== 200) return
+			if (res.code !== 200) {
+				popupTools.value = []
+				popupLoadError.value = res.msg || '耗材加载失败，请重试'
+				return
+			}
 			// 耗材字段已与弹窗对齐（id/title/spec/price/image/category），res.data.list 直接使用
-			const list = (res.data && res.data.list) || []
+			const reservedBySku = new Map(toolList.value
+				.filter(item => item.skuId != null)
+				.map(item => [Number(item.skuId), Number(item.qty || 0)]))
+			const list = ((res.data && res.data.list) || []).map(tool => ({
+				...tool,
+				skus: (tool.skus || []).map(sku => ({
+					...sku,
+					stock: Number(sku.stock || 0) + (reservedBySku.get(Number(sku.id)) || 0)
+				}))
+			}))
 			popupTools.value = list
 			// 动态构建分类：首项"全部" + 去重后的实际分类
 			const cats = ['全部']
@@ -768,7 +826,8 @@ const statusClass = computed(() => {
 			})
 			categories.value = cats
 		} catch (err) {
-			// request.js 已统一处理错误提示
+			popupTools.value = []
+			popupLoadError.value = '耗材加载失败，请重试'
 		} finally {
 			popupLoading.value = false
 		}
@@ -817,6 +876,7 @@ const statusClass = computed(() => {
 	const openToolPopup = async () => {
 		// 用已选工具初始化弹窗选中态（保留完整对象）
 		popupSelected.value = {}
+		selectedSkuIds.value = {}
 		toolList.value.forEach(tool => {
 			popupSelected.value[getToolKey(tool)] = {
 				...tool
@@ -825,11 +885,11 @@ const statusClass = computed(() => {
 		})
 		searchKeyword.value = ''
 		currentCategory.value = 0
+		categories.value = ['全部']
+		popupTools.value = []
 		showToolPopup.value = true
-		// 首次打开时拉取耗材列表
-		if (popupTools.value.length === 0) {
-			await fetchTools()
-		}
+		// 每次打开都刷新全部耗材，避免微信端缓存过期的空列表和库存。
+		await fetchTools()
 	}
 
 	const closeToolPopup = () => {
@@ -934,9 +994,12 @@ const statusClass = computed(() => {
 			})
 			return
 		}
+		if (!hasMaterialDraft.value) return
 		uni.showModal({
 			title: '确认提交',
-			content: '提交后后台可查看备货清单，请确认耗材和数量无误。',
+			content: materialRequest.value
+				? '将保存修改后的耗材清单。首次提交施工进度后将不能继续修改。'
+				: '提交后仍可修改耗材清单；首次提交施工进度后将不能继续修改。',
 			success: async (res) => {
 				if (!res.confirm) return
 				if (submitting.value) return
@@ -950,12 +1013,16 @@ const statusClass = computed(() => {
 						items: toolList.value.map(t => ({ productId: t.productId || t.id, skuId: t.skuId, quantity: t.qty })),
 						remark: materialRemark.value.trim()
 					})
-					if (submitRes.code !== 200) return
+					if (submitRes.code !== 200) {
+						uni.showToast({ title: submitRes.msg || '耗材申请保存失败', icon: 'none' })
+						return
+					}
 					materialRequest.value = submitRes.data || { statusLabel: '待备货' }
+					if (submitRes.data) applyMaterialRequest(submitRes.data)
 					const orderRes = await orderApi.getDetail(orderId.value)
 					if (orderRes.code === 200) orderInfo.value = orderRes.data || {}
 					uni.showToast({
-						title: '耗材申请已提交',
+						title: '耗材清单已保存',
 						icon: 'success'
 					})
 				} catch (err) {
@@ -1026,19 +1093,7 @@ const statusClass = computed(() => {
 					return
 				}
 				if (materialsRes.code === 200 && materialsRes.data) {
-					materialRequest.value = materialsRes.data
-					materialRemark.value = materialsRes.data.remark || ''
-					toolList.value = (materialsRes.data.materials || []).map(item => ({
-						id: item.productId,
-						productId: item.productId,
-						skuId: item.skuId,
-						title: item.name || '',
-						spec: item.spec || '',
-						unit: item.unit || '',
-						stock: Number(item.stock || 0),
-						qty: Number(item.count || 1),
-						price: Number(item.displayPrice || 0)
-					}))
+					applyMaterialRequest(materialsRes.data)
 				}
 			}
 		} catch (err) {

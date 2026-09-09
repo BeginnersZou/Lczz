@@ -118,18 +118,48 @@ public class MaterialRequestService {
         if (!Set.of("PENDING_VISIT", "IN_PROGRESS").contains(order.getOrderStatus())) {
             throw new BusinessException(409, "ORDER_NOT_ACCEPTING_MATERIALS", "当前订单状态不能提交耗材申请");
         }
-        LinkedHashMap<Long, ResolvedSku> requested = resolveRequestedSkus(command.items());
-        MaterialRequestEntity existing = findActive(orderId);
+        MaterialRequestEntity existing = findActiveForUpdate(orderId);
         if (existing != null) {
+            if (!existing.getInstallerUserId().equals(actor.userId())) {
+                throw new BusinessException(409, "ACTIVE_MATERIAL_REQUEST_EXISTS", "该订单已有其他师傅提交的耗材申请");
+            }
+            List<MaterialRequestItemEntity> previousItems = items(existing.getId());
+            if (sameSubmittedItems(previousItems, command.items())) {
+                if (!java.util.Objects.equals(existing.getRemark(), blankToNull(command.remark()))) {
+                    ensureMaterialRequestEditable(existing, orderId);
+                    updateRequestRemark(existing, command.remark());
+                }
+                transitionToInProgress(order, actor.userId());
+                return toViews(List.of(existing)).getFirst();
+            }
+            ensureMaterialRequestEditable(existing, orderId);
+            // Return the old reservation before resolving the replacement list. The whole method is transactional,
+            // so any validation or insert failure restores both the old rows and their stock reservation.
+            releaseReservedStock(previousItems, actor.userId());
+            itemMapper.delete(new LambdaQueryWrapper<MaterialRequestItemEntity>()
+                    .eq(MaterialRequestItemEntity::getRequestId, existing.getId()));
+            LinkedHashMap<Long, ResolvedSku> replacement = resolveRequestedSkus(command.items());
+            replacement.values().forEach(row -> {
+                if (row.quantity().compareTo(row.stock()) > 0) {
+                    throw insufficientStock(row);
+                }
+                reserveStock(row, actor.userId());
+                insertSnapshot(existing.getId(), row);
+            });
+            updateRequestRemark(existing, command.remark());
             transitionToInProgress(order, actor.userId());
-            return existingOrConflict(existing, actor.userId(), requested);
+            return toViews(List.of(existing)).getFirst();
         }
+
+        if (hasProgress(orderId)) {
+            throw new BusinessException(409, "MATERIAL_REQUEST_LOCKED_BY_PROGRESS",
+                    "已提交施工进度，耗材清单不能再修改");
+        }
+        LinkedHashMap<Long, ResolvedSku> requested = resolveRequestedSkus(command.items());
 
         requested.values().forEach(row -> {
             if (row.quantity().compareTo(row.stock()) > 0) {
-                throw new BusinessException(409, "INSUFFICIENT_SKU_STOCK",
-                        "耗材“" + row.productName() + "（" + fallbackSpec(row.specLabel()) + "）”库存仅剩"
-                                + row.stock().stripTrailingZeros().toPlainString() + row.unit() + "，请调整申请数量");
+                throw insufficientStock(row);
             }
         });
         MaterialRequestEntity request = new MaterialRequestEntity();
@@ -144,13 +174,48 @@ public class MaterialRequestService {
             requestMapper.insert(request);
         } catch (DuplicateKeyException exception) {
             MaterialRequestEntity concurrent = findActive(orderId);
-            if (concurrent != null) return existingOrConflict(concurrent, actor.userId(), requested);
+            if (concurrent != null && concurrent.getInstallerUserId().equals(actor.userId())
+                    && sameItems(items(concurrent.getId()), requested)) {
+                return toViews(List.of(concurrent)).getFirst();
+            }
+            if (concurrent != null) {
+                throw new BusinessException(409, "ACTIVE_MATERIAL_REQUEST_EXISTS", "该订单已有耗材申请，请刷新后修改");
+            }
             throw exception;
         }
         requested.values().forEach(row -> reserveStock(row, actor.userId()));
         requested.values().forEach(row -> insertSnapshot(request.getId(), row));
         transitionToInProgress(order, actor.userId());
         return toViews(List.of(requestMapper.selectById(request.getId()))).getFirst();
+    }
+
+    private void ensureMaterialRequestEditable(MaterialRequestEntity request, long orderId) {
+        if (hasProgress(orderId)) {
+            throw new BusinessException(409, "MATERIAL_REQUEST_LOCKED_BY_PROGRESS",
+                    "已提交施工进度，耗材清单不能再修改");
+        }
+        if (!"PENDING".equals(request.getRequestStatus())) {
+            throw new BusinessException(409, "MATERIAL_REQUEST_PROCESSING",
+                    "后台已开始备货，耗材清单不能再修改");
+        }
+    }
+
+    private boolean hasProgress(long orderId) {
+        Long count = jdbc.queryForObject("SELECT COUNT(*) FROM work_order_progress WHERE order_id=?", Long.class, orderId);
+        return count != null && count > 0;
+    }
+
+    private void updateRequestRemark(MaterialRequestEntity request, String remark) {
+        request.setRemark(blankToNull(remark));
+        request.setSubmittedAt(LocalDateTime.now(ZoneOffset.UTC));
+        request.setVersion(request.getVersion() + 1);
+        requestMapper.updateById(request);
+    }
+
+    private BusinessException insufficientStock(ResolvedSku row) {
+        return new BusinessException(409, "INSUFFICIENT_SKU_STOCK",
+                "耗材“" + row.productName() + "（" + fallbackSpec(row.specLabel()) + "）”库存仅剩"
+                        + row.stock().stripTrailingZeros().toPlainString() + row.unit() + "，请调整申请数量");
     }
 
     private void transitionToInProgress(WorkOrderEntity order, long actorId) {
@@ -246,19 +311,19 @@ public class MaterialRequestService {
         if (request != null) voidRequest(actor, request.getId(), reason);
     }
 
-    private RequestView existingOrConflict(MaterialRequestEntity existing, long installerId,
-                                           LinkedHashMap<Long, ResolvedSku> requested) {
-        if (!existing.getInstallerUserId().equals(installerId) || !sameItems(existing.getId(), requested)) {
-            throw new BusinessException(409, "ACTIVE_MATERIAL_REQUEST_EXISTS", "该订单已有未作废的耗材申请");
-        }
-        return toViews(List.of(existing)).getFirst();
-    }
-
-    private boolean sameItems(long requestId, Map<Long, ResolvedSku> requested) {
-        List<MaterialRequestItemEntity> existing = items(requestId);
+    private boolean sameItems(List<MaterialRequestItemEntity> existing, Map<Long, ResolvedSku> requested) {
         if (existing.size() != requested.size()) return false;
         return existing.stream().allMatch(item -> requested.containsKey(item.getSkuId())
                 && requested.get(item.getSkuId()).quantity().compareTo(item.getRequestedQuantity()) == 0);
+    }
+
+    private boolean sameSubmittedItems(List<MaterialRequestItemEntity> existing, List<ItemCommand> requested) {
+        if (requested == null || existing.size() != requested.size()) return false;
+        return existing.stream().allMatch(item -> requested.stream().filter(command ->
+                command.productId() == item.getProductId()
+                        && (command.skuId() == null || command.skuId().equals(item.getSkuId()))
+                        && command.quantity() != null
+                        && command.quantity().compareTo(item.getRequestedQuantity()) == 0).count() == 1);
     }
 
     private LinkedHashMap<Long, ResolvedSku> resolveRequestedSkus(List<ItemCommand> items) {
@@ -412,6 +477,13 @@ public class MaterialRequestService {
                 .eq(MaterialRequestEntity::getOrderId, orderId)
                 .in(MaterialRequestEntity::getRequestStatus, ACTIVE_STATUSES)
                 .orderByDesc(MaterialRequestEntity::getId).last("LIMIT 1"));
+    }
+
+    private MaterialRequestEntity findActiveForUpdate(long orderId) {
+        return requestMapper.selectOne(new LambdaQueryWrapper<MaterialRequestEntity>()
+                .eq(MaterialRequestEntity::getOrderId, orderId)
+                .in(MaterialRequestEntity::getRequestStatus, ACTIVE_STATUSES)
+                .orderByDesc(MaterialRequestEntity::getId).last("LIMIT 1 FOR UPDATE"));
     }
 
     private List<MaterialRequestItemEntity> items(long requestId) {

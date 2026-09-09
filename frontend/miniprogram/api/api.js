@@ -213,7 +213,7 @@ export const installerMaterialApi = {
 	updateCartItem: (id, quantity) => http.patch(`/installer/cart/items/${id}`, { quantity }),
 	removeCartItem: (id) => http.delete(`/installer/cart/items/${id}`),
 	clearCart: () => http.delete('/installer/cart'),
-		submitOrder: (requestId) => http.post('/installer/self-orders', { requestId }),
+	submitOrder: (requestId, options = {}) => http.post('/installer/self-orders', { requestId }, options),
 	getOrders: (params = {}) => http.get('/installer/self-orders', params),
 	getOrderDetail: (id) => http.get(`/installer/self-orders/${id}`)
 }
