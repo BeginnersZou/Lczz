@@ -33,7 +33,7 @@ function fixture(role = 'customer', statusCode = 'IN_PROGRESS', customerUserId =
     orderApi: {
       getDetail: async () => detailReply || ({ code: 200, data: { ...state } }),
       getProgress: async () => ({ code: 200, data: [{ id: 1, description: '历史施工记录' }] }),
-      getMaterials: async () => ({ code: 404 }),
+      getMaterials: async () => ({ code: 200, data: null }),
       confirmCompletion: async id => {
         calls.confirm.push(id)
         if (confirmReply) return await confirmReply()
