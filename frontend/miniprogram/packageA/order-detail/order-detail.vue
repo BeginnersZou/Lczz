@@ -796,10 +796,11 @@ const statusClass = computed(() => {
 		popupLoading.value = true
 		popupLoadError.value = ''
 		try {
+			const keyword = searchKeyword.value.trim()
 			const res = await consumablesApi.getList({
 				page: 1,
 				pageSize: 100,
-				keyword: searchKeyword.value.trim() || undefined,
+				...(keyword ? { keyword } : {}),
 				t: Date.now()
 			})
 			if (res.code !== 200) {
@@ -1087,14 +1088,12 @@ const statusClass = computed(() => {
 			if (progressRes.code === 200) progressRecords.value = progressRes.data || []
 			if (userRole.value === 'installer') {
 				const materialsRes = await orderApi.getMaterials(orderId.value, { loading: false, silent: true })
-				// 尚未提交耗材申请时后端返回 200 + null；兼容升级期间的旧版 404 响应。
-				if (![200, 404].includes(materialsRes.code)) {
+				// API 层只将明确的“尚未申请”归一化为空；不能吞掉其他 404。
+				if (materialsRes.code !== 200) {
 					setDetailError(materialsRes)
 					return
 				}
-				if (materialsRes.code === 200 && materialsRes.data) {
-					applyMaterialRequest(materialsRes.data)
-				}
+				applyMaterialRequest(materialsRes.data)
 			}
 		} catch (err) {
 			setDetailError({ code: -1, msg: '请求异常，请稍后重试' })

@@ -147,7 +147,14 @@ export const orderApi = {
 	cancel: (id) => http.post(`/orders/${id}/cancel`),
 	// 可指派师傅列表
 	getMasters: (params) => http.get('/orders/masters', params),
-	getMaterials: (id, options = {}) => http.get(`/orders/${id}/materials`, {}, options),
+	getMaterials: async (id, options = {}) => {
+		const res = await http.get(`/orders/${id}/materials`, {}, { silent: true, ...options })
+		// 仅兼容旧后端“尚未申请”的业务响应，其他权限/路由/服务错误仍交由页面处理。
+		if (res.code === 404 && res.error === 'MATERIAL_REQUEST_NOT_FOUND') {
+			return { ...res, code: 200, data: null, error: undefined, msg: 'success' }
+		}
+		return res
+	},
 	submitMaterials: (id, data) => http.post(`/orders/${id}/materials`, data),
 	getProgress: async (id, options = {}) => {
 		const res = await http.get(`/orders/${id}/progress`, {}, options)

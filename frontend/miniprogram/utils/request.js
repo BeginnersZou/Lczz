@@ -24,6 +24,14 @@ function getToken() {
   return getAuthToken()
 }
 
+// 微信端会将 GET 对象中的 undefined/null 串行化为字面搜索词。
+// 只过滤查询参数，保留写请求中用于清空字段的 null/空字符串及有效的 0/false。
+function queryData(data) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return data
+  return Object.fromEntries(Object.entries(data)
+    .filter(([, value]) => value !== undefined && value !== null && value !== ''))
+}
+
 // ====================== 401 统一处理（允许用户拒绝登录并继续使用公共功能） ======================
 function handleUnauthorized(redirectOnUnauthorized = true) {
   // 仅清除失效登录态，保留其他本地数据
@@ -58,7 +66,7 @@ const request = (options = {}) => {
     uni.request({
       url: baseUrl + url,
       method,
-      data,
+      data: String(method).toUpperCase() === 'GET' ? queryData(data) : data,
       timeout,
       header: {
         'Content-Type': 'application/json',
@@ -72,27 +80,34 @@ const request = (options = {}) => {
         if (resData && typeof resData === 'object' && resData.code !== undefined) {
           // 归一化业务数据到 data：
           //  - 标准结构 {code,data,msg}：直接取 data
-          //  - 平铺结构 {code,list,total,msg}：收集除 code/msg/message 外的字段为 data，保证前端统一用 res.data
+          //  - 平铺结构 {code,list,total,msg}：只收集业务字段，排除响应信封元数据
+          //  - 后端 non_null 会省略空 data；不能将 requestId/timestamp 误判为业务对象
           let data
           if (resData.data !== undefined) {
             data = resData.data
           } else {
-            data = {}
+            const fields = {}
+            const envelopeKeys = ['code', 'msg', 'message', 'error', 'requestId', 'timestamp']
             Object.keys(resData).forEach(k => {
-              if (k !== 'code' && k !== 'msg' && k !== 'message') data[k] = resData[k]
+              if (!envelopeKeys.includes(k)) fields[k] = resData[k]
             })
+            data = Object.keys(fields).length ? fields : null
           }
           body = {
             code: resData.code,
             data,
-            msg: resData.message || resData.msg || '请求失败'
+            msg: resData.message || resData.msg || '请求失败',
+            error: resData.error,
+            requestId: resData.requestId,
+            httpStatus: statusCode
           }
         } else {
           // 非标准结构，按 HTTP 状态码包装
           body = {
             code: statusCode === 200 ? 200 : statusCode,
             data: resData,
-            msg: (resData && (resData.message || resData.msg)) || '请求失败'
+            msg: (resData && (resData.message || resData.msg)) || '请求失败',
+            httpStatus: statusCode
           }
         }
 
@@ -102,7 +117,7 @@ const request = (options = {}) => {
         }
         if (body.code === 401) {
           handleUnauthorized(redirectOnUnauthorized)
-          resolve({ code: 401, data: null, msg: body.msg })
+          resolve({ ...body, data: null })
           return
         }
         if (body.code === 403) {

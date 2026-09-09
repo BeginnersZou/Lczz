@@ -1,0 +1,43 @@
+name: Mini-program material flow
+
+on:
+  pull_request:
+    branches: [dev]
+    paths:
+      - "frontend/miniprogram/**"
+      - "frontend/admin/package*.json"
+      - "scripts/verify-material-http-flow.cjs"
+      - "scripts/verify-installer-material-flow.cjs"
+      - "scripts/verify-order-confirmation.cjs"
+      - ".github/workflows/miniprogram-material-ci.yml"
+  push:
+    branches: [dev]
+    paths:
+      - "frontend/miniprogram/**"
+      - "frontend/admin/package*.json"
+      - "scripts/verify-material-http-flow.cjs"
+      - "scripts/verify-installer-material-flow.cjs"
+      - "scripts/verify-order-confirmation.cjs"
+      - ".github/workflows/miniprogram-material-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  material-http:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/admin/package-lock.json
+      - name: Install Vue verification toolchain
+        run: npm ci --prefix frontend/admin
+      - name: Check HTTP parameters and real response handling
+        run: node scripts/verify-material-http-flow.cjs
+      - name: Check material and order interactions
+        run: |
+          node scripts/verify-installer-material-flow.cjs
+          node scripts/verify-order-confirmation.cjs
