@@ -54,23 +54,33 @@ const changeQuantity = (item, delta) => {
 const inputQuantity = (item, event) => persistQuantity(item, Number(event?.detail?.value))
 const confirmRemove = item => uni.showModal({ title: '删除耗材', content: `确定从购物车删除“${item.productName} ${item.specLabel || ''}”吗？`, confirmColor: '#dc2626', success: async result => { if (!result.confirm) return; const res = await installerMaterialApi.removeCartItem(item.id); if (res.code === 200) applyCart(res.data) } })
 const confirmClear = () => uni.showModal({ title: '清空购物车', content: '确定删除购物车内全部耗材吗？', confirmColor: '#dc2626', success: async result => { if (!result.confirm) return; const res = await installerMaterialApi.clearCart(); if (res.code === 200) applyCart(res.data) } })
-const confirmSubmit = () => {
+const confirmSubmit = async () => {
 	if (!canSubmit.value) return uni.showToast({ title: '请处理不可用或超库存的耗材', icon: 'none' })
-	uni.showModal({ title: '提交取货申请', content: `将提交 ${items.value.length} 种耗材规格，请再次核对各规格数量。提交后不自动扣减库存。`, confirmText: '确认提交', success: async result => {
+	try {
+		const result = await new Promise((resolve, reject) => uni.showModal({
+			title: '提交取货申请',
+			content: `将提交 ${items.value.length} 种耗材规格，请再次核对各规格数量。提交后不自动扣减库存。`,
+			confirmText: '确认提交',
+			success: resolve,
+			fail: reject
+		}))
 		if (!result.confirm || submitting.value) return
 		submitting.value = true
 		if (!submitRequestId.value) submitRequestId.value = `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`
-		try {
-			const res = await installerMaterialApi.submitOrder(submitRequestId.value)
-			if (res.code === 200) {
-				applyCart({ items: [] })
-				submitRequestId.value = ''
-				uni.showToast({ title: '取货申请已提交', icon: 'success' })
-				uni.switchTab({ url: '/pages/index/index' })
-			}
+		const res = await installerMaterialApi.submitOrder(submitRequestId.value, { silent: true })
+		if (res.code !== 200) {
+			uni.showToast({ title: res.msg || '提交失败，请稍后重试', icon: 'none' })
+			return
 		}
-		finally { submitting.value = false }
-	} })
+		applyCart({ items: [] })
+		submitRequestId.value = ''
+		uni.showToast({ title: '取货申请已提交', icon: 'success' })
+		uni.switchTab({ url: '/pages/index/index' })
+	} catch {
+		uni.showToast({ title: '提交失败，请检查网络后重试', icon: 'none' })
+	} finally {
+		submitting.value = false
+	}
 }
 const goHome = () => uni.switchTab({ url: '/pages/index/index' })
 </script>

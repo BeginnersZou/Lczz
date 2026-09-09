@@ -65,6 +65,7 @@ class MaterialRequestIntegrationTests {
         jdbcTemplate.update("DELETE FROM product_spec_dimension");
         jdbcTemplate.update("DELETE FROM material_request_item");
         jdbcTemplate.update("DELETE FROM material_request");
+        jdbcTemplate.update("DELETE FROM work_order_progress");
         jdbcTemplate.update("DELETE FROM work_order_status_history");
         jdbcTemplate.update("DELETE FROM work_order_assignment");
         jdbcTemplate.update("DELETE FROM work_order");
@@ -87,7 +88,7 @@ class MaterialRequestIntegrationTests {
     }
 
     @Test
-    void assignedInstallerSubmitsSnapshotsAndIdenticalRetryIsIdempotent() throws Exception {
+    void assignedInstallerCanReplacePendingMaterialsUntilFirstProgress() throws Exception {
         jdbcTemplate.update("UPDATE work_order SET order_status='PENDING_VISIT' WHERE id=?", orderId);
         JsonNode first = submit(orderId, installerToken, itemsJson("2", "1"));
         long requestId = first.path("id").asLong();
@@ -111,11 +112,47 @@ class MaterialRequestIntegrationTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.materials[0].name").value("铜管"));
 
+        JsonNode updated = submit(orderId, installerToken,
+                "{\"items\":[{\"productId\":" + product1Id + ",\"quantity\":3}],\"remark\":\"调整后的清单\"}");
+        assertThat(updated.path("id").asLong()).isEqualTo(requestId);
+        assertThat(updated.path("materials").size()).isEqualTo(1);
+        assertThat(updated.path("materials").get(0).path("count").decimalValue()).isEqualByComparingTo("3");
+        assertThat(updated.path("remark").asText()).isEqualTo("调整后的清单");
+        assertThat(productMapper.selectById(product1Id).getDisplayStock()).isEqualByComparingTo("7");
+        assertThat(productMapper.selectById(product2Id).getDisplayStock()).isEqualByComparingTo("5");
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM material_request", Long.class)).isEqualTo(1L);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM material_request_item WHERE request_id=?",
+                Long.class, requestId)).isEqualTo(1L);
+
+        mockMvc.perform(post("/api/orders/" + orderId + "/progress")
+                        .header("Authorization", "Bearer " + installerToken)
+                        .contentType("application/json")
+                        .content("{\"description\":\"第一次施工进度\",\"fileIds\":[]}"))
+                .andExpect(status().isOk());
+
         mockMvc.perform(post("/api/orders/" + orderId + "/materials")
                         .header("Authorization", "Bearer " + installerToken)
-                        .contentType("application/json").content(itemsJson("3", "1")))
+                        .contentType("application/json")
+                        .content("{\"items\":[{\"productId\":" + product1Id + ",\"quantity\":4}]}"))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.error").value("ACTIVE_MATERIAL_REQUEST_EXISTS"));
+                .andExpect(jsonPath("$.error").value("MATERIAL_REQUEST_LOCKED_BY_PROGRESS"));
+        assertThat(productMapper.selectById(product1Id).getDisplayStock()).isEqualByComparingTo("7");
+    }
+
+    @Test
+    void firstMaterialSubmissionIsRejectedAfterProgressAlreadyExists() throws Exception {
+        mockMvc.perform(post("/api/orders/" + orderId + "/progress")
+                        .header("Authorization", "Bearer " + installerToken)
+                        .contentType("application/json")
+                        .content("{\"description\":\"先提交施工进度\",\"fileIds\":[]}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/orders/" + orderId + "/materials")
+                        .header("Authorization", "Bearer " + installerToken)
+                        .contentType("application/json").content(itemsJson("1", "1")))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value("MATERIAL_REQUEST_LOCKED_BY_PROGRESS"));
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM material_request", Long.class)).isZero();
     }
 
     @Test
