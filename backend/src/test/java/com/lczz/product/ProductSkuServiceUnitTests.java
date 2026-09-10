@@ -6,7 +6,6 @@ import com.lczz.product.service.ProductSkuService.DimensionCommand;
 import com.lczz.product.service.ProductSkuService.SkuCommand;
 import com.lczz.product.service.ProductSkuService.ValueCommand;
 import java.math.BigDecimal;
-import java.util.LinkedHashMap;
 import java.util.List;
 import org.h2.jdbcx.JdbcDataSource;
 import org.junit.jupiter.api.BeforeEach;
@@ -34,18 +33,24 @@ class ProductSkuServiceUnitTests {
     }
 
     @Test
-    void supportsArbitraryNamesAndMultiDimensionCartesianSkus() {
-        List<DimensionCommand> dimensions = List.of(
-                new DimensionCommand("材质", List.of(new ValueCommand("PVC", 0), new ValueCommand("PPR", 1)), 0),
-                new DimensionCommand("长度", List.of(new ValueCommand("1米", 0), new ValueCommand("2.5米", 1)), 1));
+    void supportsOneCustomDimensionWithMultipleSkusAndRejectsAdditionalDimensions() {
+        List<DimensionCommand> dimensions = List.of(new DimensionCommand("材质",
+                List.of(new ValueCommand("PVC", 0), new ValueCommand("PPR", 1)), 0));
         service.replace(7, "PIPE", null, "根", BigDecimal.ZERO, dimensions, List.of(
-                sku("PIPE-1", "PVC", "1米", 3), sku("PIPE-2", "PVC", "2.5米", 4),
-                sku("PIPE-3", "PPR", "1米", 5), sku("PIPE-4", "PPR", "2.5米", 6)));
+                new SkuCommand("PIPE-PVC", java.util.Map.of("材质", "PVC"), "根", BigDecimal.valueOf(3), true, 0),
+                new SkuCommand("PIPE-PPR", java.util.Map.of("材质", "PPR"), "根", BigDecimal.valueOf(5), true, 1)));
 
         var view = service.get(7, true);
-        assertThat(view.dimensions()).extracting(ProductSkuService.DimensionView::name).containsExactly("材质", "长度");
-        assertThat(view.skus()).hasSize(4);
-        assertThat(view.skus().getLast().specValues()).containsEntry("材质", "PPR").containsEntry("长度", "2.5米");
+        assertThat(view.dimensions()).extracting(ProductSkuService.DimensionView::name).containsExactly("材质");
+        assertThat(view.skus()).hasSize(2);
+        assertThat(view.skus().getLast().specValues()).containsOnlyKeys("材质").containsEntry("材质", "PPR");
+
+        List<DimensionCommand> multipleDimensions = List.of(
+                dimensions.getFirst(),
+                new DimensionCommand("长度", List.of(new ValueCommand("1米", 0)), 1));
+        assertThatThrownBy(() -> service.replace(7, "PIPE", null, "根", BigDecimal.ZERO,
+                multipleDimensions, List.of()))
+                .isInstanceOf(BusinessException.class).hasMessageContaining("只能配置一个规格维度");
     }
 
     @Test
@@ -83,14 +88,11 @@ class ProductSkuServiceUnitTests {
     @Test
     void updatesMaxLengthCodeAndAcceptsLongValidSpecificationWithoutDatabaseOverflow() {
         String code = "S".repeat(96);
-        List<DimensionCommand> dimensions = new java.util.ArrayList<>();
-        LinkedHashMap<String, String> values = new LinkedHashMap<>();
-        for (int index = 0; index < 8; index++) {
-            String name = ("维" + index + "N".repeat(62)).substring(0, 64);
-            String value = ("值" + index + "V".repeat(126)).substring(0, 128);
-            dimensions.add(new DimensionCommand(name, List.of(new ValueCommand(value, 0)), index));
-            values.put(name, value);
-        }
+        String name = ("维" + "N".repeat(63)).substring(0, 64);
+        String value = ("值" + "V".repeat(127)).substring(0, 128);
+        List<DimensionCommand> dimensions = List.of(
+                new DimensionCommand(name, List.of(new ValueCommand(value, 0)), 0));
+        java.util.Map<String, String> values = java.util.Map.of(name, value);
         List<SkuCommand> skus = List.of(new SkuCommand(code, values, "件", BigDecimal.ONE, true, 0));
 
         service.replace(11, "LONG", null, "件", BigDecimal.ZERO, dimensions, skus);
@@ -100,9 +102,4 @@ class ProductSkuServiceUnitTests {
                 .extracting(ProductSkuService.SkuView::code).isEqualTo(code);
     }
 
-    private SkuCommand sku(String code, String material, String length, int stock) {
-        LinkedHashMap<String, String> values = new LinkedHashMap<>();
-        values.put("材质", material); values.put("长度", length);
-        return new SkuCommand(code, values, "根", BigDecimal.valueOf(stock), true, null);
-    }
 }
