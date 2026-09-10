@@ -54,7 +54,7 @@ class ProductIntegrationTests {
     }
 
     @Test
-    void administratorCanConfigureArbitraryMultiDimensionSkusAndLegacyProductGetsDefaultSku() throws Exception {
+    void administratorCanConfigureOneDimensionSkusAndLegacyProductGetsDefaultSku() throws Exception {
         String token = adminToken();
         long parentId = createCategory(token, "pipes", "管状物", null);
         long childId = createCategory(token, "elbows", "弯头", parentId);
@@ -64,21 +64,17 @@ class ProductIntegrationTests {
                         .content("""
                                 {"productCode":"PVC-ELBOW","name":"PVC弯头管","categoryId":%d,
                                  "spec":"多规格","unit":"个","stock":20,"price":0,"enabled":true,
-                                 "specDimensions":[
-                                   {"name":"口径","values":[{"value":"25mm"},{"value":"35mm"}]},
-                                   {"name":"长度","values":[{"value":"1米"},{"value":"2米"}]}
-                                 ],
-                                 "skus":[
-                                   {"code":"PVC-25-1","specValues":{"口径":"25mm","长度":"1米"},"unit":"个","stock":3,"enabled":true},
-                                   {"code":"PVC-25-2","specValues":{"口径":"25mm","长度":"2米"},"unit":"个","stock":4,"enabled":true},
-                                   {"code":"PVC-35-1","specValues":{"口径":"35mm","长度":"1米"},"unit":"个","stock":5,"enabled":true},
-                                   {"code":"PVC-35-2","specValues":{"口径":"35mm","长度":"2米"},"unit":"个","stock":8,"enabled":false}
-                                 ]}
+                                  "specDimensions":[{"name":"口径","values":[{"value":"25mm"},{"value":"50mm"},{"value":"75mm"}]}],
+                                  "skus":[
+                                    {"code":"PVC-25","specValues":{"口径":"25mm"},"unit":"个","stock":3,"enabled":true},
+                                    {"code":"PVC-50","specValues":{"口径":"50mm"},"unit":"个","stock":4,"enabled":true},
+                                    {"code":"PVC-75","specValues":{"口径":"75mm"},"unit":"个","stock":5,"enabled":true}
+                                  ]}
                                 """.formatted(childId)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.specDimensions[0].name").value("口径"))
-                .andExpect(jsonPath("$.data.specDimensions[1].name").value("长度"))
-                .andExpect(jsonPath("$.data.skus.length()").value(4))
+                .andExpect(jsonPath("$.data.specDimensions.length()").value(1))
+                .andExpect(jsonPath("$.data.skus.length()").value(3))
                 .andExpect(jsonPath("$.data.stock").value(12))
                 .andReturn().getResponse().getContentAsString();
         long productId = objectMapper.readTree(response).at("/data/id").asLong();
@@ -87,6 +83,20 @@ class ProductIntegrationTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.skus.length()").value(3))
                 .andExpect(jsonPath("$.data.skus[0].specValues.口径").value("25mm"));
+
+        mockMvc.perform(post("/api/v1/consumables")
+                        .header("Authorization", bearer(token)).contentType("application/json")
+                        .content("""
+                                {"productCode":"INVALID-MULTI","name":"多维耗材","categoryId":%d,
+                                 "unit":"件","stock":0,"enabled":true,
+                                 "specDimensions":[
+                                   {"name":"口径","values":[{"value":"25mm"}]},
+                                   {"name":"长度","values":[{"value":"1米"}]}
+                                 ],
+                                 "skus":[{"code":"INVALID-MULTI-1","specValues":{"口径":"25mm","长度":"1米"},"unit":"件","stock":1,"enabled":true}]}
+                                """.formatted(childId)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("SPEC_DIMENSION_LIMIT"));
 
         mockMvc.perform(post("/api/v1/consumables")
                         .header("Authorization", bearer(token)).contentType("application/json")

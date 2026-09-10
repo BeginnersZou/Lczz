@@ -43,7 +43,7 @@
             <el-radio-button :label="false">无规格商品</el-radio-button>
             <el-radio-button :label="true">多规格商品</el-radio-button>
           </el-radio-group>
-          <span class="spec-help">规格名称和值均可自定义，例如口径、长度、大小、材质、颜色等</span>
+          <span class="spec-help">仅配置一个规格维度；规格名称和值均可自定义，例如口径下配置 25、50、75</span>
         </el-form-item>
 
         <template v-if="!form.hasSpecs">
@@ -63,23 +63,21 @@
 
         <el-form-item v-else label="规格配置" required>
           <div class="spec-editor">
-            <div v-for="(dimension, dimensionIndex) in form.specDimensions" :key="dimension.uid" class="dimension-card">
+            <div v-if="form.specDimensions[0]" class="dimension-card">
               <div class="dimension-header">
-                <el-input v-model="dimension.name" maxlength="64" placeholder="规格名称，如：口径、长度、材质" @input="markSkuStructureDirty" />
-                <el-button type="danger" link :icon="Delete" @click="removeDimension(dimensionIndex)">删除维度</el-button>
+                <el-input v-model="form.specDimensions[0].name" maxlength="64" placeholder="规格名称，如：口径、长度、材质" @input="markSkuStructureDirty" />
               </div>
               <div class="dimension-values">
-                <div v-for="(value, valueIndex) in dimension.values" :key="value.uid" class="value-editor">
+                <div v-for="(value, valueIndex) in form.specDimensions[0].values" :key="value.uid" class="value-editor">
                   <el-input v-model="value.text" maxlength="128" placeholder="规格值" @input="markSkuStructureDirty" />
-                  <el-button link type="danger" :icon="Delete" @click="removeSpecValue(dimensionIndex, valueIndex)">删除规格值</el-button>
+                  <el-button link type="danger" :icon="Delete" @click="removeSpecValue(valueIndex)">删除规格值</el-button>
                 </div>
-                <el-button plain type="primary" :icon="Plus" @click="addSpecValue(dimensionIndex)">添加规格值</el-button>
+                <el-button plain type="primary" :icon="Plus" @click="addSpecValue">添加规格值</el-button>
               </div>
             </div>
-            <el-button v-if="form.specDimensions.length < 8" plain type="primary" :icon="Plus" @click="addDimension">添加规格维度</el-button>
             <el-button type="primary" plain :icon="Refresh" @click="generateSkuCombinations">生成/更新SKU组合</el-button>
             <div class="combination-tip" :class="{ 'is-warning': skuStructureDirty }">
-              {{ skuStructureDirty ? '规格配置已变更，请生成/更新SKU组合后再提交。' : '最多500个组合；每个组合独立维护编码、单位、库存和状态。' }}
+              {{ skuStructureDirty ? '规格配置已变更，请生成/更新SKU后再提交。' : '每个规格值生成一个SKU，并独立维护编码、单位、库存和状态。' }}
             </div>
           </div>
         </el-form-item>
@@ -236,7 +234,12 @@ let imageUid = 1
 let specUid = 1
 
 // 单位选项
-const unitOptions = ['米', '瓶', '个', '把', '套', '卷', '台', '件']
+const unitOptions = [
+  '米', '延米', '平方米', '千克', '克', '升', '毫升',
+  '根', '卷', '盘', '条', '个', '只', '件', '套', '组', '对', '副',
+  '片', '张', '块', '把', '支', '包', '袋', '盒', '箱', '瓶', '罐',
+  '桶', '台', '次', '项'
+]
 
 const categoryOptions = ref([])
 const categoryIdByName = new Map()
@@ -296,29 +299,21 @@ const validDimensions = computed(() => form.specDimensions
   .filter(dimension => dimension.name && dimension.values.length))
 
 function handleSpecModeChange(hasSpecs) {
-  if (hasSpecs && form.specDimensions.length === 0) addDimension()
+  if (hasSpecs && form.specDimensions.length === 0) form.specDimensions = [createDimension()]
   if (!hasSpecs) form.skus = []
 }
 
-function addDimension() {
-  if (form.specDimensions.length >= 8) return
-  form.specDimensions.push({ uid: specUid++, name: '', values: [{ uid: specUid++, text: '' }] })
+function createDimension() {
+  return { uid: specUid++, name: '', values: [{ uid: specUid++, text: '' }] }
+}
+
+function addSpecValue() {
+  form.specDimensions[0].values.push({ uid: specUid++, text: '' })
   markSkuStructureDirty()
 }
 
-function removeDimension(index) {
-  form.specDimensions.splice(index, 1)
-  if (!form.specDimensions.length) form.hasSpecs = false
-  markSkuStructureDirty()
-}
-
-function addSpecValue(dimensionIndex) {
-  form.specDimensions[dimensionIndex].values.push({ uid: specUid++, text: '' })
-  markSkuStructureDirty()
-}
-
-function removeSpecValue(dimensionIndex, valueIndex) {
-  const values = form.specDimensions[dimensionIndex].values
+function removeSpecValue(valueIndex) {
+  const values = form.specDimensions[0].values
   values.splice(valueIndex, 1)
   if (!values.length) values.push({ uid: specUid++, text: '' })
   markSkuStructureDirty()

@@ -217,8 +217,10 @@ public class ProductSkuService {
             if (skus.size() > 1) throw new BusinessException("INVALID_SKU_CONFIG", "无规格产品只能配置一个默认SKU");
             return;
         }
+        if (dimensions.size() > 1) {
+            throw new BusinessException("SPEC_DIMENSION_LIMIT", "多规格耗材只能配置一个规格维度");
+        }
         if (skus.isEmpty()) throw new BusinessException("SKU_REQUIRED", "配置规格后必须生成SKU组合");
-        if (dimensions.size() > 8) throw new BusinessException("SPEC_DIMENSION_LIMIT", "规格维度最多8个");
         Set<String> dimensionNames = new HashSet<>();
         long expected = 1;
         for (DimensionCommand dimension : dimensions) {
