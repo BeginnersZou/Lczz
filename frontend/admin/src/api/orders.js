@@ -48,6 +48,7 @@ async function getAllOrders(params = {}) {
  * @param {number} [params.page=1]
  * @param {number} [params.pageSize=10]
  * @param {string} [params.keyword] - 订单号/客户姓名/手机号
+ * @param {string} [params.projectAddress] - 项目地址关键字
  * @param {string} [params.status] - 订单状态
  * @param {string} [params.startDate] - 起始日期
  * @param {string} [params.endDate] - 截止日期
@@ -218,6 +219,7 @@ export async function exportOrdersApi(params) {
     { label: '客户姓名', value: row => row.customerName },
     { label: '客户手机号', value: row => row.customerPhone },
     { label: '地址', value: row => row.address },
+    { label: '项目地址', value: row => row.projectAddress },
     { label: '安装师傅', value: row => row.assignMaster },
     { label: '状态', value: row => ({ PENDING_VISIT: '待上门', IN_PROGRESS: '处理中', PENDING_REVIEW: '待评价', REVIEWED: '已评价', CANCELLED: '已作废' })[row.status] || row.status },
     { label: '客户确认时间', value: row => row.customerConfirmedAt },

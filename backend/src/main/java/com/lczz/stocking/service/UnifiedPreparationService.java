@@ -165,12 +165,13 @@ public class UnifiedPreparationService {
                 SELECT r.id,r.request_no,w.order_no,
                        COALESCE(NULLIF(w.description,''),NULLIF(w.task_type,''),'安装订单') order_name,
                        w.customer_name,COALESCE(NULLIF(u.real_name,''),NULLIF(u.nickname,''),NULLIF(u.username,''),'安装师傅') submitter_name,
+                       u.phone submitter_phone,
                        r.installer_user_id,r.request_status,r.submitted_at,r.order_id,r.remark
                 FROM material_request r JOIN work_order w ON w.id=r.order_id
                 LEFT JOIN sys_user u ON u.id=r.installer_user_id WHERE r.id=? AND w.deleted=FALSE
                 """, (rs, row) -> new PreparationView(rs.getLong("id"), "W", rs.getString("request_no"),
                 rs.getString("order_no"), rs.getString("order_name"), "工程订单耗材", rs.getString("customer_name"),
-                rs.getLong("installer_user_id"), rs.getString("submitter_name"), rs.getString("request_status"),
+                rs.getLong("installer_user_id"), rs.getString("submitter_name"), rs.getString("submitter_phone"), rs.getString("request_status"),
                 statusLabel("W", rs.getString("request_status")), rs.getTimestamp("submitted_at").toLocalDateTime(),
                 rs.getObject("order_id", Long.class), rs.getString("remark"), new ArrayList<>()), id);
         if (rows.isEmpty()) throw new BusinessException(404, "PREPARATION_NOT_FOUND", "备货记录不存在");
@@ -195,11 +196,12 @@ public class UnifiedPreparationService {
     private PreparationView selfOrderDetail(long id) {
         List<PreparationView> rows = jdbc.query("""
                 SELECT o.id,o.order_no,o.order_status,o.created_at,o.installer_id,
-                       COALESCE(NULLIF(u.real_name,''),NULLIF(u.nickname,''),NULLIF(u.username,''),'安装师傅') submitter_name
+                       COALESCE(NULLIF(u.real_name,''),NULLIF(u.nickname,''),NULLIF(u.username,''),'安装师傅') submitter_name,
+                       u.phone submitter_phone
                 FROM material_self_order o LEFT JOIN sys_user u ON u.id=o.installer_id WHERE o.id=?
                 """, (rs, row) -> new PreparationView(rs.getLong("id"), "A", rs.getString("order_no"),
                 rs.getString("order_no"), "客户下单", "师傅自助下单", null,
-                rs.getLong("installer_id"), rs.getString("submitter_name"), rs.getString("order_status"),
+                rs.getLong("installer_id"), rs.getString("submitter_name"), rs.getString("submitter_phone"), rs.getString("order_status"),
                 statusLabel("A", rs.getString("order_status")), rs.getTimestamp("created_at").toLocalDateTime(),
                 null, null, new ArrayList<>()), id);
         if (rows.isEmpty()) throw new BusinessException(404, "PREPARATION_NOT_FOUND", "备货记录不存在");
@@ -302,7 +304,7 @@ public class UnifiedPreparationService {
                                      BigDecimal totalQuantity) { }
     public record PreparationView(long id, String source, String requestNo, String orderNo, String productName,
                                   String sourceLabel, String customerName, long submitterId,
-                                  String submitterName, String statusCode, String statusLabel,
+                                  String submitterName, String submitterPhone, String statusCode, String statusLabel,
                                   LocalDateTime createTime, Long orderId, String remark,
                                   List<MaterialLine> materials) { }
     public record MaterialLine(long id, Long productId, Long skuId, String skuCode, String name, String spec,

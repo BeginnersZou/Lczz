@@ -25,6 +25,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -86,6 +87,41 @@ class OrderIntegrationTests {
         mockMvc.perform(get("/api/orders/detail/" + first.path("id").asLong())
                         .header("Authorization", "Bearer " + token(otherCustomerId, RoleCode.CUSTOMER)))
                 .andExpect(status().isNotFound()).andExpect(jsonPath("$.error").value("ORDER_NOT_FOUND"));
+    }
+
+    @Test
+    void adminCanStoreDisplayAndSearchProjectAddress() throws Exception {
+        JsonNode order = createOrder("13800138000", installerId);
+
+        assertThat(order.path("projectAddress").asText()).isEqualTo("光谷软件园 A 区 3 号楼");
+        mockMvc.perform(get("/api/orders/detail/" + order.path("id").asLong())
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.projectAddress").value("光谷软件园 A 区 3 号楼"));
+        mockMvc.perform(get("/api/orders/list")
+                        .param("projectAddress", "软件园 A 区")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.list[0].projectAddress").value("光谷软件园 A 区 3 号楼"));
+        mockMvc.perform(get("/api/orders/list")
+                        .param("projectAddress", "不存在的项目")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(0));
+
+        String updatedOrder = orderJson("13800138000", "[" + installerId + "]")
+                .replace("光谷软件园 A 区 3 号楼", "武汉天地 2 号楼");
+        mockMvc.perform(put("/api/orders/" + order.path("id").asLong())
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType("application/json").content(updatedOrder))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.projectAddress").value("武汉天地 2 号楼"));
+        mockMvc.perform(get("/api/orders/list")
+                        .param("projectAddress", "武汉天地")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(1));
     }
 
     @Test
@@ -193,6 +229,7 @@ class OrderIntegrationTests {
                   "customerPhone":"%s",
                   "addressArea":["安徽省","合肥市","蜀山区"],
                   "addressDetail":"创新大道100号",
+                  "projectAddress":"光谷软件园 A 区 3 号楼",
                   "orderStartTime":"2026-08-20T01:00:00Z",
                   "orderEndTime":"2026-08-20T03:00:00Z",
                   "masterIds":%s

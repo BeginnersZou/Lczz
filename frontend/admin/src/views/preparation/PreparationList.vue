@@ -105,6 +105,7 @@
             <div><span>订单编号</span><strong>{{ currentRow.orderNo }}</strong></div>
             <div><span>订单名称</span><strong>{{ currentRow.productName }}</strong></div>
             <div><span>下单人/师傅</span><strong>{{ currentRow.submitterName || '-' }}</strong></div>
+            <div v-if="currentRow.source === 'A'"><span>师傅手机号</span><strong>{{ currentRow.submitterPhone || '-' }}</strong></div>
             <div><span>客户</span><strong>{{ currentRow.customerName || '不关联工程客户' }}</strong></div>
             <div><span>创建时间</span><strong>{{ formatDateTime(currentRow.createTime) }}</strong></div>
             <div v-if="currentRow.remark"><span>申请备注</span><strong>{{ currentRow.remark }}</strong></div>

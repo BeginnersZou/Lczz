@@ -64,6 +64,11 @@
           </div>
         </el-form-item>
 
+        <el-form-item label="项目地址">
+          <el-input v-model="form.projectAddress" maxlength="500" show-word-limit
+            placeholder="请输入项目名称、园区或施工地点" class="input-base" />
+        </el-form-item>
+
         <!-- 订单时间 双日期框 -->
         <el-form-item label="订单时间" prop="orderEndTime" required>
           <div class="time-row">
@@ -251,6 +256,7 @@ const form = reactive({
   customerPhone: '',
   addressArea: [],
   addressDetail: '',
+  projectAddress: '',
   orderStartTime: '',
   orderEndTime: '',
   images: [],
@@ -365,6 +371,7 @@ async function loadEditData() {
       description: res.description || '',
       addressArea: res.addressArea || [],
       addressDetail: res.addressDetail || '',
+      projectAddress: res.projectAddress || '',
       orderStartTime: res.orderStartTime || '',
       orderEndTime: res.orderEndTime || '',
       customerName: res.customerName || '',
@@ -617,6 +624,7 @@ async function handleSubmit() {
       customerPhone: form.customerPhone,
       addressArea: form.addressArea,
       addressDetail: form.addressDetail,
+      projectAddress: form.projectAddress,
       orderStartTime: form.orderStartTime,
       orderEndTime: form.orderEndTime,
       masterIds: selectedMasterList.value.map(m => m.id).filter(id => id != null),

@@ -28,6 +28,12 @@
               </el-icon>
             </template>
           </el-input>
+          <el-input v-model="searchProjectAddress" placeholder="输入项目地址检索" clearable class="search-input"
+            @keyup.enter="handleSearch">
+            <template #prefix>
+              <el-icon><Search /></el-icon>
+            </template>
+          </el-input>
           <el-select v-model="searchStatus" placeholder="全部状态" clearable class="status-select" @change="handleSearch">
             <el-option label="待上门" value="PENDING_VISIT" />
             <el-option label="处理中" value="IN_PROGRESS" />
@@ -88,6 +94,9 @@
             <div class="primary-cell">{{ scope.row.customerName || '-' }}</div>
             <div class="secondary-cell">{{ formatPhone(scope.row.customerPhone) }}</div>
           </template>
+        </el-table-column>
+        <el-table-column prop="projectAddress" label="项目地址" align="left" min-width="220" show-overflow-tooltip>
+          <template #default="scope">{{ scope.row.projectAddress || '-' }}</template>
         </el-table-column>
         <el-table-column label="订单来源" min-width="180">
           <template #default="{ row }"><OrderOrigin :order="row" /></template>
@@ -184,6 +193,7 @@ const route = useRoute()
 
 // 搜索条件
 const searchKeyword = ref(typeof route.query.keyword === 'string' ? route.query.keyword : '')
+const searchProjectAddress = ref(typeof route.query.projectAddress === 'string' ? route.query.projectAddress : '')
 const searchStatus = ref(typeof route.query.status === 'string' ? route.query.status : '')
 // 分页基础数据
 const currentPage = ref(Number(route.query.page) || 1)
@@ -222,6 +232,7 @@ async function loadList() {
       page: currentPage.value,
       pageSize: pageSize.value,
       keyword: searchKeyword.value,
+      projectAddress: searchProjectAddress.value || undefined,
       status: searchStatus.value || undefined
     })
     orders.value = res.list || []
@@ -236,6 +247,7 @@ async function loadList() {
 function syncRouteState() {
   router.replace({ query: {
     ...(searchKeyword.value.trim() ? { keyword: searchKeyword.value.trim() } : {}),
+    ...(searchProjectAddress.value.trim() ? { projectAddress: searchProjectAddress.value.trim() } : {}),
     ...(searchStatus.value ? { status: searchStatus.value } : {}),
     ...(currentPage.value > 1 ? { page: currentPage.value } : {}),
     ...(pageSize.value !== 10 ? { pageSize: pageSize.value } : {})
@@ -255,6 +267,7 @@ function handleSearch() {
  */
 function handleReset() {
   searchKeyword.value = ''
+  searchProjectAddress.value = ''
   searchStatus.value = ''
   currentPage.value = 1
   loadList()
@@ -267,7 +280,11 @@ async function handleBatchExport() {
   if (exportLoading.value) return
   exportLoading.value = true
   try {
-    const blob = await exportOrdersApi({ keyword: searchKeyword.value, status: searchStatus.value || undefined })
+    const blob = await exportOrdersApi({
+      keyword: searchKeyword.value,
+      projectAddress: searchProjectAddress.value || undefined,
+      status: searchStatus.value || undefined
+    })
     const url = window.URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url

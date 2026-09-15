@@ -89,7 +89,7 @@ public class OrderService {
         this.auditService = auditService;
     }
 
-    public OrderPage list(AuthenticatedUser actor, int page, int pageSize, String keyword, String status,
+    public OrderPage list(AuthenticatedUser actor, int page, int pageSize, String keyword, String projectAddress, String status,
                           String startDate, String endDate) {
         LambdaQueryWrapper<WorkOrderEntity> query = scopedQuery(actor);
         if (keyword != null && !keyword.isBlank()) {
@@ -97,6 +97,9 @@ public class OrderService {
             query.and(wrapper -> wrapper.like(WorkOrderEntity::getOrderNo, value)
                     .or().like(WorkOrderEntity::getCustomerName, value)
                     .or().like(WorkOrderEntity::getCustomerPhone, value));
+        }
+        if (projectAddress != null && !projectAddress.isBlank()) {
+            query.like(WorkOrderEntity::getProjectAddress, projectAddress.trim());
         }
         if (status != null && !status.isBlank() && !"all".equalsIgnoreCase(status)) {
             String normalized = normalizeStatus(status);
@@ -307,6 +310,7 @@ public class OrderService {
         order.setDistrictCode(area.get(2));
         order.setDistrictName(area.get(2));
         order.setDetailedAddress(command.addressDetail().trim());
+        order.setProjectAddress(blankToNull(command.projectAddress()));
         order.setRequiredStartAt(start);
         order.setExpectedEndAt(end);
         order.setAdminRemark(blankToNull(command.adminRemark()));
@@ -420,7 +424,7 @@ public class OrderService {
         String address = String.join("", area) + order.getDetailedAddress();
         return new OrderView(order.getId(), order.getOrderNo(), taskLabel, order.getTaskType(),
                 order.getDescription(), order.getCustomerUserId(), order.getCustomerName(), order.getCustomerPhone(),
-                area, order.getDetailedAddress(), address, order.getRequiredStartAt(), order.getExpectedEndAt(),
+                area, order.getDetailedAddress(), address, order.getProjectAddress(), order.getRequiredStartAt(), order.getExpectedEndAt(),
                 statusLabel(order.getOrderStatus()), order.getOrderStatus(), masters, masters,
                 order.getAdminRemark(), order.getCancelReason(), order.getCreatedAt(), order.getUpdatedAt(),
                 "空调服务", taskLabel, order.getDescription(), order.getCustomerName(), order.getCustomerPhone(),
@@ -537,7 +541,7 @@ public class OrderService {
     }
 
     public record OrderCommand(String taskType, String description, String customerName, String customerPhone,
-                               List<String> addressArea, String addressDetail, String orderStartTime,
+                               List<String> addressArea, String addressDetail, String projectAddress, String orderStartTime,
                                String orderEndTime, List<Long> masterIds, String adminRemark) { }
     public record OrderPage(List<OrderView> list, long total, int page, int pageSize) { }
     public record InstallerView(long id, String masterName, String masterPhone,
@@ -564,7 +568,7 @@ public class OrderService {
     }
     public record OrderView(long id, String orderNo, String taskType, String taskTypeCode, String description,
                             Long customerUserId, String customerName, String customerPhone, List<String> addressArea,
-                            String addressDetail, String address, LocalDateTime orderStartTime,
+                            String addressDetail, String address, String projectAddress, LocalDateTime orderStartTime,
                             LocalDateTime orderEndTime, String status, String statusCode,
                             List<InstallerView> selectedMasterList, List<InstallerView> masterList,
                             String adminRemark, String cancelReason, LocalDateTime createdAt, LocalDateTime updatedAt,

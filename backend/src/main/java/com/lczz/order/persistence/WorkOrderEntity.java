@@ -31,6 +31,7 @@ public class WorkOrderEntity {
     private String districtCode;
     private String districtName;
     private String detailedAddress;
+    private String projectAddress;
     @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private LocalDateTime requiredStartAt;
     @TableField(updateStrategy = FieldStrategy.ALWAYS)
@@ -87,6 +88,8 @@ public class WorkOrderEntity {
     public void setDistrictName(String districtName) { this.districtName = districtName; }
     public String getDetailedAddress() { return detailedAddress; }
     public void setDetailedAddress(String detailedAddress) { this.detailedAddress = detailedAddress; }
+    public String getProjectAddress() { return projectAddress; }
+    public void setProjectAddress(String projectAddress) { this.projectAddress = projectAddress; }
     public LocalDateTime getRequiredStartAt() { return requiredStartAt; }
     public void setRequiredStartAt(LocalDateTime requiredStartAt) { this.requiredStartAt = requiredStartAt; }
     public LocalDateTime getExpectedEndAt() { return expectedEndAt; }
