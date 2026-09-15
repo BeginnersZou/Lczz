@@ -3,6 +3,7 @@ package com.lczz.product.service;
 import com.lczz.auth.domain.AuthenticatedUser;
 import com.lczz.auth.domain.RoleCode;
 import com.lczz.common.exception.BusinessException;
+import com.lczz.notification.service.SmsNotificationService;
 import java.math.BigDecimal;
 import java.sql.PreparedStatement;
 import java.sql.Statement;
@@ -22,11 +23,14 @@ public class InstallerSelfOrderService {
     private static final DateTimeFormatter NUMBER_TIME = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
     private final JdbcTemplate jdbc;
     private final String pickupPhone;
+    private final SmsNotificationService notifications;
 
     public InstallerSelfOrderService(JdbcTemplate jdbc,
-                                     @Value("${lczz.self-order.pickup-phone:}") String pickupPhone) {
+                                     @Value("${lczz.self-order.pickup-phone:}") String pickupPhone,
+                                     SmsNotificationService notifications) {
         this.jdbc = jdbc;
         this.pickupPhone = pickupPhone == null ? "" : pickupPhone.trim();
+        this.notifications = notifications;
     }
 
     public CartView cart(AuthenticatedUser actor) {
@@ -155,6 +159,7 @@ public class InstallerSelfOrderService {
                     row.specLabel(), row.unit(), row.quantity());
         }
         jdbc.update("DELETE FROM installer_cart_item WHERE installer_id=?", actor.userId());
+        notifications.queueInstallerSelfOrderCreated(orderId, orderNo);
         return detail(actor, orderId);
     }
 
