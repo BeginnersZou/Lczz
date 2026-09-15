@@ -12,6 +12,7 @@ public class SmsProperties {
     private String signName;
     private String dealerAppointmentTemplateCode;
     private String installerAssignmentTemplateCode;
+    private String selfOrderCreatedTemplateCode;
     private String adminPhones;
     private String pickupContactPhone;
     private int maxAttempts = 3;
@@ -32,6 +33,10 @@ public class SmsProperties {
     public String getInstallerAssignmentTemplateCode() { return installerAssignmentTemplateCode; }
     public void setInstallerAssignmentTemplateCode(String installerAssignmentTemplateCode) {
         this.installerAssignmentTemplateCode = installerAssignmentTemplateCode;
+    }
+    public String getSelfOrderCreatedTemplateCode() { return selfOrderCreatedTemplateCode; }
+    public void setSelfOrderCreatedTemplateCode(String selfOrderCreatedTemplateCode) {
+        this.selfOrderCreatedTemplateCode = selfOrderCreatedTemplateCode;
     }
     public String getAdminPhones() { return adminPhones; }
     public void setAdminPhones(String adminPhones) { this.adminPhones = adminPhones; }

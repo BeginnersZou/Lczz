@@ -27,6 +27,8 @@ class SmsNotificationIntegrationTests {
         smsProperties.setAccessKeySecret(null);
         smsProperties.setSignName(null);
         smsProperties.setInstallerAssignmentTemplateCode(null);
+        smsProperties.setSelfOrderCreatedTemplateCode(null);
+        smsProperties.setAdminPhones(null);
     }
 
     @AfterEach
@@ -56,5 +58,30 @@ class SmsNotificationIntegrationTests {
                 .isEqualTo("SKIPPED");
         assertThat(jdbcTemplate.queryForObject("SELECT last_error FROM sms_notification", String.class))
                 .isEqualTo("SMS_PROVIDER_NOT_CONFIGURED");
+    }
+
+    @Test
+    void disabledSelfOrderNotificationIsAuditedOncePerAdministratorAndIdempotent() {
+        smsProperties.setAdminPhones("13900000003,+8613900000004,invalid");
+
+        smsNotificationService.queueInstallerSelfOrderCreated(301L, "A202609150001");
+        smsNotificationService.queueInstallerSelfOrderCreated(301L, "A202609150001");
+
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM sms_notification", Long.class)).isEqualTo(2L);
+        assertThat(jdbcTemplate.queryForList(
+                "SELECT event_type FROM sms_notification ORDER BY id", String.class))
+                .containsOnly("INSTALLER_SELF_ORDER_CREATED");
+        assertThat(jdbcTemplate.queryForList(
+                "SELECT business_type FROM sms_notification ORDER BY id", String.class))
+                .containsOnly("MATERIAL_SELF_ORDER");
+        assertThat(jdbcTemplate.queryForList(
+                "SELECT notification_status FROM sms_notification ORDER BY id", String.class))
+                .containsOnly("SKIPPED");
+        assertThat(jdbcTemplate.queryForList(
+                "SELECT last_error FROM sms_notification ORDER BY id", String.class))
+                .containsOnly("SMS_DISABLED");
+        assertThat(jdbcTemplate.queryForList(
+                "SELECT template_params_json FROM sms_notification ORDER BY id", String.class))
+                .allMatch(params -> params.contains("A202609150001"));
     }
 }

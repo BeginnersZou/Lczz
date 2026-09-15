@@ -3,6 +3,7 @@ package com.lczz.product;
 import com.lczz.auth.domain.AuthenticatedUser;
 import com.lczz.auth.domain.RoleCode;
 import com.lczz.common.exception.BusinessException;
+import com.lczz.notification.service.SmsNotificationService;
 import com.lczz.product.service.InstallerSelfOrderService;
 import java.util.Set;
 import org.h2.jdbcx.JdbcDataSource;
@@ -12,10 +13,14 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
 class InstallerSelfOrderServiceUnitTests {
     JdbcTemplate jdbc;
     InstallerSelfOrderService service;
+    SmsNotificationService notifications;
     final AuthenticatedUser installer = new AuthenticatedUser(11, "installer-a", "师傅甲", "13800000011", Set.of(RoleCode.INSTALLER));
     final AuthenticatedUser otherInstaller = new AuthenticatedUser(12, "installer-b", "师傅乙", "13800000012", Set.of(RoleCode.INSTALLER));
     final AuthenticatedUser customer = new AuthenticatedUser(21, "customer", "客户", "13800000021", Set.of(RoleCode.CUSTOMER));
@@ -31,7 +36,8 @@ class InstallerSelfOrderServiceUnitTests {
         jdbc.execute("CREATE TABLE material_self_order_item(id BIGINT AUTO_INCREMENT PRIMARY KEY,self_order_id BIGINT,sku_id BIGINT,product_id BIGINT,product_name_snapshot VARCHAR(255),sku_code_snapshot VARCHAR(200),spec_snapshot VARCHAR(1000),unit_snapshot VARCHAR(32),quantity INT,created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)");
         jdbc.update("INSERT INTO product VALUES (1,'通用管材',TRUE,FALSE)");
         jdbc.update("INSERT INTO product_sku VALUES (101,1,'PIPE-WHITE-2M','颜色=白 / 长度=2米','根',10,TRUE,FALSE)");
-        service = new InstallerSelfOrderService(jdbc, "027-82710326");
+        notifications = mock(SmsNotificationService.class);
+        service = new InstallerSelfOrderService(jdbc, "027-82710326", notifications);
     }
 
     @Test
@@ -57,6 +63,7 @@ class InstallerSelfOrderServiceUnitTests {
         assertThatThrownBy(() -> service.detail(otherInstaller, order.id())).isInstanceOf(BusinessException.class);
         assertThat(service.submit(installer, "submit-once").id()).isEqualTo(order.id());
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM material_self_order", Integer.class)).isEqualTo(1);
+        verify(notifications, times(1)).queueInstallerSelfOrderCreated(order.id(), order.orderNo());
     }
 
     @Test
@@ -68,7 +75,7 @@ class InstallerSelfOrderServiceUnitTests {
 
     @Test
     void missingOptionalPickupPhoneDoesNotBlockOrderSubmission() {
-        InstallerSelfOrderService serviceWithoutPhone = new InstallerSelfOrderService(jdbc, "");
+        InstallerSelfOrderService serviceWithoutPhone = new InstallerSelfOrderService(jdbc, "", notifications);
         serviceWithoutPhone.add(installer, 101, 2);
 
         var order = serviceWithoutPhone.submit(installer, "submit-without-phone");
