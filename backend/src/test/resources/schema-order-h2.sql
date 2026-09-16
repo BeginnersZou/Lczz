@@ -16,6 +16,7 @@ CREATE TABLE work_order (
   city_code VARCHAR(64), city_name VARCHAR(64),
   district_code VARCHAR(64), district_name VARCHAR(64),
   detailed_address VARCHAR(500) NOT NULL,
+  project_address VARCHAR(500),
   required_start_at TIMESTAMP,
   expected_end_at TIMESTAMP,
   admin_remark VARCHAR(1000),

@@ -20,7 +20,7 @@ class UnifiedPreparationServiceUnitTests {
         DriverManagerDataSource source = new DriverManagerDataSource(
                 "jdbc:h2:mem:unified_" + UUID.randomUUID() + ";MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", "");
         jdbc = new JdbcTemplate(source);
-        jdbc.execute("CREATE TABLE sys_user(id BIGINT PRIMARY KEY,username VARCHAR(64),nickname VARCHAR(64),real_name VARCHAR(64))");
+        jdbc.execute("CREATE TABLE sys_user(id BIGINT PRIMARY KEY,username VARCHAR(64),nickname VARCHAR(64),real_name VARCHAR(64),phone VARCHAR(20))");
         jdbc.execute("CREATE TABLE work_order(id BIGINT PRIMARY KEY,order_no VARCHAR(64),description VARCHAR(1000),task_type VARCHAR(64),customer_name VARCHAR(64),deleted BOOLEAN)");
         jdbc.execute("CREATE TABLE material_request(id BIGINT PRIMARY KEY,request_no VARCHAR(64),order_id BIGINT,installer_user_id BIGINT,request_status VARCHAR(32),submitted_at TIMESTAMP,remark VARCHAR(500))");
         jdbc.execute("CREATE TABLE product(id BIGINT PRIMARY KEY,display_stock DECIMAL(12,3))");
@@ -59,6 +59,14 @@ class UnifiedPreparationServiceUnitTests {
     }
 
     @Test
+    void selfOrderDetailContainsInstallerPhoneForAdminPreparationView() {
+        var detail = service.detail("A", 20);
+
+        assertThat(detail.submitterName()).isEqualTo("张师傅");
+        assertThat(detail.submitterPhone()).isEqualTo("13810000001");
+    }
+
+    @Test
     void workDetailUsesSkuSnapshotAndSkuStockButKeepsLegacyFallback() {
         jdbc.update("INSERT INTO product VALUES (101,99)");
         jdbc.update("INSERT INTO product_sku VALUES (300,7)");
@@ -93,7 +101,7 @@ class UnifiedPreparationServiceUnitTests {
     }
 
     private void seed() {
-        jdbc.update("INSERT INTO sys_user VALUES (1,'installer',NULL,'张师傅')");
+        jdbc.update("INSERT INTO sys_user VALUES (1,'installer',NULL,'张师傅','13810000001')");
         jdbc.update("INSERT INTO work_order VALUES (10,'WO202609040001','空调安装','INSTALL','王客户',FALSE)");
         jdbc.update("INSERT INTO material_request VALUES (11,'MR001',10,1,'PENDING',CURRENT_TIMESTAMP,'现场申请')");
         jdbc.update("INSERT INTO product VALUES (100,8)");

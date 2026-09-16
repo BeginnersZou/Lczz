@@ -49,11 +49,12 @@ public class OrderController {
                                 @RequestParam(defaultValue = "1") @Min(1) int page,
                                 @RequestParam(defaultValue = "10") @Min(1) @Max(100) int pageSize,
                                 @RequestParam(required = false) @Size(max = 100) String keyword,
+                                @RequestParam(required = false) @Size(max = 500) String projectAddress,
                                 @RequestParam(required = false) @Size(max = 32) String status,
                                 @RequestParam(required = false) @Size(max = 40) String startDate,
                                 @RequestParam(required = false) @Size(max = 40) String endDate,
                                 HttpServletRequest request) {
-        return ApiResponse.success(orderService.list(actor, page, pageSize, keyword, status, startDate, endDate),
+        return ApiResponse.success(orderService.list(actor, page, pageSize, keyword, projectAddress, status, startDate, endDate),
                 requestId(request));
     }
 
@@ -144,13 +145,14 @@ public class OrderController {
             @NotBlank @Pattern(regexp = "^(?:\\+86)?1[3-9]\\d{9}$") String customerPhone,
             @NotNull @Size(min = 3, max = 3) List<@NotBlank @Size(max = 64) String> addressArea,
             @NotBlank @Size(max = 500) String addressDetail,
+            @Size(max = 500) String projectAddress,
             @Size(max = 40) String orderStartTime,
             @Size(max = 40) String orderEndTime,
             @Size(max = 1) List<@NotNull @Min(1) Long> masterIds,
             @Size(max = 1000) String adminRemark) {
         OrderCommand toCommand() {
             return new OrderCommand(taskType, description, customerName, customerPhone, addressArea,
-                    addressDetail, orderStartTime, orderEndTime, masterIds, adminRemark);
+                    addressDetail, projectAddress, orderStartTime, orderEndTime, masterIds, adminRemark);
         }
     }
 

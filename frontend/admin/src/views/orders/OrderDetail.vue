@@ -38,6 +38,7 @@
             <span v-else>待管理员安排</span>
           </el-descriptions-item>
           <el-descriptions-item label="安装地址" :span="descriptionColumns">{{ order.address || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="项目地址" :span="descriptionColumns">{{ order.projectAddress || '-' }}</el-descriptions-item>
           <el-descriptions-item label="指派师傅" :span="descriptionColumns">
             <template v-if="order.selectedMasterList?.length">
               <div v-for="master in order.selectedMasterList" :key="master.id">
