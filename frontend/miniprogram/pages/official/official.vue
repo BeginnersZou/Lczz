@@ -99,14 +99,16 @@
 						<text class="contact-value">027-82710326 / 027-82710380</text>
 					</view>
 				</view>
-				<view class="contact-item" @click="copyAddress">
+				<view class="contact-item address-item" hover-class="contact-item-press" @click="openAddressLocation">
 					<view class="contact-icon location">
 						<up-icon name="map" size="18" color="#fff"></up-icon>
 					</view>
 					<view class="contact-info">
 						<text class="contact-label">公司地址</text>
-						<text class="contact-value">武汉市江岸区中环商贸城内</text>
+						<text class="contact-value">湖北省武汉市江岸区不锈钢路S17-49-51号</text>
+						<text class="address-action">点击查看地图并导航</text>
 					</view>
+					<up-icon name="arrow-right" size="15" color="#0b63ce"></up-icon>
 				</view>
 				<view class="contact-item" @click="openHours">
 					<view class="contact-icon clock">
@@ -140,6 +142,7 @@ import {
 	onShareAppMessage,
 	onShareTimeline
 } from '@dcloudio/uni-app'
+import { openCompanyLocation } from '@/utils/company-location.js'
 
 // 分享官网给好友
 onShareAppMessage(() => ({
@@ -212,15 +215,7 @@ const callPhone = () => {
 	})
 }
 
-const copyAddress = () => {
-	uni.setClipboardData({
-		data: '武汉市江岸区中环商贸城内',
-		success: () => uni.showToast({
-			title: '地址已复制',
-			icon: 'none'
-		}),
-	})
-}
+const openAddressLocation = () => openCompanyLocation(uni)
 
 const openHours = () => {
 	uni.showModal({
@@ -533,6 +528,14 @@ $text-light: #94a3b8;
 	}
 }
 
+.contact-item-press {
+	background: #eaf3ff;
+}
+
+.address-item {
+	align-items: flex-start;
+}
+
 .contact-icon {
 	width: 64rpx;
 	height: 64rpx;
@@ -572,6 +575,13 @@ $text-light: #94a3b8;
 	font-weight: 600;
 	color: $text-main;
 	margin-top: 4rpx;
+	line-height: 1.45;
+}
+
+.address-action {
+	margin-top: 8rpx;
+	color: $primary;
+	font-size: 22rpx;
 }
 
 /* ═══ 底部 ═══ */
