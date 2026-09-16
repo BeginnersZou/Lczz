@@ -37,7 +37,7 @@
         </el-table-column>
         <el-table-column prop="siteName" label="工地名称" min-width="260" show-overflow-tooltip />
         <el-table-column label="案例图片" width="110" align="center">
-          <template #default="{ row }">{{ row.images.length }} 张</template>
+          <template #default="{ row }">{{ row.imageCount }} 张</template>
         </el-table-column>
         <el-table-column prop="updatedAt" label="最后更新" width="190">
           <template #default="{ row }">{{ formatDateTime(row.updatedAt) || '-' }}</template>

@@ -14,7 +14,8 @@ function normalizeCase(item = {}) {
     ...item,
     siteName: item.siteName || '',
     coverImage: item.coverImage ? normalizeFile(item.coverImage) : null,
-    images: (item.images || []).map(normalizeFile).filter(image => image.id || image.url)
+    images: (item.images || []).map(normalizeFile).filter(image => image.id || image.url),
+    imageCount: Number.isFinite(Number(item.imageCount)) ? Number(item.imageCount) : (item.images || []).length
   }
 }
 

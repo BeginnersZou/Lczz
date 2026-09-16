@@ -56,6 +56,7 @@ class ProjectCaseIntegrationTests {
         mockMvc.perform(get("/api/v1/cases/list").param("keyword", "江岸区"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.list[0].imageCount").value(2))
                 .andExpect(jsonPath("$.data.list[0].coverImage.url")
                         .value(org.hamcrest.Matchers.startsWith("/api/files/access/")));
         mockMvc.perform(get("/api/v1/cases/{id}", caseId))
