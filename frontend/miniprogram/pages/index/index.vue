@@ -204,6 +204,7 @@ const functionList = computed(() => [
 	...(dealerVisible.value ? [{ title: '预约安装', tip: '经销商申请', icon: 'calendar', tone: 'blue', color: '#0b63ce', action: 'booking' }] : []),
 	{ title: '快速报修', tip: '及时响应', icon: 'setting-fill', tone: 'red', color: '#dc5b62', action: 'service' },
 	{ title: '配件展示', tip: '电话咨询', icon: 'bag', tone: 'cyan', color: '#0f9b91', action: 'shop' },
+	{ title: '项目案例', tip: '施工实景', icon: 'photo', tone: 'purple', color: '#7656bd', action: 'cases' },
 	{ title: '清洗保养', tip: '节能健康', icon: 'reload', tone: 'green', color: '#189566', action: 'service' },
 	{ title: '我的订单', tip: '进度可查', icon: 'order', tone: 'blue', color: '#0b63ce', action: 'order' },
 	{ title: '服务保障', tip: '售后无忧', icon: 'server-fill', tone: 'amber', color: '#d47a18', action: 'official' },
@@ -335,6 +336,7 @@ const handleAction = (action, title) => {
 		uni.pageScrollTo({ selector: '#product-section', duration: 320 })
 		return
 	}
+	if (action === 'cases') return uni.navigateTo({ url: '/pages/cases/cases' })
 	if (action === 'order') return uni.switchTab({ url: '/pages/order/order' })
 	if (action === 'official') return uni.switchTab({ url: '/pages/official/official' })
 	if (action === 'phone') return callService()

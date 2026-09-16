@@ -3,6 +3,7 @@ import {
   ShoppingCart,
   Document,
   Box,
+  Picture,
   User
 } from '@element-plus/icons-vue'
 
@@ -32,6 +33,12 @@ const menuItems = [
     name: 'Preparation',
     icon: ShoppingCart,
     meta: { title: '订单备货' }
+  },
+  {
+    path: '/cases',
+    name: 'ProjectCases',
+    icon: Picture,
+    meta: { title: '项目案例' }
   },
   {
     path: '/users',

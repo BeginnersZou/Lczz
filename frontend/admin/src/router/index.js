@@ -84,6 +84,24 @@ const routes = [
         name: 'Users',
         component: () => import('@/views/users/UserList.vue'),
         meta: { title: '用户管理' }
+      },
+      {
+        path: 'cases',
+        name: 'ProjectCases',
+        component: () => import('@/views/cases/CaseList.vue'),
+        meta: { title: '项目案例' }
+      },
+      {
+        path: 'cases/form',
+        name: 'ProjectCaseForm',
+        component: () => import('@/views/cases/CaseForm.vue'),
+        meta: { title: '新增项目案例' }
+      },
+      {
+        path: 'cases/form/:id',
+        name: 'ProjectCaseEdit',
+        component: () => import('@/views/cases/CaseForm.vue'),
+        meta: { title: '修改项目案例' }
       }
     ]
   },
