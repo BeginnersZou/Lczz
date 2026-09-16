@@ -50,17 +50,18 @@ public class FileService {
             "jpg", "image/jpeg", "jpeg", "image/jpeg", "png", "image/png",
             "gif", "image/gif", "webp", "image/webp", "mp4", "video/mp4",
             "mov", "video/quicktime", "m4v", "video/mp4");
-    private static final Set<String> BUSINESS_TYPES = Set.of("PRODUCT", "ORDER", "PROGRESS", "REVIEW");
+    private static final Set<String> BUSINESS_TYPES = Set.of("PRODUCT", "ORDER", "PROGRESS", "REVIEW", "CASE");
     private static final Set<String> USAGE_TYPES = Set.of(
-            "COVER", "DETAIL", "ATTACHMENT", "PROGRESS", "COMPLETION", "REVIEW");
+            "COVER", "DETAIL", "ATTACHMENT", "PROGRESS", "COMPLETION", "REVIEW", "CASE");
     private static final Map<String, Set<String>> BUSINESS_USAGES = Map.of(
             "PRODUCT", Set.of("COVER", "DETAIL"),
             "ORDER", Set.of("ATTACHMENT"),
             "PROGRESS", Set.of("PROGRESS", "COMPLETION"),
-            "REVIEW", Set.of("REVIEW"));
+            "REVIEW", Set.of("REVIEW"),
+            "CASE", Set.of("CASE"));
     private static final Map<String, Integer> USAGE_LIMITS = Map.of(
             "COVER", 1, "DETAIL", 9, "ATTACHMENT", 9,
-            "PROGRESS", 9, "COMPLETION", 9, "REVIEW", 9);
+            "PROGRESS", 9, "COMPLETION", 9, "REVIEW", 9, "CASE", Integer.MAX_VALUE);
 
     private final FileAssetRecordMapper fileMapper;
     private final FileRelationRecordMapper relationMapper;
@@ -253,9 +254,11 @@ public class FileService {
     }
 
     private void markDeleted(FileAssetRecord file) {
-        file.setDeleted(true);
-        file.setDeletedAt(LocalDateTime.now(ZoneOffset.UTC));
-        fileMapper.updateById(file);
+        jdbcTemplate.update(
+                "UPDATE file_asset SET deleted = TRUE, deleted_at = ? WHERE id = ? AND deleted = FALSE",
+                LocalDateTime.now(ZoneOffset.UTC),
+                file.getId()
+        );
         Runnable cleanup = () -> storage.deleteQuietly(file.getObjectKey());
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
@@ -267,6 +270,7 @@ public class FileService {
     }
 
     private void addRelation(AuthenticatedUser actor, long fileId, RelationCommand relation) {
+        if ("CASE".equals(relation.businessType())) validateCaseImage(fileId);
         Long duplicate = relationMapper.selectCount(new LambdaQueryWrapper<FileRelationRecord>()
                 .eq(FileRelationRecord::getBusinessType, relation.businessType())
                 .eq(FileRelationRecord::getBusinessId, relation.businessId())
@@ -325,6 +329,7 @@ public class FileService {
         return switch (type) {
             case "PRODUCT" -> !write && count(
                     "SELECT COUNT(*) FROM product WHERE id=? AND deleted=0 AND enabled=1", id) > 0;
+            case "CASE" -> !write && count("SELECT COUNT(*) FROM project_case WHERE id=? AND deleted=0", id) > 0;
             case "ORDER" -> actor != null && canAccessOrder(actor, id, write);
             case "PROGRESS" -> actor != null && canAccessProgress(actor, id, write);
             case "REVIEW" -> actor != null && canAccessReview(actor, id, write);
@@ -335,6 +340,7 @@ public class FileService {
     private boolean businessExists(String type, long id) {
         return switch (type) {
             case "PRODUCT" -> count("SELECT COUNT(*) FROM product WHERE id=? AND deleted=0", id) > 0;
+            case "CASE" -> count("SELECT COUNT(*) FROM project_case WHERE id=? AND deleted=0", id) > 0;
             case "ORDER" -> count("SELECT COUNT(*) FROM work_order WHERE id=? AND deleted=0", id) > 0;
             case "PROGRESS" -> count("SELECT COUNT(*) FROM work_order_progress WHERE id=?", id) > 0;
             case "REVIEW" -> count("SELECT COUNT(*) FROM work_order_review WHERE id=?", id) > 0;
@@ -392,6 +398,16 @@ public class FileService {
     private int count(String sql, Object... args) {
         Integer result = jdbcTemplate.queryForObject(sql, Integer.class, args);
         return result == null ? 0 : result;
+    }
+
+    private void validateCaseImage(long fileId) {
+        FileAssetRecord file = requireFile(fileId);
+        if (file.getMimeType() == null || !file.getMimeType().startsWith("image/")) {
+            throw new BusinessException("CASE_IMAGE_TYPE_INVALID", "项目案例仅支持图片文件");
+        }
+        if (file.getFileSize() == null || file.getFileSize() > 10L * 1024 * 1024) {
+            throw new BusinessException(413, "CASE_IMAGE_TOO_LARGE", "单张案例图片不能超过 10 MB");
+        }
     }
 
     private ValidatedFile validate(MultipartFile multipart) {

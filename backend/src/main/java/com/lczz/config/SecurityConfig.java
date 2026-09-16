@@ -39,7 +39,9 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET,
                                 "/api/consumables/list", "/api/v1/consumables/list",
                                 "/api/consumables/detail/**", "/api/v1/consumables/detail/**",
-                                "/api/consumables/categories", "/api/v1/consumables/categories").permitAll()
+                                "/api/consumables/categories", "/api/v1/consumables/categories",
+                                "/api/cases/list", "/api/v1/cases/list",
+                                "/api/cases/*", "/api/v1/cases/*").permitAll()
                         .requestMatchers(PUBLIC_AUTH).permitAll()
                         .anyRequest().authenticated())
                 .exceptionHandling(exceptions -> exceptions
