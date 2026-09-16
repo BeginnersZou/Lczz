@@ -46,7 +46,9 @@ public class UserAccountService {
         if (roles.isEmpty()) {
             throw new BusinessException(403, "ROLE_MISSING", "账号尚未分配角色");
         }
-        String name = firstNonBlank(user.getNickname(), user.getRealName(), user.getUsername(), "用户" + userId);
+        String name = roles.contains(RoleCode.INSTALLER)
+                ? firstNonBlank(user.getRealName(), user.getNickname(), user.getUsername(), "安装师傅" + userId)
+                : firstNonBlank(user.getNickname(), user.getRealName(), user.getUsername(), "用户" + userId);
         Set<RoleCode> immutableRoles = Collections.unmodifiableSet(EnumSet.copyOf(roles));
         return new AuthenticatedUser(userId, user.getUsername(), name, user.getPhone(), immutableRoles);
     }

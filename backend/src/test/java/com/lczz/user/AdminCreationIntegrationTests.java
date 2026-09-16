@@ -201,6 +201,7 @@ class AdminCreationIntegrationTests {
         for (RoleCode role : List.of(RoleCode.CUSTOMER, RoleCode.INSTALLER, RoleCode.DEALER)) {
             Map<String, Object> body = payload("139111000" + suffix, "unused." + suffix++);
             body.put("role", role.name());
+            if (role == RoleCode.INSTALLER) body.put("realName", "测试安装师傅");
             List.of("username", "password", "confirmPassword").forEach(body::remove);
             JsonNode created = data(create("/api", body).andExpect(status().isOk()));
             UserEntity stored = users.selectById(created.path("id").asLong());

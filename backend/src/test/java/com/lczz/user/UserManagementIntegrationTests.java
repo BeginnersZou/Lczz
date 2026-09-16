@@ -120,6 +120,15 @@ class UserManagementIntegrationTests {
                 .andExpect(jsonPath("$.data.auditStatus").value("APPROVED"))
                 .andExpect(jsonPath("$.data.blacklist").value(false));
 
+        mockMvc.perform(post("/api/v1/users")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType("application/json")
+                        .content("""
+                                {"nickname":"未实名师傅","phone":"13860000008","role":"installer"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INSTALLER_REAL_NAME_REQUIRED"));
+
         mockMvc.perform(get("/api/v1/orders/masters")
                         .param("keyword", "13860000009")
                         .header("Authorization", "Bearer " + adminToken))
@@ -168,6 +177,15 @@ class UserManagementIntegrationTests {
                 .andExpect(jsonPath("$.data.gender").value("FEMALE"))
                 .andExpect(jsonPath("$.data.role").value("INSTALLER"))
                 .andExpect(jsonPath("$.data.roles.length()").value(1));
+
+        mockMvc.perform(put("/api/v1/users/{id}", dealerId)
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType("application/json")
+                        .content("""
+                                {"nickname":"经销商客户","realName":"","gender":"unknown","role":"installer"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INSTALLER_REAL_NAME_REQUIRED"));
 
         mockMvc.perform(patch("/api/users/{id}/status", customerId)
                         .header("Authorization", "Bearer " + adminToken)

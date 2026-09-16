@@ -121,7 +121,9 @@ class AuthIntegrationTests {
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.userInfo.role").value("installer"))
-                .andExpect(jsonPath("$.data.userInfo.roles[0]").value("installer"));
+                .andExpect(jsonPath("$.data.userInfo.roles[0]").value("installer"))
+                .andExpect(jsonPath("$.data.userInfo.name").value("王安装"))
+                .andExpect(jsonPath("$.data.userInfo.nickname").value("王安装"));
 
         assertThat(userMapper.selectCount(new LambdaQueryWrapper<UserEntity>()
                 .eq(UserEntity::getPhone, "13800138009"))).isEqualTo(1);

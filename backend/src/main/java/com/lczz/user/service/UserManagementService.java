@@ -98,6 +98,7 @@ public class UserManagementService {
         String username = validateCreationCredentials(role, command);
         String nickname = command.nickname().trim();
         String realName = blankToNull(command.realName());
+        requireInstallerRealName(role, realName);
         String gender = normalizeGender(command.gender());
         String phone = normalizePhone(command.phone());
         if (userMapper.selectCount(new LambdaQueryWrapper<UserEntity>().eq(UserEntity::getPhone, phone)) > 0) {
@@ -188,6 +189,7 @@ public class UserManagementService {
                 ? null : validateAndEncodePassword(actor, id, current, currentRoles, passwordCommand);
         String nickname = command.nickname().trim();
         String realName = blankToNull(command.realName());
+        requireInstallerRealName(nextRole, realName);
         String gender = normalizeGender(command.gender());
         LambdaUpdateWrapper<UserEntity> update = new LambdaUpdateWrapper<UserEntity>()
                 .eq(UserEntity::getId, id)
@@ -378,6 +380,12 @@ public class UserManagementService {
             return RoleCode.valueOf(raw.trim().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException | NullPointerException exception) {
             throw new BusinessException("INVALID_USER_ROLE", "用户角色不合法");
+        }
+    }
+
+    private void requireInstallerRealName(RoleCode role, String realName) {
+        if (role == RoleCode.INSTALLER && realName == null) {
+            throw new BusinessException("INSTALLER_REAL_NAME_REQUIRED", "安装师傅必须填写真实姓名");
         }
     }
 
