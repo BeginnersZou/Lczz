@@ -55,8 +55,8 @@
         <el-table-column label="用户" min-width="190">
           <template #default="{ row }">
             <div class="user-cell">
-              <span class="primary-text">{{ row.nickname || row.username || '-' }}</span>
-              <span class="secondary-text">{{ row.realName || row.username || '未填写真实姓名' }}</span>
+              <span class="primary-text">{{ displayUserName(row) }}</span>
+              <span class="secondary-text">{{ displayUserSubtext(row) }}</span>
             </div>
           </template>
         </el-table-column>
@@ -151,8 +151,9 @@
           <el-form-item label="昵称" prop="nickname">
             <el-input v-model="form.nickname" maxlength="64" show-word-limit placeholder="请输入昵称" />
           </el-form-item>
-          <el-form-item label="真实姓名" prop="realName">
-            <el-input v-model="form.realName" maxlength="64" show-word-limit placeholder="未填写可留空" />
+          <el-form-item label="真实姓名" prop="realName" :required="isInstaller">
+            <el-input v-model="form.realName" maxlength="64" show-word-limit
+              :placeholder="isInstaller ? '安装师傅必须填写真实姓名' : '未填写可留空'" />
           </el-form-item>
           <el-form-item label="性别" prop="gender">
             <el-select v-model="form.gender" clearable placeholder="未设置">
@@ -353,13 +354,23 @@ const canChangeOwnPassword = computed(() => dialogType.value === 'edit'
   && originalRole.value === 'ADMIN')
 
 const isCreatingAdmin = computed(() => dialogType.value === 'create' && form.role === 'ADMIN')
+const isInstaller = computed(() => form.role === 'INSTALLER')
 
 function handleRoleChange() {
-  if (dialogType.value !== 'create') return
-  form.username = ''
-  form.password = ''
-  form.confirmPassword = ''
-  userFormRef.value?.clearValidate(['username', 'password', 'confirmPassword'])
+  if (dialogType.value === 'create') {
+    form.username = ''
+    form.password = ''
+    form.confirmPassword = ''
+    userFormRef.value?.clearValidate(['username', 'password', 'confirmPassword'])
+  }
+  userFormRef.value?.validateField('realName').catch(() => {})
+}
+
+function validateRealName(rule, value, callback) {
+  if (isInstaller.value && !String(value || '').trim()) {
+    return callback(new Error('安装师傅必须填写真实姓名'))
+  }
+  callback()
 }
 
 function validateUsername(rule, value, callback) {
@@ -411,6 +422,7 @@ function validateConfirmPassword(rule, value, callback) {
 
 const formRules = {
   nickname: [{ required: true, whitespace: true, message: '请输入昵称', trigger: 'blur' }],
+  realName: [{ validator: validateRealName, trigger: ['blur', 'change'] }],
   phone: [
     { required: true, message: '请输入手机号', trigger: 'blur' },
     { pattern: /^1\d{10}$/, message: '请输入正确的11位手机号', trigger: 'blur' }
@@ -421,6 +433,20 @@ const formRules = {
   originalPassword: [{ validator: validateOriginalPassword, trigger: 'blur' }],
   newPassword: [{ validator: validateNewPassword, trigger: 'blur' }],
   confirmPassword: [{ validator: validateConfirmPassword, trigger: ['blur', 'change'] }]
+}
+
+function displayUserName(user) {
+  if (String(user?.role || '').toUpperCase() === 'INSTALLER') {
+    return user.realName || '未填写真实姓名'
+  }
+  return user?.nickname || user?.username || '-'
+}
+
+function displayUserSubtext(user) {
+  if (String(user?.role || '').toUpperCase() === 'INSTALLER') {
+    return user?.nickname ? `昵称：${user.nickname}` : user?.username || '-'
+  }
+  return user?.realName || user?.username || '未填写真实姓名'
 }
 
 async function loadList() {
