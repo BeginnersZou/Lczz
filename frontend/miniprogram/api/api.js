@@ -15,6 +15,7 @@
 import http from '../utils/request.js'
 import baseUrl from '../config.js'
 import { formatDateTime } from '../utils/time.js'
+import { normalizeProductImage } from '../utils/product-images.js'
 
 const apiOrigin = (String(baseUrl).match(/^https?:\/\/[^/]+/i) || [''])[0]
 
@@ -46,30 +47,47 @@ const normalizeAuthResponse = (res) => {
 	return res
 }
 
-const normalizeProduct = (item = {}) => ({
-	...item,
-	title: item.title || item.name || '',
-	desc: item.desc || item.remark || '',
-	model: item.model || item.code || '',
-	category: Array.isArray(item.category) ? item.category[item.category.length - 1] : (item.category || ''),
-	tags: item.tags || [],
-	stock: item.stock == null ? null : Number(item.stock),
-	stockSummary: item.stockSummary || '',
-	image: resolveMediaUrl(item.image || item.coverImage || item.thumbnail),
-	images: (item.images || []).map(resolveMediaUrl).filter(Boolean),
-	detailImages: (item.detailImages || item.images || []).map(resolveMediaUrl).filter(Boolean),
-	specDimensions: (item.specDimensions || []).map(dimension => ({
-		...dimension,
-		values: (dimension.values || []).map(value => ({ ...value, value: value.value || '' }))
-	})),
-	skus: (item.skus || []).map(sku => ({
-		...sku,
-		id: Number(sku.id),
-		stock: Number(sku.stock || 0),
-		specValues: sku.specValues || {},
-		enabled: sku.enabled !== false
-	}))
-})
+const normalizeProduct = (item = {}) => {
+	const variants = item.imageVariants || {
+		cardUrl: item.thumbnail || item.image || item.coverImage,
+		displayUrl: item.displayImage || item.image || item.coverImage,
+		originalUrl: item.originalImage || item.image || item.coverImage
+	}
+	const cover = normalizeProductImage(variants, resolveMediaUrl)
+	const imageItems = (item.images || []).map(value => normalizeProductImage(value, resolveMediaUrl))
+		.filter(value => value.displayUrl)
+	const detailImageItems = (item.detailImages || item.images || [])
+		.map(value => normalizeProductImage(value, resolveMediaUrl)).filter(value => value.displayUrl)
+	return {
+		...item,
+		title: item.title || item.name || '',
+		desc: item.desc || item.remark || '',
+		model: item.model || item.code || '',
+		category: Array.isArray(item.category) ? item.category[item.category.length - 1] : (item.category || ''),
+		tags: item.tags || [],
+		stock: item.stock == null ? null : Number(item.stock),
+		stockSummary: item.stockSummary || '',
+		image: cover.cardUrl,
+		displayImage: cover.displayUrl,
+		originalImage: cover.originalUrl,
+		imageVariants: cover,
+		imageItems,
+		images: imageItems.map(value => value.displayUrl),
+		detailImageItems,
+		detailImages: detailImageItems.map(value => value.displayUrl),
+		specDimensions: (item.specDimensions || []).map(dimension => ({
+			...dimension,
+			values: (dimension.values || []).map(value => ({ ...value, value: value.value || '' }))
+		})),
+		skus: (item.skus || []).map(sku => ({
+			...sku,
+			id: Number(sku.id),
+			stock: Number(sku.stock || 0),
+			specValues: sku.specValues || {},
+			enabled: sku.enabled !== false
+		}))
+	}
+}
 
 const normalizeProjectCase = (item = {}) => ({
 	...item,

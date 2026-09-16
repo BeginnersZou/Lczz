@@ -114,7 +114,8 @@
 				<view class="product-card" hover-class="hover-card" :hover-stay-time="80"
 					v-for="(item, index) in displayList" :key="item.id || index" @click="handleCardClick(item)">
 					<view class="product-visual" :class="`visual-${item.type || 'aux'}`">
-						<image v-if="item.image" class="product-cover" :src="item.image" mode="aspectFill" lazy-load></image>
+						<LazyProductImage v-if="item.image" class="product-cover" :src="item.image"
+							mode="aspectFill" :eager="index < 4" />
 						<view class="visual-ring ring-one"></view>
 						<view class="visual-ring ring-two"></view>
 						<up-icon v-if="!item.image" :name="productIcon(item.type)" size="40" color="#ffffff"></up-icon>
@@ -167,6 +168,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { onShow, onReachBottom, onPullDownRefresh, onShareAppMessage, onShareTimeline } from '@dcloudio/uni-app'
 import { authApi, consumablesApi } from '@/api/api.js'
+import LazyProductImage from '@/components/LazyProductImage.vue'
 import { getAuthToken } from '@/utils/auth-session.js'
 import { isDealer } from '@/utils/dealer-booking.js'
 
@@ -180,9 +182,10 @@ onShow(async () => {
 	} catch { dealerVisible.value = false }
 })
 
-onMounted(async () => {
-	await fetchCategories()
-	await fetchList(true)
+onMounted(() => {
+	// 产品首屏不再等待分类接口；分类失败或变慢都不阻塞图片和卡片展示。
+	fetchList(true)
+	fetchCategories()
 })
 
 onShareAppMessage(() => ({ title: '力创之尊 — 专业空调安装与配件展示', path: '/pages/index/index' }))
@@ -318,8 +321,9 @@ onReachBottom(() => {
 })
 
 onPullDownRefresh(async () => {
-	await fetchCategories()
-	const success = await fetchList(true)
+	const products = fetchList(true)
+	const categories = fetchCategories()
+	const [success] = await Promise.all([products, categories])
 	uni.stopPullDownRefresh()
 	if (success) uni.showToast({ title: '已刷新', icon: 'none', duration: 1000 })
 })

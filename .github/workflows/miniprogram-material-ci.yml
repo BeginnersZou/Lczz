@@ -41,3 +41,5 @@ jobs:
         run: |
           node scripts/verify-installer-material-flow.cjs
           node scripts/verify-order-confirmation.cjs
+      - name: Run mini-program unit tests
+        run: node --test frontend/miniprogram/tests/*.test.mjs

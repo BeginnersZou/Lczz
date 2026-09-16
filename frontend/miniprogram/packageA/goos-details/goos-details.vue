@@ -18,9 +18,11 @@
 		<view class="cover-section">
 			<swiper v-if="carouselImages.length" class="cover-swiper" circular :autoplay="carouselImages.length > 1"
 				:indicator-dots="carouselImages.length > 1" :interval="4000" :duration="400"
-				indicator-color="rgba(255,255,255,.45)" indicator-active-color="#ffffff">
-				<swiper-item v-for="(imageUrl, index) in carouselImages" :key="`${imageUrl}-${index}`">
-					<image class="cover-img" :src="imageUrl" mode="aspectFill"></image>
+				indicator-color="rgba(255,255,255,.45)" indicator-active-color="#ffffff" @change="handleCarouselChange">
+				<swiper-item v-for="(image, index) in carouselImageItems" :key="`${image.displayUrl}-${index}`">
+					<LazyProductImage class="cover-img" :src="image.displayUrl" mode="aspectFill"
+						:eager="index === 0 || index === activeCarouselIndex" :viewport="index === activeCarouselIndex"
+						@click="previewProductImage(image)" />
 				</swiper-item>
 			</swiper>
 			<view v-else class="cover-visual" :class="`visual-${goods.type || 'aux'}`">
@@ -95,8 +97,10 @@
 				<text class="detail-title">商品详情</text>
 				<view class="header-line"></view>
 			</view>
-			<image v-for="(img, index) in displayDetailImages" :key="index" :src="img" mode="widthFix" class="detail-img"
-				lazy-load></image>
+			<view v-for="(image, index) in detailImageItems" :key="image.id || index" class="detail-img-wrap">
+				<LazyProductImage class="detail-img" :src="image.displayUrl" mode="widthFix"
+					@click="previewProductImage(image)" />
+			</view>
 			<view class="detail-specs" v-if="displayDetailImages.length === 0">
 				<view class="detail-spec-row"><text>产品型号</text><text>{{ goods.model || '以实物标识为准' }}</text></view>
 				<view class="detail-spec-row"><text>产品规格</text><text>{{ goods.spec || '以实物标识为准' }}</text></view>
@@ -143,6 +147,7 @@ import {
 } from '@dcloudio/uni-app'
 import { consumablesApi, installerMaterialApi } from '@/api/api.js'
 import { getAuthUserInfo } from '@/utils/auth-session.js'
+import LazyProductImage from '@/components/LazyProductImage.vue'
 
 // 商品 ID（onLoad 时获取，用于分享路径）
 const goodsId = ref('')
@@ -161,6 +166,7 @@ const goods = ref({
 })
 
 const detailImages = ref([])
+const activeCarouselIndex = ref(0)
 const selectedSpecs = ref({})
 const quantity = ref(1)
 const adding = ref(false)
@@ -183,11 +189,16 @@ const selectedSpecLabel = computed(() => {
 })
 const canAddToCart = computed(() => isInstaller.value && currentSku.value && currentSku.value.stock > 0
 	&& quantity.value >= 1 && quantity.value <= Math.floor(currentSku.value.stock) && !adding.value)
-const carouselImages = computed(() => {
-	const images = goods.value.images?.length ? goods.value.images : [goods.value.image]
-	return [...new Set(images.filter(img => !isPlaceholderImage(img)))]
+const carouselImageItems = computed(() => {
+	const images = goods.value.imageItems?.length ? goods.value.imageItems : [goods.value.imageVariants]
+	const seen = new Set()
+	return images.filter(image => image?.displayUrl && !isPlaceholderImage(image.displayUrl))
+		.filter(image => seen.has(image.displayUrl) ? false : (seen.add(image.displayUrl), true))
 })
-const displayDetailImages = computed(() => detailImages.value.filter(img => !isPlaceholderImage(img)))
+const carouselImages = computed(() => carouselImageItems.value.map(image => image.displayUrl))
+const detailImageItems = computed(() => (goods.value.detailImageItems || [])
+	.filter(image => image?.displayUrl && !isPlaceholderImage(image.displayUrl)))
+const displayDetailImages = computed(() => detailImageItems.value.map(image => image.displayUrl))
 const detailLoading = ref(true)
 const detailError = ref(null)
 
@@ -195,6 +206,27 @@ const isPlaceholderImage = (url) => !url || String(url).includes('picsum.photos'
 const productIcon = (type) => ({
 	copper: 'integral', bracket: 'grid-fill', cable: 'share-fill', refrigerant: 'hourglass-half-fill', aux: 'bag-fill'
 }[type] || 'bag-fill')
+
+const previewProductImage = image => {
+	const originalUrl = image?.originalUrl || image?.displayUrl
+	if (!originalUrl) return
+	uni.showLoading({ title: '正在加载原图', mask: true })
+	uni.getImageInfo({
+		src: originalUrl,
+		success: result => {
+			uni.hideLoading()
+			uni.previewImage({ current: result.path, urls: [result.path] })
+		},
+		fail: () => {
+			uni.hideLoading()
+			uni.showToast({ title: '原图加载失败，请重试', icon: 'none' })
+		}
+	})
+}
+
+const handleCarouselChange = event => {
+	activeCarouselIndex.value = Number(event?.detail?.current || 0)
+}
 
 
 const setDetailError = (response) => {
@@ -233,6 +265,7 @@ const loadDetail = async () => {
 		})
 		selectedSpecs.value = initial
 		quantity.value = 1
+		activeCarouselIndex.value = 0
 		if (isInstaller.value) loadCartCount()
 	} catch (err) {
 		setDetailError({ code: -1, msg: '请求异常，请稍后重试' })
@@ -601,6 +634,7 @@ $text-light: #94a3b8;
 	width: 100%;
 	display: block;
 }
+.detail-img-wrap { width: 100%; min-height: 360rpx; }
 
 .detail-specs { padding: 0 28rpx 28rpx; }
 .detail-spec-row { display: flex; align-items: center; justify-content: space-between; padding: 20rpx 0; border-bottom: 1rpx solid #edf1f5; font-size: 24rpx; color: $text-light; }
