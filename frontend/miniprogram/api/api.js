@@ -89,6 +89,14 @@ const normalizeProduct = (item = {}) => {
 	}
 }
 
+const normalizeProjectCase = (item = {}) => ({
+	...item,
+	id: Number(item.id || 0),
+	siteName: item.siteName || '未命名工地',
+	coverImage: resolveMediaUrl(item.coverImage),
+	images: (item.images || []).map(normalizeFile).filter(file => file.url)
+})
+
 const normalizeOrder = (item = {}) => {
 	const fileList = (item.fileList || item.attachments || item.images || []).map(normalizeFile).filter(file => file.url)
 	const firstImage = fileList.find(file => !file.mimeType || file.mimeType.startsWith('image/'))
@@ -225,6 +233,20 @@ export const consumablesApi = {
 		return res
 	},
 	getCategories: () => http.get('/consumables/categories', {}, { auth: false, redirectOnUnauthorized: false })
+}
+
+// ====================== 项目案例相关 ======================
+export const projectCaseApi = {
+	getList: async (params = {}) => {
+		const res = await http.get('/cases/list', params, { auth: false, redirectOnUnauthorized: false })
+		if (res.code === 200 && res.data) res.data.list = (res.data.list || []).map(normalizeProjectCase)
+		return res
+	},
+	getDetail: async (id) => {
+		const res = await http.get(`/cases/${id}`, {}, { auth: false, redirectOnUnauthorized: false })
+		if (res.code === 200 && res.data) res.data = normalizeProjectCase(res.data)
+		return res
+	}
 }
 
 // ====================== 安装师傅耗材购物车 / 自助取货订单 ======================

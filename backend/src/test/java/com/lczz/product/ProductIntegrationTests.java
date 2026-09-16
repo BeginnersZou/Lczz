@@ -45,6 +45,7 @@ class ProductIntegrationTests {
         jdbcTemplate.update("DELETE FROM product_spec_dimension");
         jdbcTemplate.update("DELETE FROM operation_audit_log");
         jdbcTemplate.update("DELETE FROM business_file_relation");
+        jdbcTemplate.update("DELETE FROM project_case");
         jdbcTemplate.update("DELETE FROM product");
         jdbcTemplate.update("DELETE FROM product_category");
         jdbcTemplate.update("DELETE FROM file_asset");

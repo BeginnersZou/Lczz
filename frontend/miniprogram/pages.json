@@ -30,6 +30,25 @@
 			}
 		},
 		{
+			"path": "pages/cases/cases",
+			"style": {
+				"navigationBarTitleText": "项目案例",
+				"enablePullDownRefresh": true,
+				"navigationBarTextStyle": "black",
+				"backgroundColorTop": "#f4f7fb",
+				"backgroundColorBottom": "#f4f7fb"
+			}
+		},
+		{
+			"path": "pages/cases/case-detail",
+			"style": {
+				"navigationBarTitleText": "案例详情",
+				"navigationBarTextStyle": "black",
+				"backgroundColorTop": "#f4f7fb",
+				"backgroundColorBottom": "#f4f7fb"
+			}
+		},
+		{
 			"path": "pages/official/official",
 			"style": {
 				"navigationBarTitleText": "服务",
