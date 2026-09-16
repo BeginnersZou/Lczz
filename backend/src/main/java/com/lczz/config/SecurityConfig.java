@@ -37,6 +37,8 @@ public class SecurityConfig {
                         .requestMatchers("/actuator/health", "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers("/api/files/access/**", "/api/v1/files/access/**").permitAll()
                         .requestMatchers(HttpMethod.GET,
+                                "/api/public/product-images/**", "/api/v1/public/product-images/**").permitAll()
+                        .requestMatchers(HttpMethod.GET,
                                 "/api/consumables/list", "/api/v1/consumables/list",
                                 "/api/consumables/detail/**", "/api/v1/consumables/detail/**",
                                 "/api/consumables/categories", "/api/v1/consumables/categories").permitAll()

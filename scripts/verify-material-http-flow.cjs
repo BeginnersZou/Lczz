@@ -48,7 +48,8 @@ function transport(reply) {
   const formatDateTime = new Function(timeCode + '\nreturn formatDateTime')()
   const source = read('api/api.js')
   const exports = [...source.matchAll(/export const (\w+)/g)].map(match => match[1])
-  const apiCode = source.replace(/^import .+$/gm, '').replace(/export const /g, 'const ')
+  const imageHelpers = read('utils/product-images.js').replace(/export const /g, 'const ')
+  const apiCode = imageHelpers + '\n' + source.replace(/^import .+$/gm, '').replace(/export const /g, 'const ')
   const api = new Function('http', 'baseUrl', 'formatDateTime', apiCode + '\nreturn {' + exports.join(',') + '}')(
     http, baseUrl, formatDateTime)
   return { api, http, uni, calls }

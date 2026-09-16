@@ -7,6 +7,8 @@ import com.lczz.auth.domain.RoleCode;
 import com.lczz.common.audit.OperationAuditService;
 import com.lczz.common.exception.BusinessException;
 import com.lczz.file.service.FileService;
+import com.lczz.file.service.ProductImageVariantService;
+import com.lczz.file.service.ProductImageVariantService.ProductImageUrls;
 import com.lczz.product.persistence.BusinessFileRelationEntity;
 import com.lczz.product.persistence.BusinessFileRelationMapper;
 import com.lczz.product.persistence.FileAssetEntity;
@@ -48,18 +50,21 @@ public class ProductService {
     private final FileAssetMapper fileMapper;
     private final BusinessFileRelationMapper relationMapper;
     private final FileService fileService;
+    private final ProductImageVariantService productImageService;
     private final OperationAuditService auditService;
     private final ProductSkuService skuService;
 
     public ProductService(ProductMapper productMapper, ProductCategoryMapper categoryMapper,
                           FileAssetMapper fileMapper, BusinessFileRelationMapper relationMapper,
-                          FileService fileService, OperationAuditService auditService,
+                          FileService fileService, ProductImageVariantService productImageService,
+                          OperationAuditService auditService,
                           ProductSkuService skuService) {
         this.productMapper = productMapper;
         this.categoryMapper = categoryMapper;
         this.fileMapper = fileMapper;
         this.relationMapper = relationMapper;
         this.fileService = fileService;
+        this.productImageService = productImageService;
         this.auditService = auditService;
         this.skuService = skuService;
     }
@@ -234,9 +239,9 @@ public class ProductService {
                 .filter(Objects::nonNull).collect(Collectors.toSet());
         Map<Long, FileAssetEntity> files = loadFiles(coverIds);
         Map<Long, List<FileView>> detailFiles = includeDetails
-                ? loadFilesByUsage(actor, products.stream().map(ProductEntity::getId).toList(), DETAIL_USAGE) : Map.of();
+                ? loadFilesByUsage(actor, products, DETAIL_USAGE) : Map.of();
         Map<Long, List<FileView>> carouselFiles = includeDetails
-                ? loadFilesByUsage(actor, products.stream().map(ProductEntity::getId).toList(), CAROUSEL_USAGE) : Map.of();
+                ? loadFilesByUsage(actor, products, CAROUSEL_USAGE) : Map.of();
         Map<Long, ProductSpecsView> specsByProduct = skuService.getBatch(
                 products.stream().map(ProductEntity::getId).toList(), isAdmin(actor));
         return products.stream().map(product -> {
@@ -246,6 +251,7 @@ public class ProductService {
             if (parent != null) categoryPath.add(parent.getCategoryName());
             if (child != null) categoryPath.add(child.getCategoryName());
             FileAssetEntity cover = product.getCoverFileId() == null ? null : files.get(product.getCoverFileId());
+            FileView coverImage = imageView(actor, product, cover, includeDetails);
             ProductSpecsView specs = specsByProduct.getOrDefault(product.getId(),
                     new ProductSpecsView(List.of(), List.of()));
             BigDecimal skuStock = specs.skus().stream().filter(ProductSkuService.SkuView::enabled)
@@ -267,16 +273,25 @@ public class ProductService {
                     product.getModelSpec(), mixedUnits ? "多单位" : stockByUnit.keySet().stream().findFirst().orElse(product.getUnit()),
                     mixedUnits ? null : (specs.skus().isEmpty() ? product.getDisplayStock() : skuStock),
                     product.getDisplayPrice(),
-                    cover == null ? null : fileService.issueAccess(actor, cover.getId()).url(), product.getDescription(),
+                    coverImage == null ? null : coverImage.url(), product.getDescription(),
                     detailFiles.getOrDefault(product.getId(), List.of()), Boolean.TRUE.equals(product.getEnabled()),
                     product.getSortOrder(), product.getCreatedAt(), product.getUpdatedAt(),
                     specs.dimensions(), specs.skus(), carouselFiles.getOrDefault(product.getId(),
-                    cover == null ? List.of() : List.of(new FileView(cover.getId(), fileService.issueAccess(actor, cover.getId()).url()))),
-                    specs.skus().size(), stockSummary);
+                    coverImage == null ? List.of() : List.of(coverImage)),
+                    specs.skus().size(), stockSummary,
+                    coverImage == null ? null : coverImage.cardUrl(),
+                    coverImage == null ? null : coverImage.displayUrl(),
+                    coverImage == null ? null : coverImage.originalUrl(),
+                    coverImage == null ? null : new ProductImageView(coverImage.cardUrl(),
+                            coverImage.displayUrl(), coverImage.originalUrl()));
         }).toList();
     }
 
-    private Map<Long, List<FileView>> loadFilesByUsage(AuthenticatedUser actor, List<Long> productIds, String usage) {
+    private Map<Long, List<FileView>> loadFilesByUsage(AuthenticatedUser actor, List<ProductEntity> products,
+                                                       String usage) {
+        List<Long> productIds = products.stream().map(ProductEntity::getId).toList();
+        Map<Long, ProductEntity> productsById = products.stream()
+                .collect(Collectors.toMap(ProductEntity::getId, Function.identity()));
         List<BusinessFileRelationEntity> relations = relationMapper.selectList(
                 new LambdaQueryWrapper<BusinessFileRelationEntity>()
                         .eq(BusinessFileRelationEntity::getBusinessType, BUSINESS_TYPE)
@@ -289,9 +304,21 @@ public class ProductService {
         for (BusinessFileRelationEntity relation : relations) {
             FileAssetEntity file = files.get(relation.getFileId());
             if (file != null) result.computeIfAbsent(relation.getBusinessId(), ignored -> new ArrayList<>())
-                    .add(new FileView(file.getId(), fileService.issueAccess(actor, file.getId()).url()));
+                    .add(imageView(actor, productsById.get(relation.getBusinessId()), file, true));
         }
         return result;
+    }
+
+    private FileView imageView(AuthenticatedUser actor, ProductEntity product, FileAssetEntity file,
+                               boolean preferDisplay) {
+        if (file == null || product == null) return null;
+        if (Boolean.TRUE.equals(product.getEnabled())) {
+            ProductImageUrls urls = productImageService.urls(file.getId(), file.getSha256());
+            return new FileView(file.getId(), preferDisplay ? urls.displayUrl() : urls.cardUrl(),
+                    urls.cardUrl(), urls.displayUrl(), urls.originalUrl());
+        }
+        String privateUrl = fileService.issueAccess(actor, file.getId()).url();
+        return new FileView(file.getId(), privateUrl, privateUrl, privateUrl, privateUrl);
     }
 
     private Map<Long, FileAssetEntity> loadFiles(Collection<Long> ids) {
@@ -497,9 +524,12 @@ public class ProductService {
                               boolean enabled, Integer sortOrder, LocalDateTime createdAt,
                               LocalDateTime updatedAt, List<ProductSkuService.DimensionView> specDimensions,
                               List<ProductSkuService.SkuView> skus, List<FileView> images,
-                              int skuCount, String stockSummary) { }
+                              int skuCount, String stockSummary, String thumbnail, String displayImage,
+                              String originalImage, ProductImageView imageVariants) { }
 
-    public record FileView(Long id, String url) { }
+    public record FileView(Long id, String url, String cardUrl, String displayUrl, String originalUrl) { }
+
+    public record ProductImageView(String cardUrl, String displayUrl, String originalUrl) { }
 
     public record CategoryView(Long id, String code, String name, Long parentId, Integer level,
                                Integer sortOrder, boolean enabled) {

@@ -203,9 +203,9 @@ class ProductIntegrationTests {
                 .andExpect(jsonPath("$.data.code").value("CU-001"))
                 .andExpect(jsonPath("$.data.category[0]").value("安装辅料"))
                 .andExpect(jsonPath("$.data.category[1]").value("铜管"))
-                .andExpect(jsonPath("$.data.image").value(org.hamcrest.Matchers.startsWith("/api/files/access/")))
+                .andExpect(jsonPath("$.data.image").value(org.hamcrest.Matchers.startsWith("/api/v1/public/product-images/")))
                 .andExpect(jsonPath("$.data.detailImages[0].url")
-                        .value(org.hamcrest.Matchers.startsWith("/api/files/access/")))
+                        .value(org.hamcrest.Matchers.startsWith("/api/v1/public/product-images/")))
                 .andReturn().getResponse().getContentAsString();
         long productId = objectMapper.readTree(response).at("/data/id").asLong();
 
@@ -259,12 +259,12 @@ class ProductIntegrationTests {
                 .andExpect(jsonPath("$.data.total").value(1))
                 .andExpect(jsonPath("$.data.list[0].id").value(enabledId))
                 .andExpect(jsonPath("$.data.list[0].image")
-                        .value(org.hamcrest.Matchers.startsWith("/api/files/access/")));
+                        .value(org.hamcrest.Matchers.startsWith("/api/v1/public/product-images/")));
         mockMvc.perform(get("/api/v1/consumables/detail/{id}", enabledId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.name").value("游客可见产品"))
                 .andExpect(jsonPath("$.data.detailImages[0].url")
-                        .value(org.hamcrest.Matchers.startsWith("/api/files/access/")));
+                        .value(org.hamcrest.Matchers.startsWith("/api/v1/public/product-images/")));
         mockMvc.perform(get("/api/v1/consumables/detail/{id}", disabledId))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error").value("PRODUCT_NOT_FOUND"));
