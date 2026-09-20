@@ -1,9 +1,10 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 
-const helperSource = readFileSync(new URL('../utils/user-profile.js', import.meta.url), 'utf8')
+const helperUrl = new URL('../packageA/utils/user-profile.js', import.meta.url)
+const helperSource = readFileSync(helperUrl, 'utf8')
 const helpers = await import(`data:text/javascript;base64,${Buffer.from(helperSource).toString('base64')}`)
 const { isInstallerProfile, profileForm, userProfilePayload, validateUserProfile } = helpers
 
@@ -15,6 +16,12 @@ test('profile form keeps nickname and real name as separate fields', () => {
   assert.deepEqual(userProfilePayload({ nickname: '  昵称  ', realName: '  姓名  ' }), {
     nickname: '昵称', realName: '姓名'
   })
+})
+
+test('profile helper stays inside packageA instead of the main package', () => {
+  assert.equal(existsSync(new URL('../utils/user-profile.js', import.meta.url)), false)
+  const pageSource = readFileSync(new URL('../packageA/profile/profile.vue', import.meta.url), 'utf8')
+  assert.match(pageSource, /from '\.\.\/utils\/user-profile\.js'/)
 })
 
 test('installer detection supports primary and multi-role accounts', () => {

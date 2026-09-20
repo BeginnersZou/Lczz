@@ -39,7 +39,7 @@ import { computed, reactive, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { authApi } from '@/api/api.js'
 import { getAuthToken, getAuthUserInfo, saveAuthUserInfo } from '@/utils/auth-session.js'
-import { isInstallerProfile, profileForm, userProfilePayload, validateUserProfile } from '@/utils/user-profile.js'
+import { isInstallerProfile, profileForm, userProfilePayload, validateUserProfile } from '../utils/user-profile.js'
 
 const loading = ref(true)
 const submitting = ref(false)
