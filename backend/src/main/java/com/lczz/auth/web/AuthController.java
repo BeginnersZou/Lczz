@@ -15,6 +15,7 @@ import java.util.Map;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -54,7 +55,15 @@ public class AuthController {
 
     @GetMapping({"/info", "/me"})
     ApiResponse<UserInfo> info(@AuthenticationPrincipal AuthenticatedUser principal, HttpServletRequest request) {
-        return ApiResponse.success(UserInfo.from(authService.current(principal)), requestId(request));
+        return ApiResponse.success(authService.current(principal), requestId(request));
+    }
+
+    @PutMapping("/profile")
+    ApiResponse<UserInfo> updateProfile(@AuthenticationPrincipal AuthenticatedUser principal,
+                                        @Valid @RequestBody ProfileUpdateRequest body,
+                                        HttpServletRequest request) {
+        return ApiResponse.success(authService.updateProfile(principal, body.nickname(), body.realName(),
+                requestId(request), request.getRemoteAddr()), requestId(request));
     }
 
     @PostMapping("/logout")
@@ -87,5 +96,6 @@ public class AuthController {
     record WechatLoginRequest(@NotBlank @Size(max = 256) String code) { }
     record BindPhoneRequest(@NotBlank @Size(max = 256) String code,
                             @NotBlank @Size(max = 256) String phoneCode) { }
+    record ProfileUpdateRequest(@NotBlank String nickname, String realName) { }
     record CancelAccountRequest(Boolean confirmed) { }
 }

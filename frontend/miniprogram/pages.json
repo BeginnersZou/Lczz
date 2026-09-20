@@ -170,6 +170,15 @@
 						"backgroundColorTop": "#f4f7fb",
 						"backgroundColorBottom": "#f4f7fb"
 					}
+				},
+				{
+					"path": "profile/profile",
+					"style": {
+						"navigationBarTitleText": "个人资料",
+						"navigationBarTextStyle": "black",
+						"backgroundColorTop": "#f4f7fb",
+						"backgroundColorBottom": "#f4f7fb"
+					}
 				}
 			]
 		}

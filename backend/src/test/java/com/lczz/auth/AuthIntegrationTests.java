@@ -5,7 +5,9 @@ import com.lczz.auth.persistence.UserEntity;
 import com.lczz.auth.persistence.UserMapper;
 import com.lczz.auth.persistence.WechatIdentityEntity;
 import com.lczz.auth.persistence.WechatIdentityMapper;
+import com.lczz.auth.security.JwtService;
 import com.lczz.auth.service.AdminBootstrapService;
+import com.lczz.auth.service.UserAccountService;
 import com.lczz.auth.wechat.WechatIdentity;
 import com.lczz.auth.wechat.WechatIdentityGateway;
 import org.junit.jupiter.api.BeforeEach;
@@ -23,6 +25,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -35,6 +38,8 @@ class AuthIntegrationTests {
     @Autowired UserMapper userMapper;
     @Autowired WechatIdentityMapper identityMapper;
     @Autowired JdbcTemplate jdbcTemplate;
+    @Autowired JwtService jwtService;
+    @Autowired UserAccountService userAccountService;
     @MockitoBean WechatIdentityGateway wechatGateway;
 
     @BeforeEach
@@ -57,7 +62,10 @@ class AuthIntegrationTests {
         String token = new com.fasterxml.jackson.databind.ObjectMapper().readTree(response).at("/data/token").asText();
 
         mockMvc.perform(get("/api/auth/info").header("Authorization", "Bearer " + token))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.data.username").value("admin"));
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.username").value("admin"))
+                .andExpect(jsonPath("$.data.name").value("管理员"))
+                .andExpect(jsonPath("$.data.nickname").value("管理员"))
+                .andExpect(jsonPath("$.data.realName").doesNotExist());
     }
 
     @Test
@@ -123,7 +131,8 @@ class AuthIntegrationTests {
                 .andExpect(jsonPath("$.data.userInfo.role").value("installer"))
                 .andExpect(jsonPath("$.data.userInfo.roles[0]").value("installer"))
                 .andExpect(jsonPath("$.data.userInfo.name").value("王安装"))
-                .andExpect(jsonPath("$.data.userInfo.nickname").value("王安装"));
+                .andExpect(jsonPath("$.data.userInfo.nickname").value("预创建师傅"))
+                .andExpect(jsonPath("$.data.userInfo.realName").value("王安装"));
 
         assertThat(userMapper.selectCount(new LambdaQueryWrapper<UserEntity>()
                 .eq(UserEntity::getPhone, "13800138009"))).isEqualTo(1);
@@ -151,6 +160,92 @@ class AuthIntegrationTests {
                 .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value(401))
                 .andExpect(jsonPath("$.error").value("ACCOUNT_UNAVAILABLE"))
                 .andExpect(jsonPath("$.data").doesNotExist());
+    }
+
+    @Test
+    void customerCanUpdateOnlyOwnNicknameAndRealNameAndReadThemSeparately() throws Exception {
+        when(wechatGateway.exchangeLoginCode(anyString()))
+                .thenReturn(new WechatIdentity("wx-app", "profile-open", "profile-union"));
+        when(wechatGateway.exchangePhoneCode(anyString())).thenReturn("13800138008");
+        String token = bindNewUser("profile-login-code", "profile-phone-code");
+
+        mockMvc.perform(put("/api/v1/auth/profile")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType("application/json")
+                        .content("""
+                                {"nickname":"  新昵称  ","realName":"  张三  ",
+                                 "phone":"13900000000","role":"installer"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.nickname").value("新昵称"))
+                .andExpect(jsonPath("$.data.realName").value("张三"))
+                .andExpect(jsonPath("$.data.name").value("新昵称"))
+                .andExpect(jsonPath("$.data.phone").value("13800138008"))
+                .andExpect(jsonPath("$.data.role").value("customer"));
+
+        mockMvc.perform(get("/api/auth/me").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.nickname").value("新昵称"))
+                .andExpect(jsonPath("$.data.realName").value("张三"));
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM operation_audit_log WHERE operation_type='SELF_PROFILE_UPDATE'", Long.class))
+                .isEqualTo(1);
+    }
+
+    @Test
+    void profileUpdateValidatesFieldsAndRequiresAuthentication() throws Exception {
+        when(wechatGateway.exchangeLoginCode(anyString()))
+                .thenReturn(new WechatIdentity("wx-app", "validation-open", "validation-union"));
+        when(wechatGateway.exchangePhoneCode(anyString())).thenReturn("13800138006");
+        String token = bindNewUser("validation-login-code", "validation-phone-code");
+
+        mockMvc.perform(put("/api/auth/profile").contentType("application/json")
+                        .content("{\"nickname\":\"用户\",\"realName\":\"姓名\"}"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(put("/api/auth/profile").header("Authorization", "Bearer " + token)
+                        .contentType("application/json")
+                        .content("{\"nickname\":\"   \",\"realName\":\"姓名\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("VALIDATION_ERROR"));
+        mockMvc.perform(put("/api/auth/profile").header("Authorization", "Bearer " + token)
+                        .contentType("application/json")
+                        .content("{\"nickname\":\"" + "字".repeat(65) + "\",\"realName\":null}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("VALIDATION_ERROR"));
+        mockMvc.perform(put("/api/auth/profile").header("Authorization", "Bearer " + token)
+                        .contentType("application/json")
+                        .content("{\"nickname\":\"用户\",\"realName\":\"" + "字".repeat(65) + "\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("VALIDATION_ERROR"));
+        mockMvc.perform(put("/api/auth/profile").header("Authorization", "Bearer " + token)
+                        .contentType("application/json")
+                        .content("{\"nickname\":\"  " + "字".repeat(64) + "  \",\"realName\":null}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.nickname").value("字".repeat(64)));
+    }
+
+    @Test
+    void installerCannotClearOwnRealName() throws Exception {
+        UserEntity installer = new UserEntity();
+        installer.setNickname("安装师傅");
+        installer.setRealName("王安装");
+        installer.setPhone("13800138005");
+        installer.setAccountStatus("ENABLED");
+        installer.setAuditStatus("APPROVED");
+        installer.setBlacklist(false);
+        installer.setDeleted(false);
+        userMapper.insert(installer);
+        jdbcTemplate.update("INSERT INTO sys_user_role(user_id, role_id) "
+                + "SELECT ?, id FROM sys_role WHERE role_code='INSTALLER'", installer.getId());
+        String token = jwtService.issue(userAccountService.requireActive(installer.getId())).value();
+
+        mockMvc.perform(put("/api/v1/auth/profile")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType("application/json")
+                        .content("{\"nickname\":\"安装师傅\",\"realName\":\"   \"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INSTALLER_REAL_NAME_REQUIRED"));
+        assertThat(userMapper.selectById(installer.getId()).getRealName()).isEqualTo("王安装");
     }
 
     @Test

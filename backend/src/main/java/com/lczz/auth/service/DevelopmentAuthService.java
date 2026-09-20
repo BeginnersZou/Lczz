@@ -69,7 +69,7 @@ public class DevelopmentAuthService {
         AuthenticatedUser account = userAccountService.requireActive(user.getId());
         JwtService.IssuedToken token = jwtService.issue(account);
         return new AuthService.LoginResult(token.value(), "Bearer", token.expiresInSeconds(),
-                AuthService.UserInfo.from(account));
+                AuthService.UserInfo.from(account, user.getNickname(), user.getRealName()));
     }
 
     private void upsert(TestAccount account) {
