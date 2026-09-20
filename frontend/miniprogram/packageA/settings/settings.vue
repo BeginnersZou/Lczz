@@ -13,6 +13,19 @@
 
 		<!-- 设置项分组 -->
 		<view class="group-card">
+			<view class="group-item" @click="goProfile">
+				<view class="item-left">
+					<view class="item-icon icon-profile">
+						<up-icon name="account-fill" size="18" color="#fff"></up-icon>
+					</view>
+					<text class="item-label">个人资料</text>
+				</view>
+				<view class="item-right">
+					<text class="item-value profile-name">{{ profileName }}</text>
+					<up-icon name="arrow-right" size="14" color="#c0c4cc"></up-icon>
+				</view>
+			</view>
+
 			<view class="group-item" @click="clearCache">
 				<view class="item-left">
 					<view class="item-icon icon-cache">
@@ -69,6 +82,7 @@
 
 <script setup>
 import { computed, ref, onMounted } from 'vue'
+import { onShow } from '@dcloudio/uni-app'
 import { authApi } from '@/api/api.js'
 import { clearAuthSession, getAuthToken, getAuthUserInfo, maskPhone } from '@/utils/auth-session.js'
 
@@ -76,6 +90,7 @@ const userInfo = ref({})
 const version = ref('1.0.0')
 const cacheSize = ref('0KB')
 const canCancelAccount = computed(() => userInfo.value.role === 'customer')
+const profileName = computed(() => userInfo.value.nickname || userInfo.value.name || '未设置')
 
 // 手机号脱敏
 const formatPhone = (phone) => {
@@ -83,6 +98,10 @@ const formatPhone = (phone) => {
 }
 
 onMounted(() => {
+	computeCacheSize()
+})
+
+onShow(() => {
 	if (!getAuthToken()) {
 		uni.switchTab({ url: '/pages/index/index' })
 		return
@@ -90,6 +109,8 @@ onMounted(() => {
 	userInfo.value = getAuthUserInfo()
 	computeCacheSize()
 })
+
+const goProfile = () => uni.navigateTo({ url: '/packageA/profile/profile' })
 
 // 计算本地缓存占用
 const computeCacheSize = () => {
@@ -255,6 +276,10 @@ const handleCancelAccount = () => {
 	background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);
 }
 
+.icon-profile {
+	background: linear-gradient(135deg, #1479e8 0%, #0b63ce 100%);
+}
+
 .icon-about {
 	background: linear-gradient(135deg, #3b8eea 0%, #0b63ce 100%);
 }
@@ -278,6 +303,13 @@ const handleCancelAccount = () => {
 	font-size: $font-sm;
 	color: $text-light;
 	margin-right: 8rpx;
+}
+
+.profile-name {
+	max-width: 260rpx;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 /* 退出登录按钮 */

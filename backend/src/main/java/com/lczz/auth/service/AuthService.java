@@ -15,6 +15,7 @@ import com.lczz.auth.persistence.WechatIdentityMapper;
 import com.lczz.auth.security.JwtService;
 import com.lczz.auth.wechat.WechatIdentity;
 import com.lczz.auth.wechat.WechatIdentityGateway;
+import com.lczz.common.audit.OperationAuditService;
 import com.lczz.common.exception.BusinessException;
 import com.lczz.order.service.OrderCustomerBindingService;
 import java.time.LocalDateTime;
@@ -40,12 +41,14 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final OrderCustomerBindingService orderCustomerBindingService;
+    private final OperationAuditService auditService;
 
     public AuthService(UserMapper userMapper, RoleMapper roleMapper, UserRoleMapper userRoleMapper,
                        WechatIdentityMapper wechatIdentityMapper, UserAccountService userAccountService,
                        WechatIdentityGateway wechatGateway, LoginChallengeStore challengeStore,
                        PasswordEncoder passwordEncoder, JwtService jwtService,
-                       OrderCustomerBindingService orderCustomerBindingService) {
+                       OrderCustomerBindingService orderCustomerBindingService,
+                       OperationAuditService auditService) {
         this.userMapper = userMapper;
         this.roleMapper = roleMapper;
         this.userRoleMapper = userRoleMapper;
@@ -56,6 +59,7 @@ public class AuthService {
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.orderCustomerBindingService = orderCustomerBindingService;
+        this.auditService = auditService;
     }
 
     @Transactional
@@ -119,8 +123,41 @@ public class AuthService {
         return loginResult(userAccountService.requireActive(user.getId()));
     }
 
-    public AuthenticatedUser current(AuthenticatedUser principal) {
-        return userAccountService.requireActive(principal.userId());
+    public UserInfo current(AuthenticatedUser principal) {
+        return userInfo(userAccountService.requireActive(principal.userId()));
+    }
+
+    @Transactional
+    public UserInfo updateProfile(AuthenticatedUser principal, String rawNickname, String rawRealName,
+                                  String requestId, String clientIp) {
+        AuthenticatedUser active = userAccountService.requireActive(principal.userId());
+        UserEntity current = userMapper.selectForUpdate(active.userId());
+        if (current == null || Boolean.TRUE.equals(current.getDeleted())) {
+            throw new BusinessException(401, "UNAUTHORIZED", "登录状态已失效");
+        }
+        String nickname = rawNickname.trim();
+        String realName = blankToNull(rawRealName);
+        if (nickname.length() > 64) {
+            throw new BusinessException("VALIDATION_ERROR", "昵称不能超过64字");
+        }
+        if (realName != null && realName.length() > 64) {
+            throw new BusinessException("VALIDATION_ERROR", "真实姓名不能超过64字");
+        }
+        if (active.hasRole(RoleCode.INSTALLER) && realName == null) {
+            throw new BusinessException("INSTALLER_REAL_NAME_REQUIRED", "安装师傅必须填写真实姓名");
+        }
+        ProfileSnapshot before = new ProfileSnapshot(current.getNickname(), current.getRealName());
+        userMapper.update(new LambdaUpdateWrapper<UserEntity>()
+                .eq(UserEntity::getId, active.userId())
+                .eq(UserEntity::getDeleted, false)
+                .set(UserEntity::getNickname, nickname)
+                .set(UserEntity::getRealName, realName)
+                .set(UserEntity::getUpdatedBy, active.userId())
+                .setSql("version = version + 1"));
+        UserInfo result = userInfo(userAccountService.requireActive(active.userId()));
+        auditService.recordSuccess(active.userId(), "SELF_PROFILE_UPDATE", "USER", active.userId(),
+                requestId, clientIp, before, new ProfileSnapshot(result.nickname(), result.realName()));
+        return result;
     }
 
     private LoginResult completeExistingIdentity(WechatIdentityEntity identity, String phone, String ip) {
@@ -205,22 +242,37 @@ public class AuthService {
         return normalized;
     }
 
+    private String blankToNull(String value) {
+        if (value == null || value.isBlank()) return null;
+        return value.trim();
+    }
+
     private LoginResult loginResult(AuthenticatedUser user) {
         JwtService.IssuedToken token = jwtService.issue(user);
-        return new LoginResult(token.value(), "Bearer", token.expiresInSeconds(), UserInfo.from(user));
+        return new LoginResult(token.value(), "Bearer", token.expiresInSeconds(), userInfo(user));
+    }
+
+    private UserInfo userInfo(AuthenticatedUser user) {
+        UserEntity entity = userMapper.selectById(user.userId());
+        if (entity == null || Boolean.TRUE.equals(entity.getDeleted())) {
+            throw new BusinessException(401, "UNAUTHORIZED", "登录状态已失效");
+        }
+        return UserInfo.from(user, entity.getNickname(), entity.getRealName());
     }
 
     public record WechatLoginResult(boolean needPhone, LoginResult login) { }
     public record LoginResult(String token, String tokenType, long expiresIn, UserInfo userInfo) { }
-    public record UserInfo(long id, String username, String name, String nickname, String phone,
+    public record UserInfo(long id, String username, String name, String nickname, String realName, String phone,
                            String role, Set<String> roles) {
-        public static UserInfo from(AuthenticatedUser user) {
+        public static UserInfo from(AuthenticatedUser user, String nickname, String realName) {
             Set<String> roles = user.roles().stream().map(role -> role.name().toLowerCase(Locale.ROOT))
                     .collect(java.util.stream.Collectors.toUnmodifiableSet());
             String primary = user.roles().stream().sorted().findFirst().orElse(RoleCode.CUSTOMER)
                     .name().toLowerCase(Locale.ROOT);
-            return new UserInfo(user.userId(), user.username(), user.displayName(), user.displayName(),
+            return new UserInfo(user.userId(), user.username(), user.displayName(), nickname, realName,
                     user.phone(), primary, roles);
         }
     }
+
+    private record ProfileSnapshot(String nickname, String realName) { }
 }

@@ -147,6 +147,12 @@ export const authApi = {
 		if (res.code === 200) res.data = normalizeRole(res.data)
 		return res
 	},
+	// 更新当前登录用户本人的昵称和真实姓名
+	updateProfile: async (data) => {
+		const res = await http.put('/auth/profile', data)
+		if (res.code === 200) res.data = normalizeRole(res.data)
+		return res
+	},
 	// 退出登录
 	logout: () => http.post('/auth/logout'),
 	// 用户主动注销账号并删除/匿名化账号个人信息
