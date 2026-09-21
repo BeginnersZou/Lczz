@@ -60,9 +60,9 @@ async function main() {
   for (const role of ['customer', 'dealer', 'installer', 'admin']) {
     for (const state of ['PENDING_VISIT', 'IN_PROGRESS', 'PENDING_REVIEW', 'REVIEWED', 'CANCELLED']) {
       const test = fixture(role, state); await test.load()
-      assert.equal(test.view.canConfirmCompletion.value, ['customer', 'dealer'].includes(role) && state === 'IN_PROGRESS')
+      assert.equal(test.view.canConfirmCompletion.value, role === 'customer' && state === 'IN_PROGRESS')
       assert.equal(test.view.canOperateProgress.value, role === 'installer' && ['PENDING_VISIT', 'IN_PROGRESS'].includes(state))
-      assert.equal(test.view.canReview.value, ['customer', 'dealer'].includes(role) && state === 'PENDING_REVIEW')
+      assert.equal(test.view.canReview.value, role === 'customer' && state === 'PENDING_REVIEW')
       if (!test.view.canConfirmCompletion.value) { await test.view.handleConfirmCompletion(); assert.equal(test.calls.modals.length, 0) }
     }
   }

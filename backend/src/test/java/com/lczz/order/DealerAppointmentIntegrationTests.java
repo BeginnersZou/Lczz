@@ -93,9 +93,58 @@ class DealerAppointmentIntegrationTests {
         assertThat(data(get("/api/orders/list"), installer).path("total").asInt()).isZero();
         JsonNode customerView = data(get("/api/orders/detail/" + id), customer);
         assertThat(customerView.hasNonNull("dealer")).isFalse();
-        mvc.perform(auth(get("/api/orders/detail/" + id), dealer)).andExpect(status().isNotFound());
+        JsonNode dealerView = data(get("/api/orders/detail/" + id), dealer);
+        assertThat(dealerView.path("id").asLong()).isEqualTo(id);
+        assertThat(dealerView.path("statusCode").asText()).isEqualTo("PENDING_ASSIGNMENT");
+        assertThat(dealerView.path("fileList")).hasSize(1);
+        assertThat(data(get("/api/orders/list"), dealer).path("total").asInt()).isEqualTo(1);
         mvc.perform(auth(get("/api/files/" + file + "/url"), customer)).andExpect(status().isOk());
+        mvc.perform(auth(get("/api/files/" + file + "/url"), dealer)).andExpect(status().isOk());
         mvc.perform(auth(get("/api/files/" + file + "/url"), otherDealer)).andExpect(status().isForbidden());
+    }
+
+    @Test
+    void dealerReadsOnlyOwnAppointmentsAndTheirProgress() throws Exception {
+        long own = create(dealer, body("13800138000")).path("id").asLong();
+        long other = create(otherDealer, body("13800138000")).path("id").asLong();
+        long unrelated = data(post("/api/orders").contentType("application/json")
+                .content(json.writeValueAsString(adminBody())), admin).path("id").asLong();
+        // Even if an unrelated order is bound to this user as customer, dealer mode only shows self-booked orders.
+        jdbc.update("UPDATE work_order SET customer_user_id=? WHERE id=?", dealer, unrelated);
+
+        JsonNode list = data(get("/api/v1/orders/list"), dealer);
+        assertThat(list.path("total").asInt()).isEqualTo(1);
+        assertThat(list.path("list").get(0).path("id").asLong()).isEqualTo(own);
+        assertThat(data(get("/api/orders/list").param("keyword", "不存在"), dealer).path("total").asInt()).isZero();
+        assertThat(data(get("/api/orders/list").param("status", "PENDING_ASSIGNMENT"), dealer).path("total").asInt()).isEqualTo(1);
+        assertThat(data(get("/api/orders/list"), customer).path("total").asInt()).isEqualTo(2);
+        assertThat(data(get("/api/orders/detail/" + own), dealer).path("orderSource").asText()).isEqualTo("DEALER_APPOINTMENT");
+        for (long inaccessible : List.of(other, unrelated)) {
+            mvc.perform(auth(get("/api/orders/detail/" + inaccessible), dealer)).andExpect(status().isNotFound());
+            mvc.perform(auth(get("/api/orders/" + inaccessible + "/progress"), dealer)).andExpect(status().isNotFound());
+        }
+
+        data(put("/api/orders/" + own).contentType("application/json")
+                .content(json.writeValueAsString(adminBody())), admin);
+        JsonNode assigned = data(get("/api/orders/detail/" + own), dealer);
+        assertThat(assigned.path("statusCode").asText()).isEqualTo("PENDING_VISIT");
+        assertThat(assigned.path("selectedMasterList").get(0).path("id").asLong()).isEqualTo(installer);
+        long image = upload(installer);
+        data(post("/api/orders/" + own + "/progress").contentType("application/json")
+                .content(json.writeValueAsString(Map.of("description", "已到场", "fileIds", List.of(image)))), installer);
+        assertThat(data(get("/api/orders/list").param("status", "IN_PROGRESS"), dealer).path("total").asInt()).isEqualTo(1);
+        JsonNode details = data(get("/api/v1/orders/detail/" + own), dealer);
+        assertThat(details.path("statusCode").asText()).isEqualTo("IN_PROGRESS");
+        JsonNode records = data(get("/api/orders/" + own + "/progress"), dealer);
+        assertThat(records).hasSize(1);
+        assertThat(records.get(0).path("description").asText()).isEqualTo("已到场");
+        mvc.perform(auth(get("/api/files/" + image + "/url"), dealer)).andExpect(status().isOk());
+        mvc.perform(auth(get("/api/files/" + image + "/url"), otherDealer)).andExpect(status().isForbidden());
+        mvc.perform(auth(post("/api/orders/" + own + "/confirm-completion"), dealer)).andExpect(status().isForbidden());
+        mvc.perform(auth(post("/api/orders/evaluation").contentType("application/json")
+                .content("{\"orderId\":" + own + ",\"score\":5,\"content\":\"满意\"}"), dealer))
+                .andExpect(status().isForbidden());
+        assertThat(data(get("/api/orders/detail/" + own), customer).path("statusCode").asText()).isEqualTo("IN_PROGRESS");
     }
 
     @Test

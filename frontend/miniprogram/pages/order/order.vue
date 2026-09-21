@@ -80,7 +80,7 @@
 						</view>
 					</view>
 					<view class="info-row">
-						<text class="info-label">收货人</text>
+						<text class="info-label">{{ userRole === 'dealer' ? '客户' : '收货人' }}</text>
 						<text class="info-value">{{ order.name }} {{ order.phone }}</text>
 					</view>
 					<view class="info-row">
@@ -89,8 +89,12 @@
 					</view>
 			<view class="info-row">
 				<text class="info-label">上门时间</text>
-				<text class="info-value highlight">{{ order.visitTime }}</text>
-			</view>
+				<text class="info-value highlight">{{ order.visitTime || '待管理员安排' }}</text>
+				</view>
+				<view class="info-row" v-if="userRole === 'dealer'">
+					<text class="info-label">预约提交</text>
+					<text class="info-value">{{ order.createdTime }}</text>
+				</view>
 			<view class="action-row" v-if="canReview(order) || isReviewed(order)">
 				<view class="review-entry" v-if="canReview(order)">
 					<view class="review-entry-copy">
@@ -173,8 +177,9 @@ import { getAuthToken } from '@/utils/auth-session.js'
 
 // onShow 确保从详情页返回时刷新列表（客户确认完成后状态会变化）
 // 同时处理从"我的"页统计项点击跳转时切换到对应 tab
-onShow(() => {
+onShow(async () => {
 	isGuest.value = !getAuthToken()
+	userRole.value = ''
 	if (isGuest.value) {
 		allOrders.value = []
 		total.value = 0
@@ -185,7 +190,7 @@ onShow(() => {
 		currentTab.value = uni.$pendingOrderTab
 		uni.$pendingOrderTab = null
 	}
-	loadUserRole()
+	await loadUserRole()
 	fetchOrders(true)
 })
 
@@ -232,7 +237,8 @@ const loadUserRole = async () => {
 	try {
 		const res = await authApi.getUserInfo()
 		if (res.code === 200 && res.data) {
-			userRole.value = res.data.role || ''
+			userRole.value = res.data.role === 'admin' ? 'admin'
+				: res.data.roles?.includes('dealer') ? 'dealer' : (res.data.role || '')
 		}
 	} catch (err) {
 		// 忽略错误，按默认处理
@@ -370,9 +376,9 @@ const goDetail = (order) => {
 	})
 }
 
-const isReviewer = computed(() => ['customer', 'dealer'].includes(userRole.value))
+const isReviewer = computed(() => userRole.value === 'customer')
 const canReview = (order) => isReviewer.value && order.statusCode === 'PENDING_REVIEW'
-const isReviewed = (order) => order.statusCode === 'REVIEWED'
+const isReviewed = (order) => isReviewer.value && order.statusCode === 'REVIEWED'
 const goEvaluate = (order) => {
 	uni.navigateTo({ url: `/packageA/order-evaluate/order-evaluate?id=${order.id}` })
 }

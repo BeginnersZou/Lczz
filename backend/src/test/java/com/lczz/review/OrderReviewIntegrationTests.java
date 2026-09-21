@@ -158,14 +158,14 @@ class OrderReviewIntegrationTests {
     }
 
     @Test
-    void dealerCanReviewAnOrderBoundToDealerRole() throws Exception {
+    void dealerCannotReviewEvenAnOrderBoundToDealerRole() throws Exception {
         long dealerOrder = createOrder("WO-REVIEW-003", dealerId, "PENDING_REVIEW");
         mockMvc.perform(post("/api/orders/evaluation")
                         .header("Authorization", "Bearer " + token(dealerId, RoleCode.DEALER))
                         .contentType("application/json")
                         .content("{\"orderId\":" + dealerOrder + ",\"score\":4,\"content\":\"服务不错\"}"))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.data.orderId").value(dealerOrder));
-        assertThat(orderMapper.selectById(dealerOrder).getOrderStatus()).isEqualTo("REVIEWED");
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.error").value("REVIEW_SUBMIT_FORBIDDEN"));
+        assertThat(orderMapper.selectById(dealerOrder).getOrderStatus()).isEqualTo("PENDING_REVIEW");
     }
 
     @Test

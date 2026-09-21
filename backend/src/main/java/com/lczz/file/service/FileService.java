@@ -349,6 +349,10 @@ public class FileService {
     }
 
     private boolean canAccessOrder(AuthenticatedUser actor, long orderId, boolean write) {
+        if (actor.hasRole(RoleCode.DEALER)) {
+            return !write && count("SELECT COUNT(*) FROM work_order WHERE id=? AND order_source='DEALER_APPOINTMENT' "
+                    + "AND dealer_user_id=? AND deleted=0", orderId, actor.userId()) > 0;
+        }
         if (actor.hasRole(RoleCode.INSTALLER)) {
             return count("SELECT COUNT(*) FROM work_order WHERE id=? AND installer_user_id=? AND deleted=0",
                     orderId, actor.userId()) > 0;
@@ -375,6 +379,11 @@ public class FileService {
                 throw new BusinessException(409, "PROGRESS_SEALED", "该订单施工进度已封存，不能修改附件");
             }
             return true;
+        }
+        if (actor.hasRole(RoleCode.DEALER)) {
+            return count("SELECT COUNT(*) FROM work_order_progress p JOIN work_order o ON o.id=p.order_id "
+                    + "WHERE p.id=? AND o.order_source='DEALER_APPOINTMENT' AND o.dealer_user_id=? AND o.deleted=0",
+                    progressId, actor.userId()) > 0;
         }
         if (actor.hasRole(RoleCode.INSTALLER)) {
             return count("SELECT COUNT(*) FROM work_order_progress p JOIN work_order o ON o.id=p.order_id "
