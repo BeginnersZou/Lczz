@@ -111,7 +111,7 @@ class OrderConfirmationIntegrationTests {
     }
 
     @Test
-    void bothPrefixesEnforceRoleAndBoundCustomerIncludingDealerCustomers() throws Exception {
+    void bothPrefixesEnforceRoleAndBoundCustomerWhileDealersStayReadOnly() throws Exception {
         for (String prefix : List.of("/api", "/api/v1")) {
             String endpoint = prefix + "/orders/" + orderId + "/confirm-completion";
             mvc.perform(post(endpoint)).andExpect(status().isUnauthorized());
@@ -119,12 +119,14 @@ class OrderConfirmationIntegrationTests {
                 mvc.perform(post(endpoint).header("Authorization", "Bearer " + caller))
                         .andExpect(status().isForbidden()).andExpect(jsonPath("$.data").doesNotExist());
             }
-            for (String caller : List.of(token(otherCustomerId, RoleCode.CUSTOMER), token(dealerId, RoleCode.DEALER))) {
+            for (String caller : List.of(token(otherCustomerId, RoleCode.CUSTOMER))) {
                 mvc.perform(post(endpoint).header("Authorization", "Bearer " + caller))
                         .andExpect(status().isNotFound()).andExpect(jsonPath("$.data").doesNotExist());
             }
             long dealerOrder = order("DEALER-" + prefix.replace('/', '-'), dealerId, "IN_PROGRESS");
-            data(post(prefix + "/orders/" + dealerOrder + "/confirm-completion"), token(dealerId, RoleCode.DEALER));
+            mvc.perform(post(prefix + "/orders/" + dealerOrder + "/confirm-completion")
+                    .header("Authorization", "Bearer " + token(dealerId, RoleCode.DEALER)))
+                    .andExpect(status().isForbidden());
         }
         assertThat(orderStatus(orderId)).isEqualTo("IN_PROGRESS");
     }

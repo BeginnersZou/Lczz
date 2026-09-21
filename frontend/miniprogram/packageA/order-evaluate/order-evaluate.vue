@@ -252,7 +252,7 @@ const loadPage = async () => {
 			setTimeout(() => uni.navigateBack(), 1200)
 			return
 		}
-		if (!['customer', 'dealer'].includes(role) || orderInfo.value.statusCode !== 'PENDING_REVIEW') {
+		if (role !== 'customer' || userResult.data?.roles?.includes('dealer') || orderInfo.value.statusCode !== 'PENDING_REVIEW') {
 			allowLeave.value = true
 			uni.showToast({ title: '当前订单不可评价', icon: 'none' })
 			setTimeout(() => uni.navigateBack(), 1000)

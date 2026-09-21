@@ -103,6 +103,7 @@ const normalizeOrder = (item = {}) => {
 	return {
 		...item,
 		visitTime: formatDateTime(item.visitTime || item.orderStartTime || ''),
+		createdTime: formatDateTime(item.createdAt || ''),
 		customerConfirmedAt: item.customerConfirmedAt ? formatDateTime(item.customerConfirmedAt) : '',
 		quantity: item.quantity == null ? null : Number(item.quantity),
 		status: item.status || item.statusLabel || item.statusCode || '',

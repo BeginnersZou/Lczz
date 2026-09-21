@@ -267,6 +267,10 @@ public class OrderService {
         LambdaQueryWrapper<WorkOrderEntity> query = new LambdaQueryWrapper<WorkOrderEntity>()
                 .eq(WorkOrderEntity::getDeleted, false);
         if (actor.hasRole(RoleCode.ADMIN)) return query;
+        if (actor.hasRole(RoleCode.DEALER)) {
+            return query.eq(WorkOrderEntity::getOrderSource, "DEALER_APPOINTMENT")
+                    .eq(WorkOrderEntity::getDealerUserId, actor.userId());
+        }
         if (actor.hasRole(RoleCode.INSTALLER)) {
             return query.eq(WorkOrderEntity::getInstallerUserId, actor.userId());
         }

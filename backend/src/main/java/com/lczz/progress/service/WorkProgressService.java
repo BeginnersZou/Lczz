@@ -133,7 +133,9 @@ public class WorkProgressService {
         LambdaQueryWrapper<WorkOrderEntity> query = new LambdaQueryWrapper<WorkOrderEntity>()
                 .eq(WorkOrderEntity::getId, orderId).eq(WorkOrderEntity::getDeleted, false);
         if (!actor.hasRole(RoleCode.ADMIN)) {
-            if (actor.hasRole(RoleCode.INSTALLER)) query.eq(WorkOrderEntity::getInstallerUserId, actor.userId());
+            if (actor.hasRole(RoleCode.DEALER)) query.eq(WorkOrderEntity::getOrderSource, "DEALER_APPOINTMENT")
+                    .eq(WorkOrderEntity::getDealerUserId, actor.userId());
+            else if (actor.hasRole(RoleCode.INSTALLER)) query.eq(WorkOrderEntity::getInstallerUserId, actor.userId());
             else query.eq(WorkOrderEntity::getCustomerUserId, actor.userId());
         }
         WorkOrderEntity order = orderMapper.selectOne(query);

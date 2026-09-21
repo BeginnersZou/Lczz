@@ -12,7 +12,8 @@
       <text class="title">预约申请已提交</text>
       <text class="hint">订单编号：{{ result.orderNo }}</text>
       <text class="hint">管理员将核对需求、安排上门时间并指派师傅。</text>
-      <button class="primary" @click="goHome">返回首页</button>
+      <button class="primary" @click="goOrders">查看我的预约</button>
+      <button class="secondary" @click="goHome">返回首页</button>
     </view>
     <template v-else-if="allowed">
       <view class="intro"><text class="title">预约安装</text><text class="hint">填写客户与安装需求，由管理员统一安排施工</text></view>
@@ -176,6 +177,7 @@ async function submit() {
 }
 
 function goHome() { uni.switchTab({ url: '/pages/index/index' }) }
+function goOrders() { uni.switchTab({ url: '/pages/order/order' }) }
 function cancel() {
   if (submitting.value || uploading.value) return
   uni.showModal({

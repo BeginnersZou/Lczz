@@ -28,7 +28,7 @@ public class OrderConfirmationController {
     }
 
     @PostMapping("/{id}/confirm-completion")
-    @PreAuthorize("hasAnyRole('CUSTOMER', 'DEALER')")
+    @PreAuthorize("hasRole('CUSTOMER') and !hasRole('DEALER')")
     @Operation(summary = "绑定客户确认处理中订单完成并封存施工进度",
             description = "仅绑定客户可操作；成功后进入 PENDING_REVIEW，重复确认返回 409，非本人订单返回 404。")
     ApiResponse<ConfirmationView> confirm(@AuthenticationPrincipal AuthenticatedUser actor,

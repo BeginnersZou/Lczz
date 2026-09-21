@@ -149,7 +149,7 @@ public class OrderReviewService {
     }
 
     private void ensureReviewerRole(AuthenticatedUser actor) {
-        if (!actor.hasRole(RoleCode.CUSTOMER) && !actor.hasRole(RoleCode.DEALER)) {
+        if (!actor.hasRole(RoleCode.CUSTOMER) || actor.hasRole(RoleCode.DEALER)) {
             throw new BusinessException(403, "REVIEW_SUBMIT_FORBIDDEN", "仅订单绑定客户可以提交评价");
         }
     }

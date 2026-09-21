@@ -30,7 +30,7 @@ public class OrderConfirmationService {
 
     @Transactional
     public ConfirmationView confirm(AuthenticatedUser actor, long orderId) {
-        if (!actor.hasRole(RoleCode.CUSTOMER) && !actor.hasRole(RoleCode.DEALER)) {
+        if (!actor.hasRole(RoleCode.CUSTOMER) || actor.hasRole(RoleCode.DEALER)) {
             throw new BusinessException(403, "ORDER_CONFIRMATION_FORBIDDEN", "仅订单绑定客户可确认完成");
         }
         WorkOrderEntity order = orderMapper.selectForUpdate(orderId);

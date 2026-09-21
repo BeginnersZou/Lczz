@@ -41,7 +41,7 @@
 				</view>
 			</view>
 			<view class="info-row">
-				<text class="info-label">收货人</text>
+				<text class="info-label">{{ userRole === 'dealer' ? '客户' : '收货人' }}</text>
 				<text class="info-value">{{ orderInfo.name }} {{ orderInfo.phone }}</text>
 			</view>
 			<view class="info-row">
@@ -50,8 +50,22 @@
 			</view>
 			<view class="info-row">
 				<text class="info-label">上门时间</text>
-				<text class="info-value highlight">{{ orderInfo.visitTime }}</text>
+				<text class="info-value highlight">{{ orderInfo.visitTime || '待管理员安排' }}</text>
 			</view>
+			<template v-if="userRole === 'dealer'">
+				<view class="info-row">
+					<text class="info-label">预约提交</text>
+					<text class="info-value">{{ orderInfo.createdTime }}</text>
+				</view>
+				<view class="info-row">
+					<text class="info-label">需求描述</text>
+					<text class="info-value">{{ orderInfo.description || '无' }}</text>
+				</view>
+				<view class="info-row">
+					<text class="info-label">指派师傅</text>
+					<text class="info-value">{{ orderInfo.selectedMasterList?.[0]?.masterName || '待指派' }}</text>
+				</view>
+			</template>
 		</view>
 
 		<!-- ═══ 安装师傅耗材申请：清单与备注属于同一业务模块 ═══ -->
@@ -420,7 +434,7 @@
 	const currentUserId = ref(null)
 	const confirmingCompletion = ref(false)
 	const isInstaller = computed(() => userRole.value === 'installer')
-	const isReviewer = computed(() => ['customer', 'dealer'].includes(userRole.value))
+	const isReviewer = computed(() => userRole.value === 'customer')
 	const isBoundCustomer = computed(() => isReviewer.value && currentUserId.value != null &&
 		String(orderInfo.value.customerUserId) === String(currentUserId.value))
 	const canConfirmCompletion = computed(() => isBoundCustomer.value && orderInfo.value.statusCode === 'IN_PROGRESS')
@@ -1079,7 +1093,8 @@ const statusClass = computed(() => {
 				return
 			}
 			if (userRes.code === 200 && userRes.data) {
-				userRole.value = userRes.data.role || ''
+				userRole.value = userRes.data.role === 'admin' ? 'admin'
+					: userRes.data.roles?.includes('dealer') ? 'dealer' : (userRes.data.role || '')
 				currentUserId.value = userRes.data.id
 			}
 			// 订单字段已与模板对齐，res.data 直接赋值
