@@ -93,7 +93,7 @@ public class ProjectCaseService {
         return projectCases.stream().map(projectCase -> {
             List<FileView> files = images.getOrDefault(projectCase.getId(), List.of());
             return new ProjectCaseSummaryView(projectCase.getId(), projectCase.getSiteName(),
-                    files.isEmpty() ? null : files.getFirst(), projectCase.getUpdatedAt());
+                    files.isEmpty() ? null : files.getFirst(), files.size(), projectCase.getUpdatedAt());
         }).toList();
     }
 
@@ -168,7 +168,8 @@ public class ProjectCaseService {
 
     public record ProjectCaseCommand(String siteName, List<Long> imageFileIds) { }
     public record ProjectCasePage(List<ProjectCaseSummaryView> list, long total, int page, int pageSize) { }
-    public record ProjectCaseSummaryView(long id, String siteName, FileView coverImage, LocalDateTime updatedAt) { }
+    public record ProjectCaseSummaryView(long id, String siteName, FileView coverImage, int imageCount,
+                                         LocalDateTime updatedAt) { }
     public record ProjectCaseDetailView(long id, String siteName, List<FileView> images,
                                         LocalDateTime createdAt, LocalDateTime updatedAt) { }
     public record FileView(long id, String url) { }

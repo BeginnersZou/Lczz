@@ -56,6 +56,7 @@ class ProjectCaseIntegrationTests {
         mockMvc.perform(get("/api/v1/cases/list").param("keyword", "江岸区"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.list[0].imageCount").value(2))
                 .andExpect(jsonPath("$.data.list[0].coverImage.url")
                         .value(org.hamcrest.Matchers.startsWith("/api/files/access/")));
         mockMvc.perform(get("/api/v1/cases/{id}", caseId))
@@ -68,6 +69,9 @@ class ProjectCaseIntegrationTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.siteName").value("武汉天地施工案例"))
                 .andExpect(jsonPath("$.data.images.length()").value(1));
+        mockMvc.perform(get("/api/v1/cases/list").param("keyword", "天地"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.list[0].imageCount").value(1));
         mockMvc.perform(get("/api/v1/cases/list").param("keyword", "不存在"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.total").value(0));
