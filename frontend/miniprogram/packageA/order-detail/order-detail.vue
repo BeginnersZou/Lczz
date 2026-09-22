@@ -429,7 +429,7 @@
 
 	const materialRequest = ref(null)
 	const progressRecords = ref([])
-	// 首次施工进度提交前允许师傅反复保存同一份耗材清单；进度提交后转为只读。
+	// 客户确认订单完成前，施工记录和备货状态都不影响师傅修改耗材清单。
 	const userRole = ref('')
 	const currentUserId = ref(null)
 	const confirmingCompletion = ref(false)
@@ -441,10 +441,7 @@
 	const canReview = computed(() => isBoundCustomer.value && orderInfo.value.statusCode === 'PENDING_REVIEW')
 	const hasReviewed = computed(() => isBoundCustomer.value && orderInfo.value.statusCode === 'REVIEWED')
 	const materialReadonly = computed(() => !isInstaller.value
-		|| !['PENDING_VISIT', 'IN_PROGRESS'].includes(orderInfo.value.statusCode)
-		|| progressRecords.value.length > 0
-		|| (materialRequest.value
-			&& String(materialRequest.value.statusCode || materialRequest.value.status || '').toUpperCase() !== 'PENDING'))
+		|| !['PENDING_VISIT', 'IN_PROGRESS'].includes(orderInfo.value.statusCode))
 
 const statusClass = computed(() => {
 		const s = orderInfo.value.status
@@ -823,9 +820,9 @@ const statusClass = computed(() => {
 				return
 			}
 			// 耗材字段已与弹窗对齐（id/title/spec/price/image/category），res.data.list 直接使用
-			const reservedBySku = new Map(toolList.value
+			const reservedBySku = new Map((materialRequest.value?.materials || [])
 				.filter(item => item.skuId != null)
-				.map(item => [Number(item.skuId), Number(item.qty || 0)]))
+				.map(item => [Number(item.skuId), Number(item.count || 0)]))
 			const list = ((res.data && res.data.list) || []).map(tool => ({
 				...tool,
 				skus: (tool.skus || []).map(sku => ({
@@ -1013,8 +1010,8 @@ const statusClass = computed(() => {
 		uni.showModal({
 			title: '确认提交',
 			content: materialRequest.value
-				? '将保存修改后的耗材清单。首次提交施工进度后将不能继续修改。'
-				: '提交后仍可修改耗材清单；首次提交施工进度后将不能继续修改。',
+				? '将保存修改后的耗材清单；如已备货，管理员需按新清单重新核对。客户确认订单完成后将不能修改。'
+				: '提交后仍可修改耗材清单；客户确认订单完成后将不能修改。',
 			success: async (res) => {
 				if (!res.confirm) return
 				if (submitting.value) return
