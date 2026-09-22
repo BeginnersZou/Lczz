@@ -1,6 +1,7 @@
 package com.lczz.stocking.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.lczz.auth.domain.AuthenticatedUser;
 import com.lczz.auth.domain.RoleCode;
@@ -126,13 +127,11 @@ public class MaterialRequestService {
             List<MaterialRequestItemEntity> previousItems = items(existing.getId());
             if (sameSubmittedItems(previousItems, command.items())) {
                 if (!java.util.Objects.equals(existing.getRemark(), blankToNull(command.remark()))) {
-                    ensureMaterialRequestEditable(existing, orderId);
                     updateRequestRemark(existing, command.remark());
                 }
                 transitionToInProgress(order, actor.userId());
                 return toViews(List.of(existing)).getFirst();
             }
-            ensureMaterialRequestEditable(existing, orderId);
             // Return the old reservation before resolving the replacement list. The whole method is transactional,
             // so any validation or insert failure restores both the old rows and their stock reservation.
             releaseReservedStock(previousItems, actor.userId());
@@ -146,15 +145,16 @@ public class MaterialRequestService {
                 reserveStock(row, actor.userId());
                 insertSnapshot(existing.getId(), row);
             });
+            // A changed list invalidates any preparation already recorded against the old item IDs.
+            // The administrator must check and finish the new list again.
+            existing.setRequestStatus("PENDING");
+            existing.setCompletedBy(null);
+            existing.setCompletedAt(null);
             updateRequestRemark(existing, command.remark());
             transitionToInProgress(order, actor.userId());
             return toViews(List.of(existing)).getFirst();
         }
 
-        if (hasProgress(orderId)) {
-            throw new BusinessException(409, "MATERIAL_REQUEST_LOCKED_BY_PROGRESS",
-                    "已提交施工进度，耗材清单不能再修改");
-        }
         LinkedHashMap<Long, ResolvedSku> requested = resolveRequestedSkus(command.items());
 
         requested.values().forEach(row -> {
@@ -189,27 +189,18 @@ public class MaterialRequestService {
         return toViews(List.of(requestMapper.selectById(request.getId()))).getFirst();
     }
 
-    private void ensureMaterialRequestEditable(MaterialRequestEntity request, long orderId) {
-        if (hasProgress(orderId)) {
-            throw new BusinessException(409, "MATERIAL_REQUEST_LOCKED_BY_PROGRESS",
-                    "已提交施工进度，耗材清单不能再修改");
-        }
-        if (!"PENDING".equals(request.getRequestStatus())) {
-            throw new BusinessException(409, "MATERIAL_REQUEST_PROCESSING",
-                    "后台已开始备货，耗材清单不能再修改");
-        }
-    }
-
-    private boolean hasProgress(long orderId) {
-        Long count = jdbc.queryForObject("SELECT COUNT(*) FROM work_order_progress WHERE order_id=?", Long.class, orderId);
-        return count != null && count > 0;
-    }
-
     private void updateRequestRemark(MaterialRequestEntity request, String remark) {
         request.setRemark(blankToNull(remark));
         request.setSubmittedAt(LocalDateTime.now(ZoneOffset.UTC));
         request.setVersion(request.getVersion() + 1);
-        requestMapper.updateById(request);
+        requestMapper.update(null, new LambdaUpdateWrapper<MaterialRequestEntity>()
+                .eq(MaterialRequestEntity::getId, request.getId())
+                .set(MaterialRequestEntity::getRequestStatus, request.getRequestStatus())
+                .set(MaterialRequestEntity::getRemark, request.getRemark())
+                .set(MaterialRequestEntity::getSubmittedAt, request.getSubmittedAt())
+                .set(MaterialRequestEntity::getCompletedBy, request.getCompletedBy())
+                .set(MaterialRequestEntity::getCompletedAt, request.getCompletedAt())
+                .set(MaterialRequestEntity::getVersion, request.getVersion()));
     }
 
     private BusinessException insufficientStock(ResolvedSku row) {

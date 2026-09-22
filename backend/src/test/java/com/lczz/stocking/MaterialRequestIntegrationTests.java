@@ -88,7 +88,7 @@ class MaterialRequestIntegrationTests {
     }
 
     @Test
-    void assignedInstallerCanReplacePendingMaterialsUntilFirstProgress() throws Exception {
+    void assignedInstallerCanReplaceMaterialsAfterProgressUntilCustomerConfirmation() throws Exception {
         jdbcTemplate.update("UPDATE work_order SET order_status='PENDING_VISIT' WHERE id=?", orderId);
         JsonNode first = submit(orderId, installerToken, itemsJson("2", "1"));
         long requestId = first.path("id").asLong();
@@ -130,29 +130,142 @@ class MaterialRequestIntegrationTests {
                         .content("{\"description\":\"第一次施工进度\",\"fileIds\":[]}"))
                 .andExpect(status().isOk());
 
-        mockMvc.perform(post("/api/orders/" + orderId + "/materials")
-                        .header("Authorization", "Bearer " + installerToken)
-                        .contentType("application/json")
-                        .content("{\"items\":[{\"productId\":" + product1Id + ",\"quantity\":4}]}"))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.error").value("MATERIAL_REQUEST_LOCKED_BY_PROGRESS"));
-        assertThat(productMapper.selectById(product1Id).getDisplayStock()).isEqualByComparingTo("7");
+        JsonNode afterProgress = submit(orderId, installerToken,
+                "{\"items\":[{\"productId\":" + product1Id + ",\"quantity\":4}]}" );
+        assertThat(afterProgress.path("id").asLong()).isEqualTo(requestId);
+        assertThat(afterProgress.path("materials").get(0).path("count").decimalValue()).isEqualByComparingTo("4");
+        assertThat(productMapper.selectById(product1Id).getDisplayStock()).isEqualByComparingTo("6");
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM material_request WHERE id=? AND remark IS NULL",
+                Long.class, requestId)).isEqualTo(1L);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM material_request WHERE order_id=?",
+                Long.class, orderId)).isEqualTo(1L);
     }
 
     @Test
-    void firstMaterialSubmissionIsRejectedAfterProgressAlreadyExists() throws Exception {
+    void firstMaterialSubmissionSucceedsAfterProgressAlreadyExists() throws Exception {
         mockMvc.perform(post("/api/orders/" + orderId + "/progress")
                         .header("Authorization", "Bearer " + installerToken)
                         .contentType("application/json")
                         .content("{\"description\":\"先提交施工进度\",\"fileIds\":[]}"))
                 .andExpect(status().isOk());
 
+        JsonNode request = submit(orderId, installerToken, itemsJson("1", "1"));
+        assertThat(request.path("materials")).hasSize(2);
+        assertThat(productMapper.selectById(product1Id).getDisplayStock()).isEqualByComparingTo("9");
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM material_request", Long.class)).isEqualTo(1L);
+    }
+
+    @Test
+    void changingPreparedOrFinishedListResetsPreparationAndPreservesStock() throws Exception {
+        JsonNode request = submit(orderId, installerToken, itemsJson("2", "1"));
+        long requestId = request.path("id").asLong();
+        long firstItemId = request.path("materials").get(0).path("id").asLong();
+        long secondItemId = request.path("materials").get(1).path("id").asLong();
+        String partial = "{\"materials\":[{\"id\":" + firstItemId + ",\"checked\":true},{\"id\":"
+                + secondItemId + ",\"checked\":false}]}";
+        mockMvc.perform(post("/api/preparation/" + requestId + "/prepare")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType("application/json").content(partial))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.statusCode").value("PREPARING"));
+
+        JsonNode afterPartial = submit(orderId, installerToken,
+                "{\"items\":[{\"productId\":" + product1Id + ",\"quantity\":3}]}" );
+        assertThat(afterPartial.path("id").asLong()).isEqualTo(requestId);
+        assertThat(afterPartial.path("statusCode").asText()).isEqualTo("PENDING");
+        assertThat(afterPartial.path("materials")).hasSize(1);
+        assertThat(afterPartial.path("materials").get(0).path("checked").asBoolean()).isFalse();
+        assertThat(afterPartial.path("materials").get(0).path("preparedQuantity").decimalValue())
+                .isEqualByComparingTo("0");
+        assertThat(productMapper.selectById(product1Id).getDisplayStock()).isEqualByComparingTo("7");
+        assertThat(productMapper.selectById(product2Id).getDisplayStock()).isEqualByComparingTo("5");
+
+        long replacementItemId = afterPartial.path("materials").get(0).path("id").asLong();
+        mockMvc.perform(post("/api/preparation/" + requestId + "/prepare")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType("application/json")
+                        .content("{\"materials\":[{\"id\":" + replacementItemId + ",\"checked\":true}]}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/preparation/" + requestId + "/finish")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.statusCode").value("DONE"));
+
+        JsonNode afterFinish = submit(orderId, installerToken,
+                "{\"items\":[{\"productId\":" + product1Id + ",\"quantity\":1}]}" );
+        assertThat(afterFinish.path("id").asLong()).isEqualTo(requestId);
+        assertThat(afterFinish.path("statusCode").asText()).isEqualTo("PENDING");
+        assertThat(afterFinish.hasNonNull("completedBy")).isFalse();
+        assertThat(afterFinish.hasNonNull("completedAt")).isFalse();
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM material_request WHERE id = ? AND completed_by IS NULL AND completed_at IS NULL",
+                Long.class, requestId)).isEqualTo(1L);
+        assertThat(afterFinish.path("materials").get(0).path("checked").asBoolean()).isFalse();
+        assertThat(productMapper.selectById(product1Id).getDisplayStock()).isEqualByComparingTo("9");
+        mockMvc.perform(post("/api/preparation/" + requestId + "/prepare")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType("application/json")
+                        .content("{\"materials\":[{\"id\":" + replacementItemId + ",\"checked\":true}]}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INCOMPLETE_PREPARATION_ITEMS"));
+    }
+
+    @Test
+    void customerConfirmationLocksBothNewAndExistingMaterialRequests() throws Exception {
+        JsonNode request = submit(orderId, installerToken, itemsJson("2", "1"));
+        mockMvc.perform(post("/api/orders/" + orderId + "/confirm-completion")
+                        .header("Authorization", "Bearer " + token(customerId, RoleCode.CUSTOMER)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.statusCode").value("PENDING_REVIEW"));
         mockMvc.perform(post("/api/orders/" + orderId + "/materials")
                         .header("Authorization", "Bearer " + installerToken)
+                        .contentType("application/json").content(itemsJson("2", "1")))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.error").value("ORDER_NOT_ACCEPTING_MATERIALS"));
+        mockMvc.perform(post("/api/orders/" + orderId + "/materials")
+                        .header("Authorization", "Bearer " + installerToken)
+                        .contentType("application/json").content(itemsJson("3", "1")))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.error").value("ORDER_NOT_ACCEPTING_MATERIALS"));
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM material_request_item WHERE request_id=?",
+                Long.class, request.path("id").asLong())).isEqualTo(2L);
+        assertThat(productMapper.selectById(product1Id).getDisplayStock()).isEqualByComparingTo("8");
+
+        long secondOrder = createOrder("WO-STOCK-002", installerId);
+        mockMvc.perform(post("/api/orders/" + secondOrder + "/confirm-completion")
+                        .header("Authorization", "Bearer " + token(customerId, RoleCode.CUSTOMER)))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/orders/" + secondOrder + "/materials")
+                        .header("Authorization", "Bearer " + installerToken)
                         .contentType("application/json").content(itemsJson("1", "1")))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.error").value("ORDER_NOT_ACCEPTING_MATERIALS"));
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM material_request WHERE order_id=?",
+                Long.class, secondOrder)).isZero();
+    }
+
+    @Test
+    void failedChangeKeepsFinishedPreparationAndOriginalStockReservation() throws Exception {
+        JsonNode request = submit(orderId, installerToken,
+                "{\"items\":[{\"productId\":" + product1Id + ",\"quantity\":2}]}");
+        long requestId = request.path("id").asLong();
+        long itemId = request.path("materials").get(0).path("id").asLong();
+        mockMvc.perform(post("/api/preparation/" + requestId + "/prepare")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType("application/json")
+                        .content("{\"materials\":[{\"id\":" + itemId + ",\"checked\":true}]}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/preparation/" + requestId + "/finish")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/orders/" + orderId + "/materials")
+                        .header("Authorization", "Bearer " + installerToken)
+                        .contentType("application/json")
+                        .content("{\"items\":[{\"productId\":" + product1Id + ",\"quantity\":11}]}"))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.error").value("MATERIAL_REQUEST_LOCKED_BY_PROGRESS"));
-        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM material_request", Long.class)).isZero();
+                .andExpect(jsonPath("$.error").value("INSUFFICIENT_SKU_STOCK"));
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM material_request WHERE id=? "
+                + "AND request_status='DONE' AND completed_by IS NOT NULL AND completed_at IS NOT NULL",
+                Long.class, requestId)).isEqualTo(1L);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM material_request_item WHERE id=? "
+                + "AND requested_quantity=2 AND prepared_quantity=2 AND item_status='PREPARED'",
+                Long.class, itemId)).isEqualTo(1L);
+        assertThat(productMapper.selectById(product1Id).getDisplayStock()).isEqualByComparingTo("8");
     }
 
     @Test
