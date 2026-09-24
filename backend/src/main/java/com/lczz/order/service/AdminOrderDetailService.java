@@ -38,7 +38,7 @@ public class AdminOrderDetailService {
         // Resolve the order first so missing/deleted orders cannot expose related records.
         OrderView order = orderService.detail(actor, orderId);
         return new AdminOrderDetailView(order, progressService.list(actor, orderId),
-                materialRequestService.listByOrder(actor, orderId), reviewService.byOrder(actor, orderId));
+                materialRequestService.listByOrderForAdmin(actor, orderId), reviewService.byOrder(actor, orderId));
     }
 
     public record AdminOrderDetailView(OrderView order, List<ProgressView> progress,

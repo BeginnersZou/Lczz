@@ -99,7 +99,7 @@ $env:SMS_PICKUP_CONTACT_PHONE="13900000001"
 | 方法 | 路径 | 权限 | 说明 |
 | --- | --- | --- | --- |
 | POST | `/api/v1/orders/{orderId}/materials` | 安装师傅 | 为指派给自己的订单提交耗材和数量 |
-| GET | `/api/v1/orders/{orderId}/materials` | 订单相关角色 | 查询订单最近一次耗材申请 |
+| GET | `/api/v1/orders/{orderId}/materials` | 提交申请的安装师傅 | 小程序查询本人为当前指派订单提交的最近一次耗材申请；其他角色和其他师傅不可读取 |
 | GET | `/api/v1/preparation/list` | 管理员 | 分页查询备货申请 |
 | GET | `/api/v1/preparation/detail/{id}` | 管理员 | 查询备货详情及产品快照 |
 | POST | `/api/v1/preparation/{id}/prepare` | 管理员 | 保存各耗材备货进度 |
@@ -107,6 +107,8 @@ $env:SMS_PICKUP_CONTACT_PHONE="13900000001"
 | POST | `/api/v1/preparation/{id}/void` | 管理员 | 作废申请并记录操作人、时间和原因 |
 
 申请明细保存产品编码、名称、规格、单位和展示价格快照。相同申请重试返回原记录，不同内容的重复申请返回冲突；V4 迁移通过唯一索引保证每个订单只有一个未作废申请。展示价格和展示库存仅供参考，不收费、不自动扣减库存。
+
+小程序订单详情只为安装师傅加载和展示耗材申请。后台管理员通过后台订单详情及 `/api/v1/preparation/**` 专用接口查看和处理耗材；小程序管理员、客户和经销商不能使用订单耗材查询接口。
 
 ## 施工进度与客户确认完成接口
 
