@@ -256,6 +256,21 @@ export const projectCaseApi = {
 	}
 }
 
+// ====================== 服务页相关 ======================
+export const servicePageApi = {
+	get: async (options = {}) => {
+		const res = await http.get('/service-page', {}, {
+			auth: false,
+			redirectOnUnauthorized: false,
+			...options
+		})
+		if (res.code === 200 && res.data) {
+			res.data.galleryImages = (res.data.galleryImages || []).map(normalizeFile).filter(file => file.url)
+		}
+		return res
+	}
+}
+
 // ====================== 安装师傅耗材购物车 / 自助取货订单 ======================
 export const dealerBookingApi = {
 	create: (data) => http.post('/dealer/appointments', data, { silent: true, redirectOnUnauthorized: false })

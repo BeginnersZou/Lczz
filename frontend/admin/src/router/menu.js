@@ -4,7 +4,8 @@ import {
   Document,
   Box,
   Picture,
-  User
+  User,
+  OfficeBuilding
 } from '@element-plus/icons-vue'
 
 const menuItems = [
@@ -39,6 +40,12 @@ const menuItems = [
     name: 'ProjectCases',
     icon: Picture,
     meta: { title: '项目案例' }
+  },
+  {
+    path: '/service',
+    name: 'ServiceManagement',
+    icon: OfficeBuilding,
+    meta: { title: '服务管理' }
   },
   {
     path: '/users',

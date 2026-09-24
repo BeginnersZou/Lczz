@@ -102,6 +102,12 @@ const routes = [
         name: 'ProjectCaseEdit',
         component: () => import('@/views/cases/CaseForm.vue'),
         meta: { title: '修改项目案例' }
+      },
+      {
+        path: 'service',
+        name: 'ServiceManagement',
+        component: () => import('@/views/service/ServiceManagement.vue'),
+        meta: { title: '服务管理' }
       }
     ]
   },

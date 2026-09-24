@@ -9,7 +9,7 @@ export const COMPANY_LOCATION = Object.freeze({
 /**
  * 调起微信的位置页面。可继续由微信和设备系统提供已安装地图应用的选择。
  */
-export function openCompanyLocation(uniApi = uni) {
+export function openCompanyLocation(uniApi = uni, location = {}) {
   if (!uniApi || typeof uniApi.openLocation !== 'function') {
     uniApi?.showModal?.({
       title: '无法打开地图',
@@ -20,6 +20,9 @@ export function openCompanyLocation(uniApi = uni) {
   }
   uniApi.openLocation({
     ...COMPANY_LOCATION,
+    ...location,
+    longitude: Number(location.longitude ?? COMPANY_LOCATION.longitude),
+    latitude: Number(location.latitude ?? COMPANY_LOCATION.latitude),
     fail: () => {
       uniApi.showModal?.({
         title: '无法打开地图',

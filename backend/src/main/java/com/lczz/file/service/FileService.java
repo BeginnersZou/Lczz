@@ -50,18 +50,21 @@ public class FileService {
             "jpg", "image/jpeg", "jpeg", "image/jpeg", "png", "image/png",
             "gif", "image/gif", "webp", "image/webp", "mp4", "video/mp4",
             "mov", "video/quicktime", "m4v", "video/mp4");
-    private static final Set<String> BUSINESS_TYPES = Set.of("PRODUCT", "ORDER", "PROGRESS", "REVIEW", "CASE");
+    private static final Set<String> BUSINESS_TYPES = Set.of(
+            "PRODUCT", "ORDER", "PROGRESS", "REVIEW", "CASE", "SERVICE_PAGE");
     private static final Set<String> USAGE_TYPES = Set.of(
-            "COVER", "DETAIL", "ATTACHMENT", "PROGRESS", "COMPLETION", "REVIEW", "CASE");
+            "COVER", "DETAIL", "ATTACHMENT", "PROGRESS", "COMPLETION", "REVIEW", "CASE", "COMPANY_DISPLAY");
     private static final Map<String, Set<String>> BUSINESS_USAGES = Map.of(
             "PRODUCT", Set.of("COVER", "DETAIL"),
             "ORDER", Set.of("ATTACHMENT"),
             "PROGRESS", Set.of("PROGRESS", "COMPLETION"),
             "REVIEW", Set.of("REVIEW"),
-            "CASE", Set.of("CASE"));
+            "CASE", Set.of("CASE"),
+            "SERVICE_PAGE", Set.of("COMPANY_DISPLAY"));
     private static final Map<String, Integer> USAGE_LIMITS = Map.of(
             "COVER", 1, "DETAIL", 9, "ATTACHMENT", 9,
-            "PROGRESS", 9, "COMPLETION", 9, "REVIEW", 9, "CASE", Integer.MAX_VALUE);
+            "PROGRESS", 9, "COMPLETION", 9, "REVIEW", 9, "CASE", Integer.MAX_VALUE,
+            "COMPANY_DISPLAY", 20);
 
     private final FileAssetRecordMapper fileMapper;
     private final FileRelationRecordMapper relationMapper;
@@ -271,6 +274,7 @@ public class FileService {
 
     private void addRelation(AuthenticatedUser actor, long fileId, RelationCommand relation) {
         if ("CASE".equals(relation.businessType())) validateCaseImage(fileId);
+        if ("SERVICE_PAGE".equals(relation.businessType())) validateServicePageImage(fileId);
         Long duplicate = relationMapper.selectCount(new LambdaQueryWrapper<FileRelationRecord>()
                 .eq(FileRelationRecord::getBusinessType, relation.businessType())
                 .eq(FileRelationRecord::getBusinessId, relation.businessId())
@@ -330,6 +334,7 @@ public class FileService {
             case "PRODUCT" -> !write && count(
                     "SELECT COUNT(*) FROM product WHERE id=? AND deleted=0 AND enabled=1", id) > 0;
             case "CASE" -> !write && count("SELECT COUNT(*) FROM project_case WHERE id=? AND deleted=0", id) > 0;
+            case "SERVICE_PAGE" -> !write && count("SELECT COUNT(*) FROM service_page_config WHERE id=?", id) > 0;
             case "ORDER" -> actor != null && canAccessOrder(actor, id, write);
             case "PROGRESS" -> actor != null && canAccessProgress(actor, id, write);
             case "REVIEW" -> actor != null && canAccessReview(actor, id, write);
@@ -341,6 +346,7 @@ public class FileService {
         return switch (type) {
             case "PRODUCT" -> count("SELECT COUNT(*) FROM product WHERE id=? AND deleted=0", id) > 0;
             case "CASE" -> count("SELECT COUNT(*) FROM project_case WHERE id=? AND deleted=0", id) > 0;
+            case "SERVICE_PAGE" -> count("SELECT COUNT(*) FROM service_page_config WHERE id=?", id) > 0;
             case "ORDER" -> count("SELECT COUNT(*) FROM work_order WHERE id=? AND deleted=0", id) > 0;
             case "PROGRESS" -> count("SELECT COUNT(*) FROM work_order_progress WHERE id=?", id) > 0;
             case "REVIEW" -> count("SELECT COUNT(*) FROM work_order_review WHERE id=?", id) > 0;
@@ -416,6 +422,16 @@ public class FileService {
         }
         if (file.getFileSize() == null || file.getFileSize() > 10L * 1024 * 1024) {
             throw new BusinessException(413, "CASE_IMAGE_TOO_LARGE", "单张案例图片不能超过 10 MB");
+        }
+    }
+
+    private void validateServicePageImage(long fileId) {
+        FileAssetRecord file = requireFile(fileId);
+        if (file.getMimeType() == null || !file.getMimeType().startsWith("image/")) {
+            throw new BusinessException("SERVICE_IMAGE_TYPE_INVALID", "公司展示仅支持图片文件");
+        }
+        if (file.getFileSize() == null || file.getFileSize() > 10L * 1024 * 1024) {
+            throw new BusinessException(413, "SERVICE_IMAGE_TOO_LARGE", "单张公司展示图片不能超过 10 MB");
         }
     }
 
