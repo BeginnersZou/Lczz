@@ -61,11 +61,12 @@ public class MaterialRequestController {
     }
 
     @GetMapping("/orders/{orderId}/materials")
-    @Operation(summary = "按订单数据权限查询最近一次耗材申请")
+    @PreAuthorize("hasRole('INSTALLER')")
+    @Operation(summary = "安装师傅查询本人为当前订单提交的最近一次耗材申请")
     ApiResponse<RequestView> byOrder(@AuthenticationPrincipal AuthenticatedUser actor,
                                      @PathVariable @Min(1) long orderId,
                                      HttpServletRequest request) {
-        return ApiResponse.success(service.byOrder(actor, orderId), requestId(request));
+        return ApiResponse.success(service.byOrderForInstaller(actor, orderId), requestId(request));
     }
 
     @GetMapping("/preparation/list")
@@ -90,7 +91,7 @@ public class MaterialRequestController {
         // Keep the original W-order response contract when legacy callers omit source.
         // The unified preparation page always sends W/A explicitly.
         Object detail = source == null || source.isBlank()
-                ? service.detail(actor, id)
+                ? service.detailForAdmin(actor, id)
                 : unifiedService.detail(source, id);
         return ApiResponse.success(detail, requestId(request));
     }

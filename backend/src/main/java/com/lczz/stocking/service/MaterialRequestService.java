@@ -86,13 +86,15 @@ public class MaterialRequestService {
         return new RequestPage(toViews(result.getRecords()), result.getTotal(), page, pageSize);
     }
 
-    public RequestView detail(AuthenticatedUser actor, long requestId) {
+    public RequestView detailForAdmin(AuthenticatedUser actor, long requestId) {
+        requireAdmin(actor);
         MaterialRequestEntity request = requireRequest(requestId);
         requireAccessibleOrder(actor, request.getOrderId());
         return toViews(List.of(request)).getFirst();
     }
 
-    public List<RequestView> listByOrder(AuthenticatedUser actor, long orderId) {
+    public List<RequestView> listByOrderForAdmin(AuthenticatedUser actor, long orderId) {
+        requireAdmin(actor);
         requireAccessibleOrder(actor, orderId);
         return toViews(requestMapper.selectList(new LambdaQueryWrapper<MaterialRequestEntity>()
                 .eq(MaterialRequestEntity::getOrderId, orderId)
@@ -100,13 +102,19 @@ public class MaterialRequestService {
                 .orderByDesc(MaterialRequestEntity::getId)));
     }
 
-    public RequestView byOrder(AuthenticatedUser actor, long orderId) {
+    public RequestView byOrderForInstaller(AuthenticatedUser actor, long orderId) {
+        if (!actor.hasRole(RoleCode.INSTALLER)) {
+            throw new BusinessException(403, "MATERIAL_REQUEST_READ_FORBIDDEN", "仅安装师傅可查看订单耗材申请");
+        }
         requireAccessibleOrder(actor, orderId);
         MaterialRequestEntity request = requestMapper.selectOne(new LambdaQueryWrapper<MaterialRequestEntity>()
                 .eq(MaterialRequestEntity::getOrderId, orderId)
                 .orderByDesc(MaterialRequestEntity::getSubmittedAt)
                 .orderByDesc(MaterialRequestEntity::getId)
                 .last("LIMIT 1"));
+        if (request != null && !java.util.Objects.equals(request.getInstallerUserId(), actor.userId())) {
+            throw new BusinessException(404, "ORDER_MATERIALS_NOT_FOUND", "订单不存在或耗材申请不属于当前安装师傅");
+        }
         return request == null ? null : toViews(List.of(request)).getFirst();
     }
 
@@ -249,13 +257,13 @@ public class MaterialRequestService {
         }
         request.setRequestStatus(anyPrepared ? "PREPARING" : "PENDING");
         requestMapper.updateById(request);
-        return detail(actor, requestId);
+        return detailForAdmin(actor, requestId);
     }
 
     @Transactional
     public RequestView finish(AuthenticatedUser actor, long requestId) {
         MaterialRequestEntity request = requireRequestForUpdate(requestId);
-        if ("DONE".equals(request.getRequestStatus())) return detail(actor, requestId);
+        if ("DONE".equals(request.getRequestStatus())) return detailForAdmin(actor, requestId);
         if (!Set.of("PENDING", "PREPARING").contains(request.getRequestStatus())) {
             throw new BusinessException(409, "MATERIAL_REQUEST_NOT_PROCESSABLE", "该耗材申请不能完成备货");
         }
@@ -268,13 +276,13 @@ public class MaterialRequestService {
         request.setCompletedBy(actor.userId());
         request.setCompletedAt(LocalDateTime.now(ZoneOffset.UTC));
         requestMapper.updateById(request);
-        return detail(actor, requestId);
+        return detailForAdmin(actor, requestId);
     }
 
     @Transactional
     public RequestView voidRequest(AuthenticatedUser actor, long requestId, String reason) {
         MaterialRequestEntity request = requireRequestForUpdate(requestId);
-        if ("VOIDED".equals(request.getRequestStatus())) return detail(actor, requestId);
+        if ("VOIDED".equals(request.getRequestStatus())) return detailForAdmin(actor, requestId);
         if ("DONE".equals(request.getRequestStatus())) {
             throw new BusinessException(409, "MATERIAL_REQUEST_ALREADY_DONE", "已完成的备货申请不能作废");
         }
@@ -290,7 +298,7 @@ public class MaterialRequestService {
             item.setPreparedQuantity(BigDecimal.ZERO);
             itemMapper.updateById(item);
         }
-        return detail(actor, requestId);
+        return detailForAdmin(actor, requestId);
     }
 
     @Transactional
@@ -433,6 +441,12 @@ public class MaterialRequestService {
         WorkOrderEntity order = orderMapper.selectOne(query);
         if (order == null) throw new BusinessException(404, "ORDER_NOT_FOUND", "订单不存在");
         return order;
+    }
+
+    private void requireAdmin(AuthenticatedUser actor) {
+        if (!actor.hasRole(RoleCode.ADMIN)) {
+            throw new BusinessException(403, "MATERIAL_REQUEST_ADMIN_FORBIDDEN", "仅管理员可通过后台读取耗材申请");
+        }
     }
 
     private MaterialRequestEntity requireRequest(long id) {

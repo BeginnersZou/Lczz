@@ -25,7 +25,7 @@ const componentFactory = compiled(true)
 compiled(false)
 function fixture(role = 'customer', statusCode = 'IN_PROGRESS', customerUserId = 3) {
   const state = { id: 99, customerUserId, statusCode, status: '处理中' }
-  const calls = { confirm: [], progress: [], modals: [], toast: [] }
+  const calls = { confirm: [], progress: [], materials: [], modals: [], toast: [] }
   const hook = {}
   let confirmReply, progressReply, detailReply
   const api = {
@@ -33,7 +33,7 @@ function fixture(role = 'customer', statusCode = 'IN_PROGRESS', customerUserId =
     orderApi: {
       getDetail: async () => detailReply || ({ code: 200, data: { ...state } }),
       getProgress: async () => ({ code: 200, data: [{ id: 1, description: '历史施工记录' }] }),
-      getMaterials: async () => ({ code: 200, data: null }),
+      getMaterials: async id => { calls.materials.push(id); return { code: 200, data: null } },
       confirmCompletion: async id => {
         calls.confirm.push(id)
         if (confirmReply) return await confirmReply()
@@ -63,13 +63,15 @@ async function main() {
       assert.equal(test.view.canConfirmCompletion.value, role === 'customer' && state === 'IN_PROGRESS')
       assert.equal(test.view.canOperateProgress.value, role === 'installer' && ['PENDING_VISIT', 'IN_PROGRESS'].includes(state))
       assert.equal(test.view.canReview.value, role === 'customer' && state === 'PENDING_REVIEW')
+      assert.equal(test.calls.materials.length, role === 'installer' ? 1 : 0)
       if (!test.view.canConfirmCompletion.value) { await test.view.handleConfirmCompletion(); assert.equal(test.calls.modals.length, 0) }
     }
   }
   const unbound = fixture('customer', 'IN_PROGRESS', 7); await unbound.load()
   assert.equal(unbound.view.canConfirmCompletion.value, false)
   await unbound.view.handleConfirmCompletion(); assert.equal(unbound.calls.confirm.length, 0)
-  console.log('PASS: four roles across five states; unbound customer rejected')
+  assert.match(source, /class="section-card material-request-card" v-if="isInstaller"/)
+  console.log('PASS: four roles across five states; only installers render and load order materials')
 
   const customer = fixture(); await customer.load()
   let action = customer.view.handleConfirmCompletion()

@@ -48,6 +48,7 @@ class MaterialRequestIntegrationTests {
     private long installerId;
     private long otherInstallerId;
     private long customerId;
+    private long dealerId;
     private long orderId;
     private long product1Id;
     private long product2Id;
@@ -79,6 +80,7 @@ class MaterialRequestIntegrationTests {
         installerId = createUser(null, "张师傅", "13910000002", RoleCode.INSTALLER);
         otherInstallerId = createUser(null, "李师傅", "13910000003", RoleCode.INSTALLER);
         customerId = createUser(null, "王客户", "13810000001", RoleCode.CUSTOMER);
+        dealerId = createUser(null, "经销商", "13810000002", RoleCode.DEALER);
         long categoryId = createCategory();
         product1Id = createProduct(categoryId, "MAT-COPPER", "铜管", "φ6", "米", "10.000");
         product2Id = createProduct(categoryId, "MAT-BRACKET", "外机支架", "标准", "套", "5.000");
@@ -108,7 +110,7 @@ class MaterialRequestIntegrationTests {
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM work_order_status_history WHERE order_id=? "
                 + "AND to_status='IN_PROGRESS'", Long.class, orderId)).isEqualTo(1L);
         mockMvc.perform(get("/api/orders/" + orderId + "/materials")
-                        .header("Authorization", "Bearer " + token(customerId, RoleCode.CUSTOMER)))
+                        .header("Authorization", "Bearer " + installerToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.materials[0].name").value("铜管"));
 
@@ -287,6 +289,39 @@ class MaterialRequestIntegrationTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data").doesNotExist());
+    }
+
+    @Test
+    void miniProgramMaterialDetailsAreLimitedToTheSubmittingInstaller() throws Exception {
+        submit(orderId, installerToken, itemsJson("2", "1"));
+
+        for (String prefix : new String[] {"/api", "/api/v1"}) {
+            mockMvc.perform(get(prefix + "/orders/" + orderId + "/materials")
+                            .header("Authorization", "Bearer " + installerToken))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.materials[0].name").value("铜管"));
+            for (String caller : new String[] {adminToken, token(customerId, RoleCode.CUSTOMER),
+                    token(dealerId, RoleCode.DEALER)}) {
+                mockMvc.perform(get(prefix + "/orders/" + orderId + "/materials")
+                                .header("Authorization", "Bearer " + caller))
+                        .andExpect(status().isForbidden())
+                        .andExpect(jsonPath("$.error").value("FORBIDDEN"));
+            }
+            mockMvc.perform(get(prefix + "/orders/" + orderId + "/materials")
+                            .header("Authorization", "Bearer " + token(otherInstallerId, RoleCode.INSTALLER)))
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.error").value("ORDER_NOT_FOUND"));
+        }
+
+        jdbcTemplate.update("UPDATE work_order SET installer_user_id=? WHERE id=?", otherInstallerId, orderId);
+        mockMvc.perform(get("/api/v1/orders/" + orderId + "/materials")
+                        .header("Authorization", "Bearer " + token(otherInstallerId, RoleCode.INSTALLER)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("ORDER_MATERIALS_NOT_FOUND"));
+        mockMvc.perform(get("/api/v1/orders/" + orderId + "/materials")
+                        .header("Authorization", "Bearer " + installerToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("ORDER_NOT_FOUND"));
     }
 
     @Test
