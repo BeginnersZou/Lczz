@@ -1,7 +1,7 @@
 <template>
 	<view class="page">
 		<!-- ═══ 顶部品牌区 ═══ -->
-		<view class="hero-section">
+		<view v-if="pageConfig.brandVisible" class="hero-section">
 			<view class="status-bar"></view>
 			<view class="hero-navbar"></view>
 			<view class="hero-content">
@@ -10,37 +10,42 @@
 						<text class="logo-text">力</text>
 					</view>
 					<view class="company-name-area">
-						<text class="company-name">武汉力创之尊</text>
-						<text class="company-subname">制冷技术服务有限公司</text>
+						<text class="company-name">{{ pageConfig.companyName }}</text>
+						<text class="company-subname">{{ pageConfig.companySubtitle }}</text>
 					</view>
 				</view>
 				<view class="slogan-area">
-					<text class="slogan">以诚信之心，立潮流之品</text>
+					<text class="slogan">{{ pageConfig.slogan }}</text>
 				</view>
-				<view class="hero-stats">
-					<view><text class="stat-value">一站式</text><text class="stat-name">暖通服务</text></view>
-					<view class="stat-divider"></view>
-					<view><text class="stat-value">全流程</text><text class="stat-name">服务跟进</text></view>
-					<view class="stat-divider"></view>
-					<view><text class="stat-value">双热线</text><text class="stat-name">快速响应</text></view>
+				<view v-if="pageConfig.heroStats.length" class="hero-stats">
+					<template v-for="(item, index) in pageConfig.heroStats" :key="index">
+						<view><text class="stat-value">{{ item.title }}</text><text class="stat-name">{{ item.description }}</text></view>
+						<view v-if="index < pageConfig.heroStats.length - 1" class="stat-divider"></view>
+					</template>
 				</view>
 			</view>
 		</view>
+		<view v-else class="plain-top-spacer"></view>
+
+		<view v-if="loadError" class="load-error">
+			<text>服务信息更新失败，当前显示默认内容</text>
+			<text class="retry-link" @click="loadServicePage">重新加载</text>
+		</view>
 
 		<!-- ═══ 服务项目区 ═══ -->
-		<view class="service-section">
+		<view v-if="pageConfig.servicesVisible" class="service-section">
 			<view class="section-header">
 				<view class="header-line"></view>
 				<text class="section-title">服务项目</text>
 				<view class="header-line"></view>
 			</view>
 			<view class="service-list">
-				<view class="service-item" v-for="(item, index) in serviceList" :key="index"
+				<view class="service-item" v-for="(item, index) in pageConfig.services" :key="index"
 					@click="handleServiceClick(item)">
 					<view class="service-num">{{ String(index + 1).padStart(2, '0') }}</view>
 					<view class="service-content">
-						<text class="service-name">{{ item.name }}</text>
-						<text class="service-desc">{{ item.desc }}</text>
+						<text class="service-name">{{ item.title }}</text>
+						<text class="service-desc">{{ item.description }}</text>
 					</view>
 					<up-icon name="arrow-right" size="14" color="#0b63ce"></up-icon>
 				</view>
@@ -48,42 +53,53 @@
 		</view>
 
 		<!-- ═══ 公司简介区 ═══ -->
-		<view class="profile-section">
+		<view v-if="pageConfig.profileVisible" class="profile-section">
 			<view class="section-header">
 				<view class="header-line"></view>
 				<text class="section-title">公司简介</text>
 				<view class="header-line"></view>
 			</view>
 			<view class="profile-card">
-				<text class="profile-text">
-					武汉力创之尊机电设备有限公司（力创之尊）专注于制冷技术、水系统配件、二联供材料销售及水系统中央空调安装与售后服务。我们始终秉持“以诚信之心，立潮流之品”的理念，为家庭与商业客户提供清晰、可靠的暖通服务方案。
-				</text>
+				<text class="profile-text">{{ pageConfig.profileText }}</text>
 				<view class="profile-tags">
-					<view class="profile-tag" v-for="(tag, i) in profileTags" :key="i">{{ tag }}</view>
+					<view class="profile-tag" v-for="(tag, i) in pageConfig.profileTags" :key="i">{{ tag }}</view>
 				</view>
 			</view>
 		</view>
 
+		<!-- ═══ 公司展示区 ═══ -->
+		<view v-if="pageConfig.galleryVisible && pageConfig.galleryImages.length" class="gallery-section">
+			<view class="section-header">
+				<view class="header-line"></view>
+				<text class="section-title">公司展示</text>
+				<view class="header-line"></view>
+			</view>
+			<view class="gallery-grid">
+				<image v-for="(image, index) in pageConfig.galleryImages" :key="image.id || index"
+					class="gallery-image" :src="image.url" mode="aspectFill" lazy-load @click="previewGallery(index)" />
+			</view>
+		</view>
+
 		<!-- ═══ 公司优势区 ═══ -->
-		<view class="advantage-section">
+		<view v-if="pageConfig.advantagesVisible" class="advantage-section">
 			<view class="section-header">
 				<view class="header-line"></view>
 				<text class="section-title">公司优势</text>
 				<view class="header-line"></view>
 			</view>
 			<view class="advantage-list">
-				<view class="advantage-item" v-for="(item, index) in advantageList" :key="index">
+				<view class="advantage-item" v-for="(item, index) in pageConfig.advantages" :key="index">
 					<view class="advantage-num">{{ String(index + 1).padStart(2, '0') }}</view>
 					<view class="advantage-content">
-						<text class="advantage-name">{{ item.name }}</text>
-						<text class="advantage-desc">{{ item.desc }}</text>
+						<text class="advantage-name">{{ item.title }}</text>
+						<text class="advantage-desc">{{ item.description }}</text>
 					</view>
 				</view>
 			</view>
 		</view>
 
 		<!-- ═══ 联系我们区 ═══ -->
-		<view class="contact-section">
+		<view v-if="pageConfig.contactVisible" class="contact-section">
 			<view class="section-header">
 				<view class="header-line"></view>
 				<text class="section-title">联系我们</text>
@@ -96,7 +112,7 @@
 					</view>
 					<view class="contact-info">
 						<text class="contact-label">服务热线</text>
-						<text class="contact-value">027-82710326 / 027-82710380</text>
+						<text class="contact-value">{{ phoneDisplay }}</text>
 					</view>
 				</view>
 				<view class="contact-item address-item" hover-class="contact-item-press" @click="openAddressLocation">
@@ -105,7 +121,7 @@
 					</view>
 					<view class="contact-info">
 						<text class="contact-label">公司地址</text>
-						<text class="contact-value">湖北省武汉市江岸区不锈钢路S17-49-51号</text>
+						<text class="contact-value">{{ pageConfig.address }}</text>
 						<text class="address-action">点击查看地图并导航</text>
 					</view>
 					<up-icon name="arrow-right" size="15" color="#0b63ce"></up-icon>
@@ -116,7 +132,7 @@
 					</view>
 					<view class="contact-info">
 						<text class="contact-label">营业时间</text>
-						<text class="contact-value">周一至周日 8:00-20:00</text>
+						<text class="contact-value">{{ pageConfig.businessHours }}</text>
 					</view>
 				</view>
 			</view>
@@ -124,8 +140,8 @@
 
 		<!-- ═══ 底部信息 ═══ -->
 		<view class="footer">
-			<text class="footer-slogan">以诚信之心 · 立潮流之品</text>
-			<text class="footer-copyright">© 2026 武汉力创之尊机电设备有限公司</text>
+			<text class="footer-slogan">{{ pageConfig.slogan }}</text>
+			<text class="footer-copyright">© {{ currentYear }} {{ pageConfig.companyName }}</text>
 		</view>
 
 		<view class="bottom-placeholder"></view>
@@ -135,59 +151,78 @@
 </template>
 
 <script setup>
+import { computed, reactive, ref } from 'vue'
 import {
-	ref
-} from 'vue'
-import {
+	onLoad,
+	onPullDownRefresh,
 	onShareAppMessage,
 	onShareTimeline
 } from '@dcloudio/uni-app'
 import { openCompanyLocation } from '@/utils/company-location.js'
+import { servicePageApi } from '@/api/api.js'
+
+const defaults = {
+	companyName: '武汉力创之尊',
+	companySubtitle: '制冷技术服务有限公司',
+	slogan: '以诚信之心，立潮流之品',
+	brandVisible: true,
+	heroStats: [
+		{ title: '一站式', description: '暖通服务' },
+		{ title: '全流程', description: '服务跟进' },
+		{ title: '双热线', description: '快速响应' }
+	],
+	servicesVisible: true,
+	services: [
+		{ title: '水系统中央空调配件材料销售', description: '提供各种高品质水系统中央空调配件及二联供材料，满足家庭和商业需求。品类齐全、价格优惠，品质可靠、送货快捷。' },
+		{ title: '水系统中央空调安装', description: '专业安装团队按规范完成勘察、施工与调试，并依据具体项目约定提供相应质保服务。' },
+		{ title: '水系统中央空调售后', description: '提供中央空调暖通系统故障排查、维修与保养服务，服务过程可沟通、可跟进。' }
+	],
+	profileText: '武汉力创之尊机电设备有限公司（力创之尊）专注于制冷技术、水系统配件、二联供材料销售及水系统中央空调安装与售后服务。我们始终秉持“以诚信之心，立潮流之品”的理念，为家庭与商业客户提供清晰、可靠的暖通服务方案。',
+	profileVisible: true,
+	profileTags: ['品牌授权', '持证上岗', '正品保证', '售后无忧'],
+	galleryVisible: true,
+	galleryImages: [],
+	advantagesVisible: true,
+	advantages: [
+		{ title: '诚信为本', description: '我们始终坚持诚信经营，赢得了广大客户的信赖与支持。' },
+		{ title: '专业服务', description: '专业的技术团队和售后服务团队，确保每一位客户都能享受到高质量的服务体验。' },
+		{ title: '品质保障', description: '严格的质量控制体系，确保每一件产品都符合甚至超越客户的期望。' },
+		{ title: '快速响应', description: '我们承诺快速响应客户的需求，无论是产品咨询还是售后服务，都将在最短时间内给予答复和处理。' }
+	],
+	contactVisible: true,
+	phonePrimary: '027-82710326', phoneSecondary: '027-82710380',
+	address: '湖北省武汉市江岸区不锈钢路S17-49-51号力创之尊',
+	longitude: 114.306997, latitude: 30.665673, businessHours: '周一至周日 8:00-20:00'
+}
+const pageConfig = reactive(JSON.parse(JSON.stringify(defaults)))
+const loadError = ref(false)
+const currentYear = new Date().getFullYear()
+const phoneDisplay = computed(() => [pageConfig.phonePrimary, pageConfig.phoneSecondary].filter(Boolean).join(' / '))
 
 // 分享官网给好友
 onShareAppMessage(() => ({
-	title: '武汉力创之尊机电设备有限公司',
+	title: pageConfig.companyName,
 	path: '/pages/official/official'
 }))
 
 // 分享到朋友圈
 onShareTimeline(() => ({
-	title: '以诚信之心，立潮流之品 — 武汉力创之尊制冷'
+	title: `${pageConfig.slogan} — ${pageConfig.companyName}`
 }))
 
-const serviceList = ref([{
-	name: '水系统中央空调配件材料销售',
-	desc: '提供各种高品质水系统中央空调配件及二联供材料，满足家庭和商业需求。品类齐全、价格优惠，品质可靠、送货快捷。'
-},
-{
-	name: '水系统中央空调安装',
-	desc: '专业安装团队按规范完成勘察、施工与调试，并依据具体项目约定提供相应质保服务。'
-},
-{
-	name: '水系统中央空调售后',
-	desc: '提供中央空调暖通系统故障排查、维修与保养服务，服务过程可沟通、可跟进。'
-},
-])
+async function loadServicePage({ pullDown = false } = {}) {
+	const res = await servicePageApi.get({ loading: !pullDown, silent: true })
+	if (res.code === 200 && res.data) {
+		Object.assign(pageConfig, res.data)
+		loadError.value = false
+	} else {
+		loadError.value = true
+	}
+	if (pullDown) uni.stopPullDownRefresh()
+}
 
-const advantageList = ref([{
-	name: '诚信为本',
-	desc: '我们始终坚持诚信经营，赢得了广大客户的信赖与支持。'
-},
-{
-	name: '专业服务',
-	desc: '专业的技术团队和售后服务团队，确保每一位客户都能享受到高质量的服务体验。'
-},
-{
-	name: '品质保障',
-	desc: '严格的质量控制体系，确保每一件产品都符合甚至超越客户的期望。'
-},
-{
-	name: '快速响应',
-	desc: '我们承诺快速响应客户的需求，无论是产品咨询还是售后服务，都将在最短时间内给予答复和处理。'
-},
-])
-
-const profileTags = ref(['品牌授权', '持证上岗', '正品保证', '售后无忧'])
+onLoad(() => loadServicePage())
+onPullDownRefresh(() => loadServicePage({ pullDown: true }))
 
 const handleServiceClick = (item) => {
 	uni.showActionSheet({
@@ -196,7 +231,7 @@ const handleServiceClick = (item) => {
 			if (res.tapIndex === 0) {
 				callPhone()
 			} else {
-				uni.setClipboardData({ data: item.name, success: () => uni.showToast({ title: '已复制', icon: 'none' }) })
+				uni.setClipboardData({ data: item.title, success: () => uni.showToast({ title: '已复制', icon: 'none' }) })
 			}
 		},
 	})
@@ -204,23 +239,33 @@ const handleServiceClick = (item) => {
 
 const callPhone = () => {
 	uni.showActionSheet({
-		itemList: ['027-82710326', '027-82710380'],
+		itemList: [pageConfig.phonePrimary, pageConfig.phoneSecondary].filter(Boolean),
 		success: (res) => {
-			const phones = ['02782710326', '02782710380']
+			const phones = [pageConfig.phonePrimary, pageConfig.phoneSecondary].filter(Boolean)
 			uni.makePhoneCall({
-				phoneNumber: phones[res.tapIndex],
+				phoneNumber: phones[res.tapIndex].replace(/[^0-9+]/g, ''),
 				fail: () => uni.showToast({ title: '取消拨打', icon: 'none' })
 			})
 		}
 	})
 }
 
-const openAddressLocation = () => openCompanyLocation(uni)
+const openAddressLocation = () => openCompanyLocation(uni, {
+	name: pageConfig.companyName,
+	address: pageConfig.address,
+	longitude: pageConfig.longitude,
+	latitude: pageConfig.latitude
+})
+
+const previewGallery = (index) => uni.previewImage({
+	current: pageConfig.galleryImages[index].url,
+	urls: pageConfig.galleryImages.map(image => image.url)
+})
 
 const openHours = () => {
 	uni.showModal({
 		title: '营业时间',
-		content: '周一至周日 8:00-20:00\n节假日正常营业\n紧急维修24小时上门',
+		content: pageConfig.businessHours,
 		showCancel: false,
 		confirmText: '知道了',
 	})
@@ -242,6 +287,22 @@ $text-light: #94a3b8;
 	background: $bg;
 	padding-bottom: calc(100rpx + env(safe-area-inset-bottom));
 }
+
+.load-error {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin: 24rpx 24rpx 0;
+	padding: 20rpx 24rpx;
+	color: #9a6700;
+	background: #fff8db;
+	border: 1rpx solid #f4d477;
+	border-radius: 16rpx;
+	font-size: 23rpx;
+}
+
+.retry-link { color: $primary; font-weight: 600; }
+.plain-top-spacer { height: calc(var(--status-bar-height, 44rpx) + 28rpx); }
 
 /* ═══ 顶部品牌区 ═══ */
 .hero-section {
@@ -442,6 +503,28 @@ $text-light: #94a3b8;
 	padding: 8rpx 20rpx;
 	border-radius: 8rpx;
 	font-weight: 500;
+}
+
+/* ═══ 公司展示 ═══ */
+.gallery-section {
+	background: #fff;
+	margin: 24rpx 24rpx 0;
+	border-radius: 28rpx;
+	padding: 0 28rpx 32rpx;
+	box-shadow: 0 8rpx 28rpx rgba(20, 54, 84, 0.07);
+}
+
+.gallery-grid {
+	display: grid;
+	grid-template-columns: repeat(2, 1fr);
+	gap: 14rpx;
+}
+
+.gallery-image {
+	width: 100%;
+	height: 230rpx;
+	border-radius: 16rpx;
+	background: #edf2f7;
 }
 
 /* ═══ 公司优势 ═══ */

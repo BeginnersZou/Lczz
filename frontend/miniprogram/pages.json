@@ -52,7 +52,7 @@
 			"path": "pages/official/official",
 			"style": {
 				"navigationBarTitleText": "服务",
-				"enablePullDownRefresh": false,
+				"enablePullDownRefresh": true,
 				"navigationStyle": "custom",
 				"navigationBarTextStyle": "black",
 				"backgroundColorTop": "#0b63ce",

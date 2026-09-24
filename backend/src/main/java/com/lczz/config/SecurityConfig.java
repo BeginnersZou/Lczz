@@ -43,7 +43,8 @@ public class SecurityConfig {
                                 "/api/consumables/detail/**", "/api/v1/consumables/detail/**",
                                 "/api/consumables/categories", "/api/v1/consumables/categories",
                                 "/api/cases/list", "/api/v1/cases/list",
-                                "/api/cases/*", "/api/v1/cases/*").permitAll()
+                                "/api/cases/*", "/api/v1/cases/*",
+                                "/api/service-page", "/api/v1/service-page").permitAll()
                         .requestMatchers(PUBLIC_AUTH).permitAll()
                         .anyRequest().authenticated())
                 .exceptionHandling(exceptions -> exceptions
