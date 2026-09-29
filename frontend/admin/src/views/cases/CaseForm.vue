@@ -22,7 +22,7 @@
           </div>
           <div class="image-grid">
             <div v-for="(image, index) in form.images" :key="image.uid" class="image-card">
-              <img :src="image.previewUrl" alt="案例图片" @error="image.failed = true" />
+              <img :src="image.previewUrl" alt="案例图片" loading="lazy" @error="image.failed = true" />
               <div v-if="image.failed" class="preview-error">图片加载失败</div>
               <div v-if="image.uploading" class="uploading-mask"><el-icon class="is-loading"><Loading /></el-icon><span>上传中</span></div>
               <button v-else type="button" class="remove-button" @click="removeImage(index)"><el-icon><Delete /></el-icon>删除</button>
@@ -108,7 +108,12 @@ async function uploadImages(event) {
       const data = new FormData()
       data.append('file', file)
       const uploaded = await uploadProjectCaseImageApi(data)
-      Object.assign(image, { id: uploaded.id, previewUrl: uploaded.url, uploading: false })
+      Object.assign(image, {
+        id: uploaded.id,
+        previewUrl: uploaded.thumbnailUrl || uploaded.displayUrl || uploaded.url,
+        originalUrl: uploaded.originalUrl || uploaded.url,
+        uploading: false
+      })
       URL.revokeObjectURL(previewUrl)
     } catch {
       const index = form.images.indexOf(image)
@@ -138,7 +143,8 @@ async function loadDetail() {
     form.images = (data.images || []).map(image => ({
       uid: nextUid++,
       id: image.id,
-      previewUrl: image.url,
+      previewUrl: image.thumbnailUrl || image.displayUrl || image.url,
+      originalUrl: image.originalUrl || image.url,
       uploading: false,
       failed: false
     }))

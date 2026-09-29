@@ -17,7 +17,9 @@
 			</view>
 			<view v-if="caseData.images.length" class="photo-list">
 				<view v-for="(image, index) in caseData.images" :key="image.id || image.url" class="photo-card" @click="preview(index)">
-					<image v-if="!failedImages[image.url]" class="photo" :src="image.url" mode="widthFix" lazy-load @error="markImageFailed(image.url)"></image>
+					<image v-if="!failedImages[image.url]" class="photo"
+						:src="image.displayUrl || image.thumbnailUrl || image.url" mode="widthFix" lazy-load
+						@error="markImageFailed(image.url)"></image>
 					<view v-else class="image-error"><up-icon name="photo" size="38" color="#8da1b7"></up-icon><text>图片加载失败</text></view>
 				</view>
 			</view>
@@ -69,8 +71,10 @@ async function loadDetail() {
 }
 
 function preview(index) {
-	const urls = caseData.value.images.filter(image => image.url && !failedImages.value[image.url]).map(image => image.url)
-	const current = caseData.value.images[index]?.url
+	const urls = caseData.value.images.filter(image => image.url && !failedImages.value[image.url])
+		.map(image => image.originalUrl || image.url)
+	const selected = caseData.value.images[index]
+	const current = selected?.originalUrl || selected?.url
 	if (current && urls.includes(current)) uni.previewImage({ current, urls })
 }
 

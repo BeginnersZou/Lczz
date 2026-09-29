@@ -2,7 +2,15 @@ import request from '@/utils/request'
 import { getFileId, uploadFileApi } from './files'
 
 function normalizeFile(file = {}) {
-  return { id: getFileId(file), url: file.url || '' }
+  const originalUrl = file.originalUrl || file.url || ''
+  return {
+    ...file,
+    id: getFileId(file),
+    url: originalUrl,
+    originalUrl,
+    displayUrl: file.displayUrl || originalUrl,
+    thumbnailUrl: file.thumbnailUrl || file.displayUrl || originalUrl
+  }
 }
 
 export function normalizeServicePage(data = {}) {

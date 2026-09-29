@@ -1,9 +1,9 @@
 <template>
   <div class="media-list">
     <figure v-for="(file, index) in files" :key="file.id || file.url || index">
-      <video v-if="file.mimeType?.startsWith('video/')" :src="file.url" controls preload="metadata" :aria-label="file.originalName || '现场视频'" />
-      <el-image v-else :src="file.url" :alt="file.originalName || '订单图片'" fit="cover"
-        :preview-src-list="imageUrls" :initial-index="imageUrls.indexOf(file.url)" preview-teleported>
+      <video v-if="file.mimeType?.startsWith('video/')" :src="originalUrl(file)" controls preload="metadata" :aria-label="file.originalName || '现场视频'" />
+      <el-image v-else :src="thumbnailUrl(file)" :alt="file.originalName || '订单图片'" fit="cover" lazy
+        :preview-src-list="imageUrls" :initial-index="imageUrls.indexOf(originalUrl(file))" preview-teleported>
         <template #error><span class="media-error">图片加载失败，请刷新详情</span></template>
       </el-image>
       <figcaption v-if="file.originalName">{{ file.originalName }}</figcaption>
@@ -15,7 +15,10 @@
 import { computed } from 'vue'
 
 const props = defineProps({ files: { type: Array, default: () => [] } })
-const imageUrls = computed(() => props.files.filter(file => !file.mimeType?.startsWith('video/')).map(file => file.url))
+const originalUrl = file => file?.originalUrl || file?.url || ''
+const thumbnailUrl = file => file?.thumbnailUrl || file?.displayUrl || originalUrl(file)
+const imageUrls = computed(() => props.files.filter(file => !file.mimeType?.startsWith('video/'))
+  .map(originalUrl).filter(Boolean))
 </script>
 
 <style scoped>

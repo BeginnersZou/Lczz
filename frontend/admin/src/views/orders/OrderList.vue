@@ -163,9 +163,10 @@
             <el-tag v-for="label in reviewData.labels" :key="label" type="primary" effect="light">{{ label }}</el-tag>
           </div>
           <div class="review-content-box">{{ reviewData.content || '用户未填写文字评价' }}</div>
-          <div v-if="reviewData.images?.length" class="review-image-list">
-            <el-image v-for="(image, index) in reviewData.images" :key="image" :src="image" fit="cover"
-              :preview-src-list="reviewData.images" :initial-index="index" preview-teleported />
+          <div v-if="reviewImages.length" class="review-image-list">
+            <el-image v-for="(image, index) in reviewImages" :key="image.id || image.url || index"
+              :src="image.thumbnailUrl || image.displayUrl || image.originalUrl || image.url" fit="cover" lazy
+              :preview-src-list="reviewPreviewImages" :initial-index="index" preview-teleported />
           </div>
         </template>
         <el-empty v-else-if="!reviewLoading" description="该订单暂无评价内容" :image-size="80" />
@@ -216,6 +217,14 @@ const reviewDialogVisible = ref(false)
 const reviewLoading = ref(false)
 const reviewData = ref(null)
 const reviewOrder = ref(null)
+const reviewImages = computed(() => {
+  if (Array.isArray(reviewData.value?.imageFiles) && reviewData.value.imageFiles.length) {
+    return reviewData.value.imageFiles
+  }
+  return (reviewData.value?.images || []).map(url => ({ url, originalUrl: url }))
+})
+const reviewPreviewImages = computed(() => reviewImages.value
+  .map(image => image.originalUrl || image.url).filter(Boolean))
 
 // 订单列表（数据全部来自接口）
 const orders = ref([])

@@ -26,12 +26,21 @@ export const resolveMediaUrl = (value) => {
 	return url.startsWith('/') ? `${apiOrigin}${url}` : `${apiOrigin}/${url}`
 }
 
-const normalizeFile = (file = {}) => ({
-	...(typeof file === 'object' ? file : {}),
-	id: Number(file?.id || 0) || undefined,
-	mimeType: file?.mimeType || file?.type || '',
-	url: resolveMediaUrl(file)
-})
+const normalizeFile = (file = {}) => {
+	const value = typeof file === 'object' ? file : { url: file }
+	const originalUrl = resolveMediaUrl(value.originalUrl || value.url || value.previewUrl || '')
+	const displayUrl = resolveMediaUrl(value.displayUrl || originalUrl)
+	const thumbnailUrl = resolveMediaUrl(value.thumbnailUrl || displayUrl || originalUrl)
+	return {
+		...value,
+		id: Number(value.id || 0) || undefined,
+		mimeType: value.mimeType || value.type || '',
+		url: originalUrl,
+		originalUrl,
+		displayUrl,
+		thumbnailUrl
+	}
+}
 
 const normalizeRole = (user = {}) => ({
 	...user,
@@ -89,13 +98,17 @@ const normalizeProduct = (item = {}) => {
 	}
 }
 
-const normalizeProjectCase = (item = {}) => ({
-	...item,
-	id: Number(item.id || 0),
-	siteName: item.siteName || '未命名工地',
-	coverImage: resolveMediaUrl(item.coverImage),
-	images: (item.images || []).map(normalizeFile).filter(file => file.url)
-})
+const normalizeProjectCase = (item = {}) => {
+	const coverFile = item.coverImage ? normalizeFile(item.coverImage) : null
+	return {
+		...item,
+		id: Number(item.id || 0),
+		siteName: item.siteName || '未命名工地',
+		coverImage: coverFile?.thumbnailUrl || '',
+		coverImageFile: coverFile,
+		images: (item.images || []).map(normalizeFile).filter(file => file.url)
+	}
+}
 
 const normalizeOrder = (item = {}) => {
 	const fileList = (item.fileList || item.attachments || item.images || []).map(normalizeFile).filter(file => file.url)
@@ -110,7 +123,7 @@ const normalizeOrder = (item = {}) => {
 		name: item.name || item.customerName || '',
 		phone: item.phone || item.customerPhone || '',
 		fileList,
-		image: resolveMediaUrl(item.image) || firstImage?.url || ''
+		image: resolveMediaUrl(item.image) || firstImage?.thumbnailUrl || ''
 	}
 }
 
@@ -208,6 +221,9 @@ export const orderApi = {
 			name: 'file',
 			formData,
 			...options
+		}).then(res => {
+			if (res.code === 200 && res.data) res.data = normalizeFile(res.data)
+			return res
 		})
 	},
 	uploadImage: (filePath, formData = {}, options = {}) => orderApi.uploadMedia(filePath, formData, options)
@@ -303,6 +319,9 @@ export const uploadApi = {
 			name: 'file',
 			formData,
 			...options
+		}).then(res => {
+			if (res.code === 200 && res.data) res.data = normalizeFile(res.data)
+			return res
 		})
 	},
 	// 删除尚未提交、未绑定业务的临时文件，防止退出页面后残留孤立附件。

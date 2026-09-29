@@ -354,12 +354,13 @@ async function loadEditData() {
     // 回显 fileList：远程图片 url 直接作为 previewUrl，file 为 null
     const remoteFiles = res.fileList || res.images || []
     const fileList = remoteFiles.map(item => {
-      const url = typeof item === 'string' ? item : (item.url || item.previewUrl)
+      const url = typeof item === 'string' ? item : (item.originalUrl || item.url || item.previewUrl)
+      const previewUrl = typeof item === 'string' ? item : (item.thumbnailUrl || item.displayUrl || url)
       return {
         uid: fileUid++,
         id: typeof item === 'string' ? null : item.id,
         file: null,
-        previewUrl: url,
+        previewUrl,
         url,
         bound: true,
         uploading: false
@@ -561,8 +562,8 @@ async function handleFileUpload(event) {
       // 上传成功：用真实 url 替换预览，释放临时 blob
       URL.revokeObjectURL(item.previewUrl)
       item.id = res.id
-      item.url = res.url
-      item.previewUrl = res.url
+      item.url = res.originalUrl || res.url
+      item.previewUrl = res.thumbnailUrl || res.displayUrl || item.url
       item.file = null
       item.uploading = false
     } catch {

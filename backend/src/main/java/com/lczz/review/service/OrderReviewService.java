@@ -117,16 +117,19 @@ public class OrderReviewService {
     }
 
     private ReviewView toView(AuthenticatedUser actor, WorkOrderReviewEntity review) {
-        List<String> images = relationMapper.selectList(new LambdaQueryWrapper<FileRelationRecord>()
+        List<Long> fileIds = relationMapper.selectList(new LambdaQueryWrapper<FileRelationRecord>()
                         .eq(FileRelationRecord::getBusinessType, "REVIEW")
                         .eq(FileRelationRecord::getBusinessId, review.getId())
                         .eq(FileRelationRecord::getUsageType, "REVIEW")
                         .orderByAsc(FileRelationRecord::getSortOrder).orderByAsc(FileRelationRecord::getId))
-                .stream().map(link -> fileService.issueAccess(actor, link.getFileId()).url()).toList();
+                .stream().map(FileRelationRecord::getFileId).toList();
+        var views = fileService.issueAccessMap(actor, fileIds);
+        List<FileService.FileView> imageFiles = fileIds.stream().map(views::get).filter(Objects::nonNull).toList();
+        List<String> images = imageFiles.stream().map(FileService.FileView::url).toList();
         return new ReviewView(review.getId(), review.getOrderId(), review.getReviewerUserId(),
                 review.getScore() == null ? 0 : review.getScore(),
                 Boolean.TRUE.equals(review.getLiked()), review.getContent(), readLabels(review.getLabelsJson()),
-                images, review.getCreatedAt());
+                images, imageFiles, review.getCreatedAt());
     }
 
     private WorkOrderReviewEntity findByOrder(long orderId) {
@@ -222,5 +225,6 @@ public class OrderReviewService {
                                 List<String> labels, List<Long> fileIds, List<String> images) { }
     public record ReviewSubmissionView(long id, long orderId, String status) { }
     public record ReviewView(long id, long orderId, long reviewerUserId, int score, boolean liked, String content,
-                             List<String> labels, List<String> images, LocalDateTime createTime) { }
+                             List<String> labels, List<String> images, List<FileService.FileView> imageFiles,
+                             LocalDateTime createTime) { }
 }

@@ -163,7 +163,8 @@
 							<view class="image-item" v-for="(media, mediaIndex) in record.media" :key="media.id">
 								<video v-if="media.mimeType?.startsWith('video/')" class="preview-img" :src="media.url"
 									controls object-fit="cover" :show-center-play-btn="true"></video>
-								<image v-else class="preview-img" :src="media.url" mode="aspectFill"
+								<image v-else class="preview-img" :src="media.thumbnailUrl || media.displayUrl || media.url"
+									mode="aspectFill" lazy-load
 									@click="previewRecordImages(record.images, record.images.findIndex(item => item.id === media.id))"></image>
 							</view>
 						</view>
@@ -525,7 +526,7 @@ const statusClass = computed(() => {
 
 	const previewRecordImages = (images, index) => {
 		if (index < 0 || images.length === 0) return
-		const urls = images.map(image => image.url)
+		const urls = images.map(image => image.originalUrl || image.url)
 		uni.previewImage({ current: urls[index], urls })
 	}
 
@@ -552,7 +553,8 @@ const statusClass = computed(() => {
 		}
 	}
 
-	onShow(() => refreshOrderStatus())
+	let initialLoadComplete = false
+	onShow(() => initialLoadComplete ? refreshOrderStatus() : undefined)
 
 	const handleConfirmCompletion = async () => {
 		if (!canConfirmCompletion.value || confirmingCompletion.value) return
@@ -1111,6 +1113,7 @@ const statusClass = computed(() => {
 			setDetailError({ code: -1, msg: '请求异常，请稍后重试' })
 		} finally {
 			detailLoading.value = false
+			initialLoadComplete = true
 		}
 	}
 

@@ -5,11 +5,10 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.lczz.auth.domain.AuthenticatedUser;
 import com.lczz.auth.domain.RoleCode;
 import com.lczz.common.exception.BusinessException;
-import com.lczz.file.persistence.FileAssetRecord;
-import com.lczz.file.persistence.FileAssetRecordMapper;
 import com.lczz.file.persistence.FileRelationRecord;
 import com.lczz.file.persistence.FileRelationRecordMapper;
 import com.lczz.file.service.FileService;
+import com.lczz.file.service.FileService.FileView;
 import com.lczz.order.persistence.WorkOrderEntity;
 import com.lczz.order.persistence.WorkOrderMapper;
 import com.lczz.order.persistence.WorkOrderStatusHistoryEntity;
@@ -35,18 +34,15 @@ public class WorkProgressService {
     private final WorkOrderProgressMapper progressMapper;
     private final WorkOrderMapper orderMapper;
     private final WorkOrderStatusHistoryMapper historyMapper;
-    private final FileAssetRecordMapper fileMapper;
     private final FileRelationRecordMapper relationMapper;
     private final FileService fileService;
 
     public WorkProgressService(WorkOrderProgressMapper progressMapper, WorkOrderMapper orderMapper,
                                WorkOrderStatusHistoryMapper historyMapper,
-                               FileAssetRecordMapper fileMapper,
                                FileRelationRecordMapper relationMapper, FileService fileService) {
         this.progressMapper = progressMapper;
         this.orderMapper = orderMapper;
         this.historyMapper = historyMapper;
-        this.fileMapper = fileMapper;
         this.relationMapper = relationMapper;
         this.fileService = fileService;
     }
@@ -166,17 +162,16 @@ public class WorkProgressService {
                 .in(FileRelationRecord::getBusinessId, progressIds)
                 .orderByAsc(FileRelationRecord::getSortOrder).orderByAsc(FileRelationRecord::getId));
         Set<Long> fileIds = links.stream().map(FileRelationRecord::getFileId).collect(java.util.stream.Collectors.toSet());
-        Map<Long, FileAssetRecord> files = new HashMap<>();
-        if (!fileIds.isEmpty()) fileMapper.selectByIds(fileIds).forEach(file -> files.put(file.getId(), file));
+        Map<Long, FileView> files = fileService.issueAccessMap(actor, fileIds);
         Map<Long, List<ProgressFileView>> grouped = new HashMap<>();
         links.stream().sorted(Comparator.comparing(FileRelationRecord::getSortOrder)
                         .thenComparing(FileRelationRecord::getId))
                 .forEach(link -> {
-                    FileAssetRecord file = files.get(link.getFileId());
-                    if (file != null && !Boolean.TRUE.equals(file.getDeleted())) {
+                    FileView file = files.get(link.getFileId());
+                    if (file != null) {
                         grouped.computeIfAbsent(link.getBusinessId(), ignored -> new ArrayList<>())
-                                .add(new ProgressFileView(file.getId(), file.getOriginalName(), file.getMimeType(),
-                                        fileService.issueAccess(actor, file.getId()).url()));
+                                .add(new ProgressFileView(file.id(), file.originalName(), file.mimeType(), file.url(),
+                                        file.thumbnailUrl(), file.displayUrl(), file.originalUrl()));
                     }
                 });
         return records.stream().map(record -> new ProgressView(record.getId(), record.getOrderId(),
@@ -185,7 +180,8 @@ public class WorkProgressService {
     }
 
     public record ProgressCommand(String description, List<Long> fileIds) { }
-    public record ProgressFileView(long id, String originalName, String mimeType, String url) { }
+    public record ProgressFileView(long id, String originalName, String mimeType, String url,
+                                   String thumbnailUrl, String displayUrl, String originalUrl) { }
     public record ProgressView(long id, long orderId, long installerUserId, String type, String description,
                                List<ProgressFileView> images, LocalDateTime submittedAt) { }
 }

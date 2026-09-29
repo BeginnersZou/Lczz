@@ -23,6 +23,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Base64;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -71,15 +72,18 @@ public class FileService {
     private final FileStorage storage;
     private final FileStorageProperties properties;
     private final JdbcTemplate jdbcTemplate;
+    private final FileImageVariantService imageVariantService;
     private final byte[] accessKey;
 
     public FileService(FileAssetRecordMapper fileMapper, FileRelationRecordMapper relationMapper,
-                       FileStorage storage, FileStorageProperties properties, JdbcTemplate jdbcTemplate) {
+                       FileStorage storage, FileStorageProperties properties, JdbcTemplate jdbcTemplate,
+                       FileImageVariantService imageVariantService) {
         this.fileMapper = fileMapper;
         this.relationMapper = relationMapper;
         this.storage = storage;
         this.properties = properties;
         this.jdbcTemplate = jdbcTemplate;
+        this.imageVariantService = imageVariantService;
         this.accessKey = createAccessKey(properties.getAccessSecret());
     }
 
@@ -213,10 +217,31 @@ public class FileService {
         return new FileContent(file, storage.load(file.getObjectKey()));
     }
 
+    public FileImageVariantService.ImageContent signedImageContent(long fileId, String variant,
+                                                                    long expires, String signature) {
+        verifySignature(fileId, expires, variant, signature);
+        return imageVariantService.content(fileId, variant);
+    }
+
     public FileView issueAccess(AuthenticatedUser actor, long fileId) {
-        FileAssetRecord file = requireFile(fileId);
-        authorizeFile(actor, file);
-        return toView(file, signedUrl(fileId));
+        FileView view = issueAccessMap(actor, List.of(fileId)).get(fileId);
+        if (view == null) throw new BusinessException(404, "FILE_NOT_FOUND", "文件不存在");
+        return view;
+    }
+
+    /** Batch authorization avoids repeating file/relation/business queries for media galleries. */
+    @Transactional(readOnly = true)
+    public Map<Long, FileView> issueAccessMap(AuthenticatedUser actor, Collection<Long> requestedIds) {
+        if (requestedIds == null || requestedIds.isEmpty()) return Map.of();
+        List<Long> ids = requestedIds.stream().filter(Objects::nonNull).distinct().toList();
+        Map<Long, FileAssetRecord> files = fileMapper.selectBatchIds(ids).stream()
+                .filter(file -> !Boolean.TRUE.equals(file.getDeleted()))
+                .collect(Collectors.toMap(FileAssetRecord::getId, Function.identity()));
+        if (files.size() != ids.size()) throw new BusinessException(404, "FILE_NOT_FOUND", "文件不存在");
+        authorizeFiles(actor, files);
+        Map<Long, FileView> result = new LinkedHashMap<>();
+        ids.forEach(id -> result.put(id, toView(files.get(id), signedUrl(id))));
+        return result;
     }
 
     @Transactional
@@ -311,6 +336,31 @@ public class FileService {
         }
         if (actor == null || !Objects.equals(file.getUploadedBy(), actor.userId())) {
             throw new BusinessException(403, "FILE_ACCESS_FORBIDDEN", "无权访问该文件");
+        }
+    }
+
+    private void authorizeFiles(AuthenticatedUser actor, Map<Long, FileAssetRecord> files) {
+        if (actor != null && actor.hasRole(RoleCode.ADMIN)) return;
+        Map<Long, List<FileRelationRecord>> relationsByFile = relationMapper.selectList(
+                        new LambdaQueryWrapper<FileRelationRecord>()
+                                .in(FileRelationRecord::getFileId, files.keySet()))
+                .stream().collect(Collectors.groupingBy(FileRelationRecord::getFileId));
+        Map<String, Boolean> businessAccess = new HashMap<>();
+        for (FileAssetRecord file : files.values()) {
+            List<FileRelationRecord> relations = relationsByFile.getOrDefault(file.getId(), List.of());
+            if (!relations.isEmpty()) {
+                boolean allowed = relations.stream().anyMatch(relation -> {
+                    String key = relation.getBusinessType() + ":" + relation.getBusinessId();
+                    return businessAccess.computeIfAbsent(key, ignored -> canAccessBusiness(
+                            actor, relation.getBusinessType(), relation.getBusinessId(), false));
+                });
+                if (!allowed) throw new BusinessException(403, "FILE_ACCESS_FORBIDDEN", "无权访问该文件");
+                continue;
+            }
+            if (isProductCover(actor, file.getId())) continue;
+            if (actor == null || !Objects.equals(file.getUploadedBy(), actor.userId())) {
+                throw new BusinessException(403, "FILE_ACCESS_FORBIDDEN", "无权访问该文件");
+            }
         }
     }
 
@@ -554,15 +604,31 @@ public class FileService {
     }
 
     private FileView toView(FileAssetRecord file, String url) {
+        boolean image = file.getMimeType() != null && file.getMimeType().startsWith("image/");
+        String thumbnailUrl = image ? signedImageUrl(file.getId(), "thumbnail") : url;
+        String displayUrl = image ? signedImageUrl(file.getId(), "display") : url;
         return new FileView(file.getId(), file.getOriginalName(), file.getMimeType(),
                 file.getFileSize() == null ? 0L : file.getFileSize(),
-                file.getSha256(), url, file.getCreatedAt());
+                file.getSha256(), url, file.getCreatedAt(), thumbnailUrl, displayUrl, url);
     }
 
     private String signedUrl(long fileId) {
-        long expires = Instant.now().plusSeconds(Math.max(1, properties.getSignedUrlMinutes()) * 60).getEpochSecond();
+        long expires = accessExpiry();
         String signature = signature(fileId, expires);
         return "/api/files/access/%d?expires=%d&signature=%s".formatted(fileId, expires, signature);
+    }
+
+    private String signedImageUrl(long fileId, String variant) {
+        long expires = accessExpiry();
+        String signature = signature(fileId, expires, variant);
+        return "/api/files/access/%d/%s?expires=%d&signature=%s"
+                .formatted(fileId, variant, expires, signature);
+    }
+
+    private long accessExpiry() {
+        long seconds = Math.max(1, properties.getSignedUrlMinutes()) * 60;
+        long now = Instant.now().getEpochSecond();
+        return (Math.floorDiv(now, seconds) + 2) * seconds;
     }
 
     private void verifySignature(long fileId, long expires, String supplied) {
@@ -576,12 +642,31 @@ public class FileService {
         }
     }
 
+    private void verifySignature(long fileId, long expires, String variant, String supplied) {
+        if (supplied == null || expires < Instant.now().getEpochSecond()) {
+            throw new BusinessException(403, "FILE_URL_EXPIRED", "文件访问地址已过期");
+        }
+        byte[] expected = signature(fileId, expires, variant).getBytes(StandardCharsets.US_ASCII);
+        byte[] actual = supplied.getBytes(StandardCharsets.US_ASCII);
+        if (!MessageDigest.isEqual(expected, actual)) {
+            throw new BusinessException(403, "INVALID_FILE_SIGNATURE", "文件访问签名无效");
+        }
+    }
+
     private String signature(long fileId, long expires) {
+        return signature(fileId + ":" + expires);
+    }
+
+    private String signature(long fileId, long expires, String variant) {
+        return signature(fileId + ":" + expires + ":" + variant.toLowerCase(Locale.ROOT));
+    }
+
+    private String signature(String payload) {
         try {
             Mac mac = Mac.getInstance("HmacSHA256");
             mac.init(new SecretKeySpec(accessKey, "HmacSHA256"));
             return Base64.getUrlEncoder().withoutPadding().encodeToString(
-                    mac.doFinal((fileId + ":" + expires).getBytes(StandardCharsets.US_ASCII)));
+                    mac.doFinal(payload.getBytes(StandardCharsets.US_ASCII)));
         } catch (GeneralSecurityException exception) { throw new IllegalStateException(exception); }
     }
 
@@ -597,6 +682,7 @@ public class FileService {
     private record ValidatedFile(String originalName, String extension, String mimeType, long maxBytes) { }
     public record RelationCommand(String businessType, Long businessId, String usageType, Integer sortOrder) { }
     public record FileView(long id, String originalName, String mimeType, long size, String sha256,
-                           String url, java.time.LocalDateTime createdAt) { }
+                           String url, java.time.LocalDateTime createdAt, String thumbnailUrl,
+                           String displayUrl, String originalUrl) { }
     public record FileContent(FileAssetRecord metadata, Resource resource) { }
 }

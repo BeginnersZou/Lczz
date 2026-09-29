@@ -68,7 +68,8 @@
         <!-- 耗材图片 -->
         <el-table-column label="图片" align="center" width="88">
           <template #default="scope">
-            <el-image :src="scope.row.image" fit="cover" class="row-img" :preview-src-list="[scope.row.image]"
+            <el-image :src="scope.row.thumbnail || scope.row.image" fit="cover" class="row-img" lazy
+              :preview-src-list="[scope.row.originalImage || scope.row.displayImage || scope.row.image]"
               preview-teleported />
           </template>
         </el-table-column>

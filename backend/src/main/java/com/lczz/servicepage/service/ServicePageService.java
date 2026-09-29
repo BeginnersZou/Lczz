@@ -19,7 +19,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -129,14 +128,14 @@ public class ServicePageService {
                 .orderByAsc(FileRelationRecord::getSortOrder)
                 .orderByAsc(FileRelationRecord::getId));
         if (relations.isEmpty()) return List.of();
-        Map<Long, FileAssetRecord> files = fileMapper.selectBatchIds(relations.stream()
-                        .map(FileRelationRecord::getFileId).collect(Collectors.toSet())).stream()
-                .collect(Collectors.toMap(FileAssetRecord::getId, Function.identity()));
+        Map<Long, FileService.FileView> files = fileService.issueAccessMap(actor, relations.stream()
+                .map(FileRelationRecord::getFileId).collect(Collectors.toSet()));
         List<FileView> result = new ArrayList<>();
         for (FileRelationRecord relation : relations) {
-            FileAssetRecord file = files.get(relation.getFileId());
-            if (file != null && !Boolean.TRUE.equals(file.getDeleted())) {
-                result.add(new FileView(file.getId(), fileService.issueAccess(actor, file.getId()).url()));
+            FileService.FileView file = files.get(relation.getFileId());
+            if (file != null) {
+                result.add(new FileView(file.id(), file.url(), file.thumbnailUrl(),
+                        file.displayUrl(), file.originalUrl()));
             }
         }
         return result;
@@ -214,7 +213,8 @@ public class ServicePageService {
             BigDecimal longitude, BigDecimal latitude, String businessHours) { }
 
     public record ContentItem(String title, String description) { }
-    public record FileView(long id, String url) { }
+    public record FileView(long id, String url, String thumbnailUrl,
+                           String displayUrl, String originalUrl) { }
     public record ServicePageView(
             long id, String companyName, String companySubtitle, String slogan, boolean brandVisible,
             List<ContentItem> heroStats, boolean servicesVisible, List<ContentItem> services,

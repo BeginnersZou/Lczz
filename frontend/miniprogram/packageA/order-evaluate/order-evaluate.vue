@@ -81,7 +81,8 @@
 				</view>
 				<view class="image-grid">
 					<view class="image-item" v-for="(image, index) in images" :key="image.id">
-						<image class="preview-img" :src="image.url" mode="aspectFill" @click="previewImages(index)"></image>
+						<image class="preview-img" :src="image.thumbnailUrl || image.displayUrl || image.url"
+							mode="aspectFill" lazy-load @click="previewImages(index)"></image>
 						<view class="image-delete" @click.stop="removeImage(index)"><up-icon name="close" size="12" color="#fff"></up-icon></view>
 					</view>
 					<view class="image-add" v-if="images.length < 9" @click="chooseImages">
@@ -141,7 +142,7 @@ const toggleLabel = (label) => {
 }
 
 const previewImages = (index) => {
-	const urls = images.value.map(image => image.url)
+	const urls = images.value.map(image => image.originalUrl || image.url)
 	uni.previewImage({ current: urls[index], urls })
 }
 
@@ -168,7 +169,7 @@ const chooseImages = () => {
 					}
 				})
 				const file = result.code === 200 ? result.data : null
-				if (file && file.id && file.url) images.value.push({ id: Number(file.id), url: file.url })
+				if (file && file.id && file.url) images.value.push(file)
 				else failed++
 			}
 			uploadProgress.value = ''
