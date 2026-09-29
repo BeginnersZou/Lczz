@@ -6,6 +6,7 @@ import com.lczz.file.service.FileService;
 import com.lczz.file.service.FileService.FileContent;
 import com.lczz.file.service.FileService.FileView;
 import com.lczz.file.service.FileService.RelationCommand;
+import com.lczz.file.service.FileImageVariantService.ImageContent;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
@@ -14,6 +15,9 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.util.Arrays;
+import java.util.concurrent.TimeUnit;
 import org.springframework.core.io.Resource;
 import org.springframework.http.CacheControl;
 import org.springframework.http.ContentDisposition;
@@ -27,6 +31,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
@@ -102,10 +107,29 @@ public class FileController {
 
     @GetMapping("/access/{id}")
     @Operation(summary = "使用短时签名读取文件，无需额外登录请求头")
-    ResponseEntity<Resource> signedContent(@PathVariable @Min(1) long id,
-                                            @RequestParam long expires,
-                                            @RequestParam @NotBlank @Size(max = 100) String signature) {
-        return contentResponse(fileService.signedContent(id, expires, signature));
+    ResponseEntity<?> signedContent(@PathVariable @Min(1) long id,
+                                    @RequestParam long expires,
+                                    @RequestParam @NotBlank @Size(max = 100) String signature,
+                                    @RequestHeader(value = HttpHeaders.IF_NONE_MATCH, required = false)
+                                    String ifNoneMatch) {
+        return signedContentResponse(fileService.signedContent(id, expires, signature), expires, ifNoneMatch);
+    }
+
+    @GetMapping("/access/{id}/{variant}")
+    @Operation(summary = "使用短时签名读取文件缩略图或展示图")
+    ResponseEntity<?> signedImageContent(@PathVariable @Min(1) long id,
+                                         @PathVariable String variant,
+                                         @RequestParam long expires,
+                                         @RequestParam @NotBlank @Size(max = 100) String signature,
+                                         @RequestHeader(value = HttpHeaders.IF_NONE_MATCH, required = false)
+                                         String ifNoneMatch) {
+        ImageContent content = fileService.signedImageContent(id, variant, expires, signature);
+        HttpHeaders headers = cacheableHeaders(content.mimeType(), content.filename(), content.etag(), expires);
+        if (matches(ifNoneMatch, content.etag())) {
+            return ResponseEntity.status(304).headers(headers).build();
+        }
+        headers.setContentLength(content.size());
+        return ResponseEntity.ok().headers(headers).body(content.resource());
     }
 
     private ResponseEntity<Resource> contentResponse(FileContent content) {
@@ -116,6 +140,35 @@ public class FileController {
                 .filename(content.metadata().getOriginalName(), StandardCharsets.UTF_8).build());
         headers.setCacheControl(CacheControl.noCache().cachePrivate());
         return ResponseEntity.ok().headers(headers).body(content.resource());
+    }
+
+    private ResponseEntity<?> signedContentResponse(FileContent content, long expires, String ifNoneMatch) {
+        String hash = content.metadata().getSha256();
+        String etag = hash == null || hash.isBlank() ? null : "\"" + hash + "\"";
+        HttpHeaders headers = cacheableHeaders(content.metadata().getMimeType(),
+                content.metadata().getOriginalName(), etag, expires);
+        if (etag != null && matches(ifNoneMatch, etag)) {
+            return ResponseEntity.status(304).headers(headers).build();
+        }
+        headers.setContentLength(content.metadata().getFileSize());
+        return ResponseEntity.ok().headers(headers).body(content.resource());
+    }
+
+    private HttpHeaders cacheableHeaders(String mimeType, String filename, String etag, long expires) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.parseMediaType(mimeType));
+        headers.setContentDisposition(ContentDisposition.inline()
+                .filename(filename, StandardCharsets.UTF_8).build());
+        if (etag != null) headers.setETag(etag);
+        long maxAge = Math.max(0, expires - Instant.now().getEpochSecond());
+        headers.setCacheControl(CacheControl.maxAge(maxAge, TimeUnit.SECONDS).cachePrivate());
+        return headers;
+    }
+
+    private boolean matches(String supplied, String etag) {
+        if (supplied == null || supplied.isBlank() || etag == null) return false;
+        return Arrays.stream(supplied.split(",")).map(String::trim)
+                .anyMatch(value -> "*".equals(value) || etag.equals(value) || ("W/" + etag).equals(value));
     }
 
     private String requestId(HttpServletRequest request) {

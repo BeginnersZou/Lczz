@@ -2,6 +2,9 @@ package com.lczz.file;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.lczz.auth.domain.AuthenticatedUser;
+import com.lczz.auth.domain.RoleCode;
+import com.lczz.file.service.FileService;
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
@@ -12,6 +15,7 @@ import java.security.MessageDigest;
 import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.Iterator;
+import java.util.Set;
 import javax.imageio.IIOImage;
 import javax.imageio.ImageIO;
 import javax.imageio.ImageWriteParam;
@@ -44,6 +48,7 @@ class ProductImageVariantIntegrationTests {
     @Autowired MockMvc mockMvc;
     @Autowired JdbcTemplate jdbcTemplate;
     @Autowired ObjectMapper objectMapper;
+    @Autowired FileService fileService;
 
     private long categoryId;
 
@@ -155,9 +160,50 @@ class ProductImageVariantIntegrationTests {
                 .andExpect(result -> assertThat(result.getResponse().getContentAsByteArray()).isEqualTo(webp));
     }
 
+    @Test
+    void signedBusinessImagesUseBoundedCachedVariantsAndOriginalPreview() throws Exception {
+        byte[] original = photo(2200, 1500, 51);
+        long fileId = storeFile("construction.jpg", "image/jpeg", original);
+        AuthenticatedUser admin = new AuthenticatedUser(1L, "admin", "管理员", null, Set.of(RoleCode.ADMIN));
+
+        FileService.FileView first = fileService.issueAccess(admin, fileId);
+        FileService.FileView second = fileService.issueAccess(admin, fileId);
+        assertThat(first.thumbnailUrl()).isEqualTo(second.thumbnailUrl()).contains("/thumbnail?");
+        assertThat(first.displayUrl()).isEqualTo(second.displayUrl()).contains("/display?");
+        assertThat(first.originalUrl()).isEqualTo(first.url()).contains("/api/files/access/" + fileId + "?");
+
+        MvcResult thumbnail = mockMvc.perform(get(first.thumbnailUrl()))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", "image/jpeg"))
+                .andExpect(header().string("Cache-Control", org.hamcrest.Matchers.allOf(
+                        org.hamcrest.Matchers.containsString("private"),
+                        org.hamcrest.Matchers.containsString("max-age="))))
+                .andExpect(header().exists("ETag"))
+                .andReturn();
+        assertImageBudget(thumbnail.getResponse().getContentAsByteArray(), 640, 300 * 1024);
+        String etag = thumbnail.getResponse().getHeader("ETag");
+        mockMvc.perform(get(first.thumbnailUrl()).header("If-None-Match", etag))
+                .andExpect(status().isNotModified())
+                .andExpect(header().string("ETag", etag));
+
+        MvcResult display = mockMvc.perform(get(first.displayUrl())).andExpect(status().isOk()).andReturn();
+        assertImageBudget(display.getResponse().getContentAsByteArray(), 1600, 1024 * 1024);
+        mockMvc.perform(get(first.originalUrl()))
+                .andExpect(status().isOk())
+                .andExpect(result -> assertThat(result.getResponse().getContentAsByteArray()).isEqualTo(original));
+
+        String swappedVariant = first.thumbnailUrl().replace("/thumbnail?", "/display?");
+        mockMvc.perform(get(swappedVariant))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("INVALID_FILE_SIGNATURE"));
+    }
+
     private void assertVariant(String url, int maxEdge, int maxBytes) throws Exception {
         MvcResult response = mockMvc.perform(get(url)).andExpect(status().isOk()).andReturn();
-        byte[] bytes = response.getResponse().getContentAsByteArray();
+        assertImageBudget(response.getResponse().getContentAsByteArray(), maxEdge, maxBytes);
+    }
+
+    private void assertImageBudget(byte[] bytes, int maxEdge, int maxBytes) throws Exception {
         BufferedImage image = ImageIO.read(new java.io.ByteArrayInputStream(bytes));
         assertThat(image).isNotNull();
         assertThat(Math.max(image.getWidth(), image.getHeight())).isLessThanOrEqualTo(maxEdge);

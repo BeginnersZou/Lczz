@@ -52,7 +52,8 @@
           <div v-for="(image, index) in form.galleryImages" :key="image.uid || image.id"
                class="image-card" draggable="true"
                @dragstart="dragIndex = index" @dragover.prevent @drop="dropImage(index)">
-            <el-image :src="image.url" fit="cover" :preview-src-list="previewImages" :initial-index="index" preview-teleported />
+            <el-image :src="thumbnailUrl(image)" fit="cover" lazy :preview-src-list="previewImages"
+              :initial-index="index" preview-teleported />
             <div class="image-order">{{ index + 1 }}</div>
             <div v-if="image.uploading" class="upload-mask"><el-icon class="is-loading"><Loading /></el-icon></div>
             <button v-else type="button" class="delete-image" aria-label="删除图片" @click="removeImage(index)">
@@ -131,7 +132,9 @@ const rules = {
   latitude: [{ required: true, message: '请输入纬度', trigger: 'change' }],
   businessHours: [{ required: true, message: '请输入营业时间', trigger: 'blur' }]
 }
-const previewImages = computed(() => form.galleryImages.map(item => item.url))
+const originalUrl = image => image?.originalUrl || image?.url || ''
+const thumbnailUrl = image => image?.thumbnailUrl || image?.displayUrl || originalUrl(image)
+const previewImages = computed(() => form.galleryImages.map(originalUrl).filter(Boolean))
 
 const SectionHeader = defineComponent({
   props: { title: String, modelValue: Boolean }, emits: ['update:modelValue'],
@@ -246,14 +249,20 @@ async function uploadImages(event) {
     if (!ALLOWED_TYPES.has(file.type)) { ElMessage.warning(`${file.name} 不是支持的图片格式`); continue }
     if (file.size > MAX_IMAGE_BYTES) { ElMessage.warning(`${file.name} 超过 10MB`); continue }
     const blobUrl = URL.createObjectURL(file)
-    const image = { id: null, uid: uid++, url: blobUrl, uploading: true }
+    const image = {
+      id: null, uid: uid++, url: blobUrl, originalUrl: blobUrl,
+      displayUrl: blobUrl, thumbnailUrl: blobUrl, uploading: true
+    }
     form.galleryImages.push(image)
     try {
       const data = new FormData()
       data.append('file', file)
       const uploaded = await uploadServiceImageApi(data)
       image.id = uploaded.id
-      image.url = uploaded.url
+      image.url = uploaded.originalUrl || uploaded.url
+      image.originalUrl = image.url
+      image.displayUrl = uploaded.displayUrl || image.url
+      image.thumbnailUrl = uploaded.thumbnailUrl || image.displayUrl
     } catch {
       form.galleryImages.splice(form.galleryImages.indexOf(image), 1)
       ElMessage.error(`${file.name} 上传失败，请重试`)

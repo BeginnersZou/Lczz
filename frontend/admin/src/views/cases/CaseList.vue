@@ -28,8 +28,8 @@
         </el-table-column>
         <el-table-column label="封面" width="110" align="center">
           <template #default="{ row }">
-            <el-image v-if="row.coverImage?.url" :src="row.coverImage.url" fit="cover" class="cover-image"
-              :preview-src-list="row.images.map(image => image.url).filter(Boolean)" preview-teleported>
+            <el-image v-if="row.coverImage?.url" :src="row.coverImage.thumbnailUrl || row.coverImage.url"
+              fit="cover" class="cover-image" lazy :preview-src-list="casePreviewImages(row)" preview-teleported>
               <template #error><div class="image-error">图片加载失败</div></template>
             </el-image>
             <span v-else class="image-error">暂无图片</span>
@@ -67,6 +67,10 @@ import { deleteProjectCaseApi, getProjectCaseListApi } from '@/api/cases'
 import { formatDateTime } from '@/utils/format'
 
 const router = useRouter()
+const casePreviewImages = row => {
+  const images = (row.images || []).map(image => image.originalUrl || image.url).filter(Boolean)
+  return images.length ? images : [row.coverImage?.originalUrl || row.coverImage?.url].filter(Boolean)
+}
 const keyword = ref('')
 const page = ref(1)
 const pageSize = ref(10)

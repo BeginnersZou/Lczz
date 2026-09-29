@@ -317,8 +317,9 @@ public class ProductService {
             return new FileView(file.getId(), preferDisplay ? urls.displayUrl() : urls.cardUrl(),
                     urls.cardUrl(), urls.displayUrl(), urls.originalUrl());
         }
-        String privateUrl = fileService.issueAccess(actor, file.getId()).url();
-        return new FileView(file.getId(), privateUrl, privateUrl, privateUrl, privateUrl);
+        com.lczz.file.service.FileService.FileView privateFile = fileService.issueAccess(actor, file.getId());
+        return new FileView(file.getId(), preferDisplay ? privateFile.displayUrl() : privateFile.thumbnailUrl(),
+                privateFile.thumbnailUrl(), privateFile.displayUrl(), privateFile.originalUrl());
     }
 
     private Map<Long, FileAssetEntity> loadFiles(Collection<Long> ids) {

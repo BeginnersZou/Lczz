@@ -130,12 +130,14 @@ class AdminOrderDetailIntegrationTests {
         assertThat(detail.at("/order/statusCode").asText()).isEqualTo("REVIEWED");
         assertThat(detail.at("/order/orderStartTime").asText()).startsWith("2026-09-04T");
         assertThat(detail.at("/order/fileList/0/id").asLong()).isEqualTo(attachmentId);
+        assertThat(detail.at("/order/fileList/0/thumbnailUrl").asText()).contains("/thumbnail?");
         assertThat(detail.path("progress")).hasSize(3);
         assertThat(detail.at("/progress/0/description").asText()).isEqualTo("第一天铺设管线");
         assertThat(detail.at("/progress/1/description").asText()).isEqualTo("第二天调试设备");
         assertThat(detail.at("/progress/2/type").asText()).isEqualTo("PROGRESS");
         assertThat(detail.at("/order/customerConfirmedAt").asText()).isNotBlank();
         assertThat(detail.at("/progress/0/images/0/id").asLong()).isEqualTo(progressImageId);
+        assertThat(detail.at("/progress/0/images/0/displayUrl").asText()).contains("/display?");
         JsonNode miniProgress = getData("/api/orders/" + orderId + "/progress", customerToken);
         for (int index = 0; index < miniProgress.size(); index++) {
             for (String field : new String[] {"id", "description", "type", "submittedAt", "installerUserId"}) {
@@ -158,7 +160,12 @@ class AdminOrderDetailIntegrationTests {
         assertThat(detail.at("/review/score").asInt()).isEqualTo(5);
         assertThat(detail.at("/review/content").asText()).isEqualTo("安装细致");
         assertThat(detail.at("/review/labels/0").asText()).isEqualTo("服务好");
+        assertThat(detail.at("/review/imageFiles/0/thumbnailUrl").asText()).contains("/thumbnail?");
         for (String path : new String[] {"/order/fileList/0/url", "/progress/0/images/0/url", "/review/images/0"}) {
+            mockMvc.perform(get(detail.at(path).asText())).andExpect(status().isOk());
+        }
+        for (String path : new String[] {"/order/fileList/0/thumbnailUrl",
+                "/progress/0/images/0/thumbnailUrl", "/review/imageFiles/0/thumbnailUrl"}) {
             mockMvc.perform(get(detail.at(path).asText())).andExpect(status().isOk());
         }
     }

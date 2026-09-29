@@ -147,7 +147,11 @@ const statusType = computed(() => ({
   PENDING_ASSIGNMENT: 'warning',
   PENDING_VISIT: 'warning', IN_PROGRESS: 'primary', PENDING_REVIEW: 'warning', REVIEWED: 'success', CANCELLED: 'info'
 }[order.value?.statusCode] || 'info'))
-const reviewImages = computed(() => (detail.value?.review?.images || []).map(url => ({ url })))
+const reviewImages = computed(() => {
+  const files = detail.value?.review?.imageFiles
+  if (Array.isArray(files) && files.length) return files
+  return (detail.value?.review?.images || []).map(url => ({ url, originalUrl: url }))
+})
 
 function backToList() {
   router.push({ name: 'Orders', query: route.query })

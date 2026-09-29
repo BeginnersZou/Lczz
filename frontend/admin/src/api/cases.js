@@ -2,10 +2,15 @@ import request from '@/utils/request'
 import { getFileId, uploadFileApi } from './files'
 
 function normalizeFile(file) {
+  const value = typeof file === 'string' ? { url: file } : (file || {})
+  const originalUrl = value.originalUrl || value.url || ''
   return {
-    ...(typeof file === 'object' ? file : {}),
-    id: getFileId(file),
-    url: typeof file === 'string' ? file : (file?.url || '')
+    ...value,
+    id: getFileId(value),
+    url: originalUrl,
+    originalUrl,
+    displayUrl: value.displayUrl || originalUrl,
+    thumbnailUrl: value.thumbnailUrl || value.displayUrl || originalUrl
   }
 }
 

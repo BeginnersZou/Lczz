@@ -76,7 +76,8 @@
 			</view>
 			<view class="gallery-grid">
 				<image v-for="(image, index) in pageConfig.galleryImages" :key="image.id || index"
-					class="gallery-image" :src="image.url" mode="aspectFill" lazy-load @click="previewGallery(index)" />
+					class="gallery-image" :src="image.thumbnailUrl || image.displayUrl || image.url"
+					mode="aspectFill" lazy-load @click="previewGallery(index)" />
 			</view>
 		</view>
 
@@ -258,8 +259,8 @@ const openAddressLocation = () => openCompanyLocation(uni, {
 })
 
 const previewGallery = (index) => uni.previewImage({
-	current: pageConfig.galleryImages[index].url,
-	urls: pageConfig.galleryImages.map(image => image.url)
+	current: pageConfig.galleryImages[index].originalUrl || pageConfig.galleryImages[index].url,
+	urls: pageConfig.galleryImages.map(image => image.originalUrl || image.url)
 })
 
 const openHours = () => {

@@ -2,6 +2,19 @@ import request from '@/utils/request'
 import { bindFileApi, getFileId, unbindFileApi, uploadFileApi } from './files'
 import { createCsvBlob } from '@/utils/export'
 
+function normalizeFile(file = {}) {
+  const value = typeof file === 'string' ? { url: file } : file
+  const originalUrl = value.originalUrl || value.url || ''
+  return {
+    ...value,
+    id: getFileId(value),
+    url: originalUrl,
+    originalUrl,
+    displayUrl: value.displayUrl || originalUrl,
+    thumbnailUrl: value.thumbnailUrl || value.displayUrl || originalUrl
+  }
+}
+
 function normalizeOrder(item = {}) {
   const masters = item.selectedMasterList || item.masterList || []
   return {
@@ -11,11 +24,7 @@ function normalizeOrder(item = {}) {
     assignMaster: masters.map(master => master.masterName).filter(Boolean).join('、'),
     createTime: item.createTime || item.createdAt || '',
     visitTime: item.visitTime || item.orderStartTime || '',
-    fileList: (item.fileList || item.images || []).map(file => ({
-      ...file,
-      id: getFileId(file),
-      url: typeof file === 'string' ? file : (file.url || '')
-    }))
+    fileList: (item.fileList || item.images || []).map(normalizeFile)
   }
 }
 

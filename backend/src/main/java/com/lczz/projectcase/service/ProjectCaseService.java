@@ -18,7 +18,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -112,15 +111,15 @@ public class ProjectCaseService {
                 .orderByAsc(FileRelationRecord::getSortOrder)
                 .orderByAsc(FileRelationRecord::getId));
         if (relations.isEmpty()) return Map.of();
-        Map<Long, FileAssetRecord> files = fileMapper.selectBatchIds(relations.stream()
-                        .map(FileRelationRecord::getFileId).collect(Collectors.toSet())).stream()
-                .collect(Collectors.toMap(FileAssetRecord::getId, Function.identity()));
+        Map<Long, FileService.FileView> files = fileService.issueAccessMap(actor, relations.stream()
+                .map(FileRelationRecord::getFileId).collect(Collectors.toSet()));
         Map<Long, List<FileView>> result = new java.util.HashMap<>();
         for (FileRelationRecord relation : relations) {
-            FileAssetRecord file = files.get(relation.getFileId());
+            FileService.FileView file = files.get(relation.getFileId());
             if (file != null) {
                 result.computeIfAbsent(relation.getBusinessId(), ignored -> new ArrayList<>())
-                        .add(new FileView(file.getId(), fileService.issueAccess(actor, file.getId()).url()));
+                        .add(new FileView(file.id(), file.url(), file.thumbnailUrl(),
+                                file.displayUrl(), file.originalUrl()));
             }
         }
         return result;
@@ -171,5 +170,6 @@ public class ProjectCaseService {
     public record ProjectCaseSummaryView(long id, String siteName, FileView coverImage, LocalDateTime updatedAt) { }
     public record ProjectCaseDetailView(long id, String siteName, List<FileView> images,
                                         LocalDateTime createdAt, LocalDateTime updatedAt) { }
-    public record FileView(long id, String url) { }
+    public record FileView(long id, String url, String thumbnailUrl,
+                           String displayUrl, String originalUrl) { }
 }
