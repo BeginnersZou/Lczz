@@ -341,6 +341,75 @@ class ProductIntegrationTests {
                 .andExpect(status().isForbidden());
     }
 
+    @Test
+    void stockWarningIncludesAllFourEmptyProductsWhileLowStockRemainsSeparate() throws Exception {
+        String token = adminToken();
+        long parentId = createCategory(token, "warning", "预警分类", null);
+        long childId = createCategory(token, "warning-empty", "无库存", parentId);
+        for (int index = 0; index < 4; index++) {
+            long id = insertProduct("EMPTY-" + index, "无库存耗材" + index, childId, true);
+            jdbcTemplate.update("UPDATE product SET display_stock=0 WHERE id=?", id);
+        }
+
+        mockMvc.perform(get("/api/dashboard/overview").header("Authorization", bearer(token)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.lowStock").value(4));
+        mockMvc.perform(get("/api/v1/consumables/list").header("Authorization", bearer(token))
+                        .param("stockStatus", "warning").param("pageSize", "2").param("page", "2"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(4))
+                .andExpect(jsonPath("$.data.list.length()").value(2));
+        mockMvc.perform(get("/api/v1/consumables/list").header("Authorization", bearer(token))
+                        .param("stockStatus", "low"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(0));
+        mockMvc.perform(get("/api/v1/consumables/list").header("Authorization", bearer(token))
+                        .param("stockStatus", "empty"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(4));
+    }
+
+    @Test
+    void dashboardAndWarningListUseActiveSkuStockAndCountEachEnabledProductOnce() throws Exception {
+        String token = adminToken();
+        long parentId = createCategory(token, "sku-warning", "规格预警", null);
+        long childId = createCategory(token, "sku-warning-child", "规格耗材", parentId);
+        long mixedId = insertProduct("MIXED", "混合规格耗材", childId, true);
+        long thresholdId = insertProduct("THRESHOLD", "临界库存耗材", childId, true);
+        long normalId = insertProduct("NORMAL", "正常规格耗材", childId, true);
+        long disabledId = insertProduct("DISABLED", "下架耗材", childId, false);
+        long deletedId = insertProduct("DELETED", "已删除耗材", childId, true);
+        long legacyId = insertProduct("LEGACY-LOW", "旧库存耗材", childId, true);
+        jdbcTemplate.update("UPDATE product SET display_stock=100 WHERE id IN (?, ?)", mixedId, thresholdId);
+        jdbcTemplate.update("UPDATE product SET display_stock=0 WHERE id IN (?, ?, ?)", normalId, disabledId, deletedId);
+        jdbcTemplate.update("UPDATE product SET deleted=TRUE WHERE id=?", deletedId);
+        jdbcTemplate.update("UPDATE product SET display_stock=3 WHERE id=?", legacyId);
+        insertSku(mixedId, "MIXED-ZERO", 0, true, false);
+        insertSku(mixedId, "MIXED-LOW", 2, true, false);
+        insertSku(mixedId, "MIXED-HIGH", 20, true, false);
+        insertSku(thresholdId, "THRESHOLD-FIVE", 5, true, false);
+        insertSku(normalId, "NORMAL-SIX", 6, true, false);
+        insertSku(normalId, "NORMAL-DISABLED", 0, false, false);
+        insertSku(normalId, "NORMAL-DELETED", 0, true, true);
+        insertSku(disabledId, "DISABLED-ZERO", 0, true, false);
+        insertSku(deletedId, "DELETED-ZERO", 0, true, false);
+
+        mockMvc.perform(get("/api/dashboard/overview").header("Authorization", bearer(token)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.lowStock").value(3));
+        mockMvc.perform(get("/api/v1/consumables/list").header("Authorization", bearer(token))
+                        .param("stockStatus", "warning"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(3))
+                .andExpect(jsonPath("$.data.list[*].id").value(org.hamcrest.Matchers.containsInAnyOrder(
+                        (int) mixedId, (int) thresholdId, (int) legacyId)));
+        mockMvc.perform(get("/api/v1/consumables/list").header("Authorization", bearer(token))
+                        .param("stockStatus", "warning").param("keyword", "混合规格"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.list[0].id").value(mixedId));
+    }
+
+    private void insertSku(long productId, String code, int stock, boolean enabled, boolean deleted) {
+        jdbcTemplate.update("""
+                INSERT INTO product_sku(product_id, sku_code, spec_signature_hash, unit, stock, enabled, deleted)
+                VALUES (?, ?, ?, '件', ?, ?, ?)
+                """, productId, code, code, stock, enabled, deleted);
+    }
+
     private long createCategory(String token, String code, String name, Long parentId) throws Exception {
         String parent = parentId == null ? "null" : parentId.toString();
         String response = mockMvc.perform(post("/api/v1/consumables/categories")

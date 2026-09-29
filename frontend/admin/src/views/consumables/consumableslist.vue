@@ -33,6 +33,7 @@
             <el-option v-for="item in categoryFilterOptions" :key="item.value" :label="item.label" :value="item.value" />
           </el-select>
           <el-select v-model="stockStatus" placeholder="库存状态" clearable class="category-select" @change="handleSearch">
+            <el-option label="库存预警（含无库存）" value="warning" />
             <el-option label="库存充足" value="normal" />
             <el-option label="库存不足" value="low" />
             <el-option label="已无库存" value="empty" />
@@ -256,7 +257,11 @@ async function handleBatchExport() {
   if (exportLoading.value) return
   exportLoading.value = true
   try {
-    const blob = await exportConsumablesApi({ keyword: searchKeyword.value.trim(), category: searchCategory.value || undefined })
+    const blob = await exportConsumablesApi({
+      keyword: searchKeyword.value.trim(),
+      category: searchCategory.value || undefined,
+      stockStatus: stockStatus.value || undefined
+    })
     const url = window.URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
