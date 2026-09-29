@@ -43,7 +43,6 @@ public class ProductService {
     private static final String BUSINESS_TYPE = "PRODUCT";
     private static final String DETAIL_USAGE = "DETAIL";
     private static final String CAROUSEL_USAGE = "CAROUSEL";
-    private static final BigDecimal LOW_STOCK_THRESHOLD = BigDecimal.valueOf(5);
 
     private final ProductMapper productMapper;
     private final ProductCategoryMapper categoryMapper;
@@ -350,17 +349,8 @@ public class ProductService {
     }
 
     private void applyStockStatus(LambdaQueryWrapper<ProductEntity> query, String rawStatus) {
-        if (rawStatus == null || rawStatus.isBlank() || "all".equalsIgnoreCase(rawStatus.trim())) return;
-        String maxStock = "COALESCE((SELECT MAX(ps.stock) FROM product_sku ps "
-                + "WHERE ps.product_id=product.id AND ps.enabled=TRUE AND ps.deleted=FALSE), display_stock, 0)";
-        String minStock = "COALESCE((SELECT MIN(ps.stock) FROM product_sku ps "
-                + "WHERE ps.product_id=product.id AND ps.enabled=TRUE AND ps.deleted=FALSE), display_stock, 0)";
-        switch (rawStatus.trim().toLowerCase(Locale.ROOT)) {
-            case "empty" -> query.apply(maxStock + " = 0");
-            case "low" -> query.apply(maxStock + " > 0 AND " + minStock + " <= {0}", LOW_STOCK_THRESHOLD);
-            case "normal" -> query.apply(minStock + " > {0}", LOW_STOCK_THRESHOLD);
-            default -> throw new BusinessException("INVALID_STOCK_STATUS", "库存状态只支持 normal、low 或 empty");
-        }
+        String condition = ProductStockFilter.condition(rawStatus);
+        if (condition != null) query.apply(condition);
     }
 
     private String normalizeAdjustmentType(String rawType) {

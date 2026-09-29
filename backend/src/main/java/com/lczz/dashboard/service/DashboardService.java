@@ -3,6 +3,7 @@ package com.lczz.dashboard.service;
 import com.lczz.auth.domain.AuthenticatedUser;
 import com.lczz.auth.domain.RoleCode;
 import com.lczz.common.exception.BusinessException;
+import com.lczz.product.service.ProductStockFilter;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.sql.Timestamp;
@@ -21,7 +22,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class DashboardService {
-    private static final int LOW_STOCK_THRESHOLD = 5;
     private static final DateTimeFormatter DAY_LABEL = DateTimeFormatter.ofPattern("MM-dd");
     private static final DateTimeFormatter MONTH_LABEL = DateTimeFormatter.ofPattern("yyyy-MM");
     private static final Map<String, StatusDefinition> STATUS_DEFINITIONS = new LinkedHashMap<>();
@@ -54,8 +54,8 @@ public class DashboardService {
                 statusCounts.getOrDefault("PENDING_VISIT", 0L),
                 statusCounts.getOrDefault("IN_PROGRESS", 0L),
                 statusCounts.getOrDefault("PENDING_REVIEW", 0L) + statusCounts.getOrDefault("REVIEWED", 0L),
-                count("SELECT COUNT(*) FROM product WHERE deleted = FALSE AND enabled = TRUE "
-                        + "AND display_stock IS NOT NULL AND display_stock <= ?", LOW_STOCK_THRESHOLD),
+                count("SELECT COUNT(*) FROM product WHERE deleted = FALSE AND "
+                        + ProductStockFilter.condition("warning")),
                 count("SELECT COUNT(*) FROM sys_user WHERE deleted = FALSE AND audit_status = 'PENDING'"),
                 rating == null ? BigDecimal.ZERO : rating.setScale(1, RoundingMode.HALF_UP),
                 reviewCount,
