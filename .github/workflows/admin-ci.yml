@@ -1,0 +1,35 @@
+name: Admin frontend CI
+
+on:
+  pull_request:
+    branches: [dev, master, release/admin]
+    paths:
+      - "frontend/admin/**"
+      - "scripts/verify-admin-order-list.cjs"
+      - ".github/workflows/admin-ci.yml"
+  push:
+    branches: [dev]
+    paths:
+      - "frontend/admin/**"
+      - "scripts/verify-admin-order-list.cjs"
+      - ".github/workflows/admin-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/admin/package-lock.json
+      - name: Install admin dependencies
+        run: npm ci --prefix frontend/admin
+      - name: Verify order list initialization and requests
+        run: node scripts/verify-admin-order-list.cjs
+      - name: Build production admin site
+        run: npm run build --prefix frontend/admin
