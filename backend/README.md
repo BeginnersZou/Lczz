@@ -25,21 +25,28 @@ $env:JWT_SECRET="至少32字节的随机密钥"
 短信默认关闭；关闭、模板缺失或凭据缺失时，订单和派单仍可正常完成，系统会在
 `sms_notification` 留下 `SKIPPED` 审计记录。生产环境在 `lczz.env` 配置以下变量：
 
-```powershell
-$env:SMS_ENABLED="true"
-$env:SMS_ACCESS_KEY_ID="RAM 子账号 AccessKey ID"
-$env:SMS_ACCESS_KEY_SECRET="RAM 子账号 AccessKey Secret"
-$env:SMS_SIGN_NAME="已审核短信签名"
-$env:SMS_INSTALLER_ASSIGNMENT_TEMPLATE_CODE="SMS_..."
-$env:SMS_DEALER_APPOINTMENT_TEMPLATE_CODE="SMS_..."
-$env:SMS_SELF_ORDER_CREATED_TEMPLATE_CODE="SMS_..."
-$env:SMS_ADMIN_PHONES="13900000001,13900000002"
-$env:SMS_PICKUP_CONTACT_PHONE="13900000001"
+```ini
+SMS_ENABLED=true
+SMS_ACCESS_KEY_ID=RAM 子账号 AccessKey ID
+SMS_ACCESS_KEY_SECRET=RAM 子账号 AccessKey Secret
+SMS_SIGN_NAME=已审核短信签名
+SMS_INSTALLER_ASSIGNMENT_TEMPLATE_CODE=SMS_...
+SMS_DEALER_APPOINTMENT_TEMPLATE_CODE=SMS_...
+SMS_SELF_ORDER_CREATED_TEMPLATE_CODE=SMS_...
+SMS_SELF_ORDER_ADMIN_PHONES=13900000001
+SMS_DEALER_APPOINTMENT_ADMIN_PHONES=13900000002
+SMS_ADMIN_PHONES=
+SMS_PICKUP_CONTACT_PHONE=13900000001
 ```
+
+`lczz.env` 使用 `KEY=VALUE` 格式，不加引号或 `$env:` 前缀；修改后重启后端生效。
 
 - 使用仅授予短信发送权限的 RAM 子账号；禁止使用主账号 AccessKey。
 - AccessKey、模板参数和完整手机号不得写入 Git、前端包或应用普通日志。
-- 首次派单、改派成功后会在订单事务提交后异步通知师傅；经销商预约和安装师傅自助耗材下单成功后会通知已配置的管理员手机号。
+- 首次派单、改派成功后会在订单事务提交后异步通知被指派的师傅。
+- 安装师傅自助耗材下单通知 `SMS_SELF_ORDER_ADMIN_PHONES`；经销商预约安装通知 `SMS_DEALER_APPOINTMENT_ADMIN_PHONES`。每项可配置一个号码或英文逗号分隔的多个号码，支持 `+86` 前缀。
+- 某场景的专用号码未配置、为空或只有空白时，仅该场景回退到旧配置 `SMS_ADMIN_PHONES`；配置了专用号码就只发给专用号码，不与旧号码合并。已配置但格式无效的号码会被忽略，不会回退到其他接收人。
+- 旧版本后端只识别 `SMS_ADMIN_PHONES`，必须部署支持这两个新配置项的后端版本后才能分别接收。无需数据库迁移。
 - 失败记录会按 `SMS_MAX_ATTEMPTS`（默认 3 次）受控重试，失败不会回滚订单业务。
 
 本机现有 `lczz_dev` 由 Flyway 管理；全新环境必须顺序执行 V1-V4，已有环境继续按版本增量迁移。
