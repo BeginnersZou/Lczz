@@ -2,6 +2,7 @@ package com.lczz.notification;
 
 import com.lczz.notification.config.SmsProperties;
 import com.lczz.notification.service.SmsNotificationService;
+import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -27,13 +28,16 @@ class SmsNotificationIntegrationTests {
         smsProperties.setAccessKeySecret(null);
         smsProperties.setSignName(null);
         smsProperties.setInstallerAssignmentTemplateCode(null);
+        smsProperties.setDealerAppointmentTemplateCode(null);
         smsProperties.setSelfOrderCreatedTemplateCode(null);
         smsProperties.setAdminPhones(null);
+        smsProperties.setDealerAppointmentAdminPhones(null);
+        smsProperties.setSelfOrderAdminPhones(null);
     }
 
     @AfterEach
     void clearData() {
-        jdbcTemplate.update("DELETE FROM sms_notification");
+        resetData();
     }
 
     @Test
@@ -83,5 +87,76 @@ class SmsNotificationIntegrationTests {
         assertThat(jdbcTemplate.queryForList(
                 "SELECT template_params_json FROM sms_notification ORDER BY id", String.class))
                 .allMatch(params -> params.contains("A202609150001"));
+    }
+
+    @Test
+    void dedicatedRecipientsAreIsolatedFromEachOtherAndLegacyAdministrators() {
+        smsProperties.setAdminPhones("13900000001,13900000002");
+        smsProperties.setSelfOrderAdminPhones("13900000003");
+        smsProperties.setDealerAppointmentAdminPhones("13900000004");
+        smsProperties.setSelfOrderCreatedTemplateCode("SMS_SELF_ORDER");
+        smsProperties.setDealerAppointmentTemplateCode("SMS_APPOINTMENT");
+        smsProperties.setInstallerAssignmentTemplateCode("SMS_ASSIGNMENT");
+
+        smsNotificationService.queueInstallerSelfOrderCreated(301L, "A202609150001");
+        smsNotificationService.queueDealerAppointmentCreated(302L, "WO202609150002");
+        smsNotificationService.queueInstallerAssignment(303L, 5003L, "WO202609150003", "13900000005");
+
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM sms_notification", Long.class)).isEqualTo(3L);
+        assertThat(recipients("INSTALLER_SELF_ORDER_CREATED")).containsExactly("13900000003");
+        assertThat(recipients("DEALER_APPOINTMENT_CREATED")).containsExactly("13900000004");
+        assertThat(recipients("INSTALLER_ASSIGNED")).containsExactly("13900000005");
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT template_code FROM sms_notification WHERE event_type = 'INSTALLER_SELF_ORDER_CREATED'",
+                String.class)).isEqualTo("SMS_SELF_ORDER");
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT template_code FROM sms_notification WHERE event_type = 'DEALER_APPOINTMENT_CREATED'",
+                String.class)).isEqualTo("SMS_APPOINTMENT");
+    }
+
+    @Test
+    void unconfiguredAppointmentRecipientsFallBackWithoutAffectingDedicatedSelfOrderRecipients() {
+        smsProperties.setAdminPhones("13900000001,13900000002");
+        smsProperties.setSelfOrderAdminPhones("13900000003");
+
+        smsNotificationService.queueInstallerSelfOrderCreated(301L, "A202609150001");
+        smsNotificationService.queueDealerAppointmentCreated(302L, "WO202609150002");
+
+        assertThat(recipients("INSTALLER_SELF_ORDER_CREATED")).containsExactly("13900000003");
+        assertThat(recipients("DEALER_APPOINTMENT_CREATED")).containsExactly("13900000001", "13900000002");
+    }
+
+    @Test
+    void blankDedicatedRecipientsPreserveLegacyDeliveryForBothScenarios() {
+        smsProperties.setAdminPhones("13900000001,+8613900000002");
+        smsProperties.setSelfOrderAdminPhones("");
+        smsProperties.setDealerAppointmentAdminPhones("   ");
+
+        smsNotificationService.queueInstallerSelfOrderCreated(301L, "A202609150001");
+        smsNotificationService.queueDealerAppointmentCreated(302L, "WO202609150002");
+
+        assertThat(recipients("INSTALLER_SELF_ORDER_CREATED")).containsExactly("13900000001", "13900000002");
+        assertThat(recipients("DEALER_APPOINTMENT_CREATED")).containsExactly("13900000001", "13900000002");
+    }
+
+    @Test
+    void dedicatedRecipientsAreNormalizedAndDeduplicatedWithoutInvalidNumbersFallingBack() {
+        smsProperties.setAdminPhones("13900000001");
+        smsProperties.setSelfOrderAdminPhones(" 13900000003, +8613900000003, , 139-0000-0004, invalid ");
+        smsProperties.setDealerAppointmentAdminPhones("invalid");
+
+        smsNotificationService.queueInstallerSelfOrderCreated(301L, "A202609150001");
+        smsNotificationService.queueInstallerSelfOrderCreated(301L, "A202609150001");
+        smsNotificationService.queueDealerAppointmentCreated(302L, "WO202609150002");
+
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM sms_notification", Long.class)).isEqualTo(2L);
+        assertThat(recipients("INSTALLER_SELF_ORDER_CREATED")).containsExactly("13900000003", "13900000004");
+        assertThat(recipients("DEALER_APPOINTMENT_CREATED")).isEmpty();
+    }
+
+    private List<String> recipients(String eventType) {
+        return jdbcTemplate.queryForList(
+                "SELECT recipient_phone FROM sms_notification WHERE event_type = ? ORDER BY recipient_phone",
+                String.class, eventType);
     }
 }

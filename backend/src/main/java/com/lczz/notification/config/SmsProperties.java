@@ -14,6 +14,8 @@ public class SmsProperties {
     private String installerAssignmentTemplateCode;
     private String selfOrderCreatedTemplateCode;
     private String adminPhones;
+    private String dealerAppointmentAdminPhones;
+    private String selfOrderAdminPhones;
     private String pickupContactPhone;
     private int maxAttempts = 3;
     private long retryDelayMs = 60_000L;
@@ -40,6 +42,12 @@ public class SmsProperties {
     }
     public String getAdminPhones() { return adminPhones; }
     public void setAdminPhones(String adminPhones) { this.adminPhones = adminPhones; }
+    public String getDealerAppointmentAdminPhones() { return dealerAppointmentAdminPhones; }
+    public void setDealerAppointmentAdminPhones(String dealerAppointmentAdminPhones) {
+        this.dealerAppointmentAdminPhones = dealerAppointmentAdminPhones;
+    }
+    public String getSelfOrderAdminPhones() { return selfOrderAdminPhones; }
+    public void setSelfOrderAdminPhones(String selfOrderAdminPhones) { this.selfOrderAdminPhones = selfOrderAdminPhones; }
     public String getPickupContactPhone() { return pickupContactPhone; }
     public void setPickupContactPhone(String pickupContactPhone) { this.pickupContactPhone = pickupContactPhone; }
     public int getMaxAttempts() { return maxAttempts; }
@@ -51,9 +59,17 @@ public class SmsProperties {
         return hasText(accessKeyId) && hasText(accessKeySecret) && hasText(signName);
     }
 
-    public List<String> adminPhoneList() {
-        if (!hasText(adminPhones)) return List.of();
-        return Arrays.stream(adminPhones.split(","))
+    public List<String> dealerAppointmentAdminPhoneList() {
+        return phoneList(hasText(dealerAppointmentAdminPhones) ? dealerAppointmentAdminPhones : adminPhones);
+    }
+
+    public List<String> selfOrderAdminPhoneList() {
+        return phoneList(hasText(selfOrderAdminPhones) ? selfOrderAdminPhones : adminPhones);
+    }
+
+    private static List<String> phoneList(String phones) {
+        if (!hasText(phones)) return List.of();
+        return Arrays.stream(phones.split(","))
                 .map(String::trim)
                 .filter(SmsProperties::hasText)
                 .toList();

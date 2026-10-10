@@ -77,6 +77,8 @@ lczz:
     installer-assignment-template-code: ${SMS_INSTALLER_ASSIGNMENT_TEMPLATE_CODE:}
     self-order-created-template-code: ${SMS_SELF_ORDER_CREATED_TEMPLATE_CODE:}
     admin-phones: ${SMS_ADMIN_PHONES:}
+    dealer-appointment-admin-phones: ${SMS_DEALER_APPOINTMENT_ADMIN_PHONES:}
+    self-order-admin-phones: ${SMS_SELF_ORDER_ADMIN_PHONES:}
     pickup-contact-phone: ${SMS_PICKUP_CONTACT_PHONE:}
     max-attempts: ${SMS_MAX_ATTEMPTS:3}
     retry-delay-ms: ${SMS_RETRY_DELAY_MS:60000}

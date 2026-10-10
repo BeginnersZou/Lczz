@@ -47,7 +47,7 @@ public class SmsNotificationService {
     /** Public contract for #100. Each configured administrator receives one idempotent appointment notification. */
     public void queueDealerAppointmentCreated(long appointmentId, String appointmentNo) {
         Map<String, String> params = Map.of("orderNo", appointmentNo);
-        for (String adminPhone : properties.adminPhoneList()) {
+        for (String adminPhone : properties.dealerAppointmentAdminPhoneList()) {
             queue(new NotificationCommand(DEALER_APPOINTMENT_CREATED, "DEALER_APPOINTMENT",
                     Long.toString(appointmentId), appointmentNo, adminPhone,
                     properties.getDealerAppointmentTemplateCode(), params));
@@ -57,7 +57,7 @@ public class SmsNotificationService {
     /** Notify each configured administrator once after an installer creates a self-service material order. */
     public void queueInstallerSelfOrderCreated(long selfOrderId, String orderNo) {
         Map<String, String> params = Map.of("orderNo", orderNo);
-        for (String adminPhone : properties.adminPhoneList()) {
+        for (String adminPhone : properties.selfOrderAdminPhoneList()) {
             queue(new NotificationCommand(INSTALLER_SELF_ORDER_CREATED, "MATERIAL_SELF_ORDER",
                     Long.toString(selfOrderId), orderNo, adminPhone,
                     properties.getSelfOrderCreatedTemplateCode(), params));
