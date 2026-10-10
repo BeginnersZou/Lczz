@@ -7,6 +7,7 @@ on:
       - "frontend/admin/**"
       - "scripts/verify-admin-order-list.cjs"
       - "scripts/verify-stock-warning-flow.cjs"
+      - "scripts/verify-case-image-count.cjs"
       - ".github/workflows/admin-ci.yml"
   push:
     branches: [dev]
@@ -14,6 +15,7 @@ on:
       - "frontend/admin/**"
       - "scripts/verify-admin-order-list.cjs"
       - "scripts/verify-stock-warning-flow.cjs"
+      - "scripts/verify-case-image-count.cjs"
       - ".github/workflows/admin-ci.yml"
 
 permissions:
@@ -35,5 +37,7 @@ jobs:
         run: node scripts/verify-admin-order-list.cjs
       - name: Verify stock warning navigation and filters
         run: node scripts/verify-stock-warning-flow.cjs
+      - name: Verify case list image counts
+        run: node scripts/verify-case-image-count.cjs
       - name: Build production admin site
         run: npm run build --prefix frontend/admin

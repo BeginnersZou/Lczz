@@ -56,6 +56,7 @@ class ProjectCaseIntegrationTests {
         mockMvc.perform(get("/api/v1/cases/list").param("keyword", "江岸区"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.list[0].imageCount").value(2))
                 .andExpect(jsonPath("$.data.list[0].coverImage.url")
                         .value(org.hamcrest.Matchers.startsWith("/api/files/access/")));
         mockMvc.perform(get("/api/v1/cases/{id}", caseId))
@@ -68,6 +69,10 @@ class ProjectCaseIntegrationTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.siteName").value("武汉天地施工案例"))
                 .andExpect(jsonPath("$.data.images.length()").value(1));
+        mockMvc.perform(get("/api/v1/cases/list").param("keyword", "武汉天地"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.list[0].imageCount").value(1))
+                .andExpect(jsonPath("$.data.list[0].coverImage.id").value(detailId));
         mockMvc.perform(get("/api/v1/cases/list").param("keyword", "不存在"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.total").value(0));
@@ -101,6 +106,50 @@ class ProjectCaseIntegrationTests {
         mockMvc.perform(post("/api/v1/cases").contentType("application/json")
                         .content("{\"siteName\":\"未登录案例\",\"imageFileIds\":[" + oversizedId + "]}"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void listCountMatchesEachCasesReadableImagesIncludingDeletedFiles() throws Exception {
+        String token = adminToken();
+        long coverId = insertImage("count-cover.jpg", 1024);
+        long detailId = insertImage("count-detail.jpg", 1024);
+        long thirdId = insertImage("count-third.jpg", 1024);
+        long otherId = insertImage("count-other.jpg", 1024);
+        String created = mockMvc.perform(post("/api/v1/cases")
+                        .header("Authorization", bearer(token)).contentType("application/json")
+                        .content("{\"siteName\":\"三张图片案例\",\"imageFileIds\":[" + coverId + "," + detailId + "," + thirdId + "]}"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        long caseId = objectMapper.readTree(created).at("/data/id").asLong();
+        mockMvc.perform(post("/api/v1/cases")
+                        .header("Authorization", bearer(token)).contentType("application/json")
+                        .content("{\"siteName\":\"一张图片案例\",\"imageFileIds\":[" + otherId + "]}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/cases/list").param("keyword", "三张"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.list[0].imageCount").value(3));
+        mockMvc.perform(get("/api/v1/cases/list").param("keyword", "一张"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.list[0].imageCount").value(1));
+
+        jdbcTemplate.update("UPDATE file_asset SET deleted=TRUE WHERE id=?", coverId);
+        mockMvc.perform(get("/api/v1/cases/list").param("keyword", "三张"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.list[0].imageCount").value(2))
+                .andExpect(jsonPath("$.data.list[0].coverImage.id").value(detailId))
+                .andExpect(jsonPath("$.data.list[0].coverImage.thumbnailUrl")
+                        .value(org.hamcrest.Matchers.containsString("/thumbnail?")))
+                .andExpect(jsonPath("$.data.list[0].coverImage.originalUrl")
+                        .value(org.hamcrest.Matchers.startsWith("/api/files/access/")));
+        mockMvc.perform(get("/api/v1/cases/{id}", caseId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.images.length()").value(2));
+
+        jdbcTemplate.update("UPDATE file_asset SET deleted=TRUE WHERE id IN (?, ?)", detailId, thirdId);
+        mockMvc.perform(get("/api/v1/cases/list").param("keyword", "三张"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.list[0].imageCount").value(0))
+                .andExpect(jsonPath("$.data.list[0].coverImage").doesNotExist());
     }
 
     private long insertImage(String name, long size) {

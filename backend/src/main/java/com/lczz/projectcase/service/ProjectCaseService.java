@@ -92,7 +92,7 @@ public class ProjectCaseService {
         return projectCases.stream().map(projectCase -> {
             List<FileView> files = images.getOrDefault(projectCase.getId(), List.of());
             return new ProjectCaseSummaryView(projectCase.getId(), projectCase.getSiteName(),
-                    files.isEmpty() ? null : files.getFirst(), projectCase.getUpdatedAt());
+                    files.isEmpty() ? null : files.getFirst(), files.size(), projectCase.getUpdatedAt());
         }).toList();
     }
 
@@ -111,8 +111,12 @@ public class ProjectCaseService {
                 .orderByAsc(FileRelationRecord::getSortOrder)
                 .orderByAsc(FileRelationRecord::getId));
         if (relations.isEmpty()) return Map.of();
-        Map<Long, FileService.FileView> files = fileService.issueAccessMap(actor, relations.stream()
-                .map(FileRelationRecord::getFileId).collect(Collectors.toSet()));
+        List<Long> imageIds = relations.stream().map(FileRelationRecord::getFileId).distinct().toList();
+        List<Long> availableImageIds = fileMapper.selectBatchIds(imageIds).stream()
+                .filter(file -> !Boolean.TRUE.equals(file.getDeleted()))
+                .map(FileAssetRecord::getId).toList();
+        if (availableImageIds.isEmpty()) return Map.of();
+        Map<Long, FileService.FileView> files = fileService.issueAccessMap(actor, availableImageIds);
         Map<Long, List<FileView>> result = new java.util.HashMap<>();
         for (FileRelationRecord relation : relations) {
             FileService.FileView file = files.get(relation.getFileId());
@@ -167,7 +171,8 @@ public class ProjectCaseService {
 
     public record ProjectCaseCommand(String siteName, List<Long> imageFileIds) { }
     public record ProjectCasePage(List<ProjectCaseSummaryView> list, long total, int page, int pageSize) { }
-    public record ProjectCaseSummaryView(long id, String siteName, FileView coverImage, LocalDateTime updatedAt) { }
+    public record ProjectCaseSummaryView(long id, String siteName, FileView coverImage, int imageCount,
+                                         LocalDateTime updatedAt) { }
     public record ProjectCaseDetailView(long id, String siteName, List<FileView> images,
                                         LocalDateTime createdAt, LocalDateTime updatedAt) { }
     public record FileView(long id, String url, String thumbnailUrl,
