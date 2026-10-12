@@ -166,6 +166,7 @@
 								<image v-else class="preview-img" :src="media.thumbnailUrl || media.displayUrl || media.url"
 									mode="aspectFill" lazy-load
 									@click="previewRecordImages(record.images, record.images.findIndex(item => item.id === media.id))"></image>
+								<text class="record-media-time" v-if="media.uploadedAt">{{ media.uploadedAt }}</text>
 							</view>
 						</view>
 					</view>
@@ -1996,6 +1997,19 @@ const statusClass = computed(() => {
 	.preview-img {
 		width: 100%;
 		height: 100%;
+	}
+
+	.record-media-time {
+		position: absolute;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		padding: 8rpx 10rpx;
+		background: linear-gradient(transparent, rgba(15, 23, 42, 0.78));
+		color: #fff;
+		font-size: 18rpx;
+		line-height: 1.2;
+		text-align: center;
 	}
 
 	.image-delete {

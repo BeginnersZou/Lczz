@@ -38,7 +38,8 @@ const normalizeFile = (file = {}) => {
 		url: originalUrl,
 		originalUrl,
 		displayUrl,
-		thumbnailUrl
+		thumbnailUrl,
+		uploadedAt: formatDateTime(value.uploadedAt || value.createdAt || '')
 	}
 }
 
