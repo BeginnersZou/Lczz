@@ -22,8 +22,10 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.web.client.RestClient;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -48,6 +50,7 @@ class WorkProgressIntegrationTests {
     @Autowired WorkOrderMapper orderMapper;
     @Autowired JwtService jwtService;
     @Autowired ObjectMapper objectMapper;
+    @MockitoBean RestClient restClient;
 
     private long adminId;
     private long installerId;
@@ -175,7 +178,7 @@ class WorkProgressIntegrationTests {
                         .contentType("application/json").content("{\"description\":\"施工记录\"}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         long progressId = objectMapper.readTree(progressResponse).at("/data/id").asLong();
-        jdbcTemplate.update("UPDATE work_order SET order_status='COMPLETED' WHERE id=?", orderId);
+        jdbcTemplate.update("UPDATE work_order SET order_status='REVIEWED' WHERE id=?", orderId);
 
         MockMultipartFile adminImage = new MockMultipartFile("file", "admin-fix.png", "image/png", PNG);
         String uploadResponse = mockMvc.perform(multipart("/api/files/upload").file(adminImage)
