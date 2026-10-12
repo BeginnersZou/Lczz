@@ -72,13 +72,15 @@ public class MaterialRequestController {
     @GetMapping("/preparation/list")
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "管理员分页查询订单备货申请")
-    ApiResponse<?> list(@RequestParam(defaultValue = "1") @Min(1) int page,
-                                  @RequestParam(defaultValue = "10") @Min(1) @Max(100) int pageSize,
-                                  @RequestParam(required = false) @Size(max = 100) String keyword,
-                                  @RequestParam(required = false) @Size(max = 32) String status,
-                                  @RequestParam(required = false) @Size(max = 1) String source,
-                                  HttpServletRequest request) {
-        return ApiResponse.success(unifiedService.list(page, pageSize, keyword, status, source), requestId(request));
+    ApiResponse<?> list(@AuthenticationPrincipal AuthenticatedUser actor,
+                        @RequestParam(defaultValue = "1") @Min(1) int page,
+                        @RequestParam(defaultValue = "10") @Min(1) @Max(100) int pageSize,
+                        @RequestParam(required = false) @Size(max = 100) String keyword,
+                        @RequestParam(required = false) @Size(max = 32) String status,
+                        @RequestParam(required = false) @Size(max = 1) String source,
+                        HttpServletRequest request) {
+        return ApiResponse.success(unifiedService.listForAdmin(actor, page, pageSize, keyword, status, source),
+                requestId(request));
     }
 
     @GetMapping("/preparation/detail/{id}")
@@ -92,25 +94,27 @@ public class MaterialRequestController {
         // The unified preparation page always sends W/A explicitly.
         Object detail = source == null || source.isBlank()
                 ? service.detailForAdmin(actor, id)
-                : unifiedService.detail(source, id);
+                : unifiedService.detailForAdmin(actor, source, id);
         return ApiResponse.success(detail, requestId(request));
     }
 
     @GetMapping("/preparation/export")
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "管理员按当前筛选导出W/A备货总表")
-    ResponseEntity<byte[]> export(@RequestParam(required = false) @Size(max = 100) String keyword,
+    ResponseEntity<byte[]> export(@AuthenticationPrincipal AuthenticatedUser actor,
+                                  @RequestParam(required = false) @Size(max = 100) String keyword,
                                   @RequestParam(required = false) @Size(max = 32) String status,
                                   @RequestParam(required = false) @Size(max = 1) String source) {
-        return download(unifiedService.exportList(keyword, status, source));
+        return download(unifiedService.exportListForAdmin(actor, keyword, status, source));
     }
 
     @GetMapping("/preparation/{source}/{id}/export")
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "管理员导出单个W/A备货明细")
-    ResponseEntity<byte[]> exportDetail(@PathVariable @Size(max = 1) String source,
+    ResponseEntity<byte[]> exportDetail(@AuthenticationPrincipal AuthenticatedUser actor,
+                                        @PathVariable @Size(max = 1) String source,
                                         @PathVariable @Min(1) long id) {
-        return download(unifiedService.exportDetail(source, id));
+        return download(unifiedService.exportDetailForAdmin(actor, source, id));
     }
 
     @PostMapping("/preparation/{id}/prepare")

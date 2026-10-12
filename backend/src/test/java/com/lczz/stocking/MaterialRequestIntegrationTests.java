@@ -388,6 +388,61 @@ class MaterialRequestIntegrationTests {
     }
 
     @Test
+    void adminCompletesMobilePreparationFlowWhileOtherRolesRemainForbidden() throws Exception {
+        JsonNode request = submit(orderId, installerToken, itemsJson("2", "1"));
+        long requestId = request.path("id").asLong();
+        long firstItem = request.path("materials").get(0).path("id").asLong();
+        long secondItem = request.path("materials").get(1).path("id").asLong();
+
+        mockMvc.perform(get("/api/v1/preparation/list").param("source", "W")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.list[0].submitterName").value("张师傅"));
+        mockMvc.perform(get("/api/v1/preparation/detail/" + requestId).param("source", "W")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.materials").isArray())
+                .andExpect(jsonPath("$.data.materials.length()").value(2));
+
+        String partial = "{\"materials\":[{\"id\":" + firstItem + ",\"checked\":true},{\"id\":"
+                + secondItem + ",\"checked\":false}]}";
+        mockMvc.perform(post("/api/v1/preparation/" + requestId + "/prepare")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType("application/json").content(partial))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.statusCode").value("PREPARING"));
+
+        for (String forbidden : new String[] {installerToken, token(customerId, RoleCode.CUSTOMER),
+                token(dealerId, RoleCode.DEALER)}) {
+            mockMvc.perform(get("/api/v1/preparation/list").param("source", "W")
+                            .header("Authorization", "Bearer " + forbidden))
+                    .andExpect(status().isForbidden());
+            mockMvc.perform(get("/api/v1/preparation/detail/" + requestId).param("source", "W")
+                            .header("Authorization", "Bearer " + forbidden))
+                    .andExpect(status().isForbidden());
+            mockMvc.perform(post("/api/v1/preparation/" + requestId + "/prepare")
+                            .header("Authorization", "Bearer " + forbidden)
+                            .contentType("application/json").content(partial))
+                    .andExpect(status().isForbidden());
+            mockMvc.perform(post("/api/v1/preparation/" + requestId + "/finish")
+                            .header("Authorization", "Bearer " + forbidden))
+                    .andExpect(status().isForbidden());
+        }
+
+        String complete = "{\"materials\":[{\"id\":" + firstItem + ",\"checked\":true},{\"id\":"
+                + secondItem + ",\"checked\":true}]}";
+        mockMvc.perform(post("/api/v1/preparation/" + requestId + "/prepare")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType("application/json").content(complete))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/v1/preparation/" + requestId + "/finish")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.statusCode").value("DONE"))
+                .andExpect(jsonPath("$.data.completedBy").value(adminId));
+    }
+
+    @Test
     void multiSkuMaterialRequiresConcreteSkuAndOnlyChangesThatSkuStock() throws Exception {
         jdbcTemplate.update("""
                 INSERT INTO product_sku(product_id,sku_code,spec_signature,spec_signature_hash,spec_label,unit,stock,
