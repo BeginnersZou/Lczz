@@ -21,6 +21,8 @@
             </el-icon>订单基础信息</span>
         </template>
 
+        <el-form-item v-if="isEdit" label="订单来源"><OrderOrigin :order="orderOrigin" /></el-form-item>
+        <el-alert v-if="orderOrigin.statusCode === 'PENDING_ASSIGNMENT'" title="请核对经销商提交的信息，补充订单时间并指派师傅后提交。" type="info" :closable="false" show-icon style="margin-bottom:24px" />
         <!-- 任务类型下拉 -->
         <el-form-item label="任务类型" prop="taskType">
           <el-select v-model="form.taskType" placeholder="请选择任务类型" class="input-base" style="width: 100%">
@@ -33,7 +35,7 @@
 
         <!-- 描述 -->
         <el-form-item label="描述" prop="description">
-          <el-input v-model="form.description" type="textarea" :rows="3" maxlength="200" show-word-limit placeholder="请填写空调型号、故障或施工要求" class="textarea-base" />
+          <el-input v-model="form.description" type="textarea" :rows="3" maxlength="1000" show-word-limit placeholder="请填写空调型号、故障或施工要求" class="textarea-base" />
         </el-form-item>
 
         <!-- 客户姓名 -->
@@ -60,6 +62,11 @@
             </div>
             <el-input v-model="form.addressDetail" placeholder="详细街道门牌号" class="city-detail" />
           </div>
+        </el-form-item>
+
+        <el-form-item label="项目地址">
+          <el-input v-model="form.projectAddress" maxlength="500" show-word-limit
+            placeholder="请输入项目名称、园区或施工地点" class="input-base" />
         </el-form-item>
 
         <!-- 订单时间 双日期框 -->
@@ -205,6 +212,9 @@ import {
 } from '@/api/orders'
 import { getRegionTreeApi } from '@/api/regions'
 import { useUnsavedChanges } from '@/composables/useUnsavedChanges'
+import OrderOrigin from './OrderOrigin.vue'
+
+const orderOrigin = ref({})
 
 const router = useRouter()
 const route = useRoute()
@@ -246,6 +256,7 @@ const form = reactive({
   customerPhone: '',
   addressArea: [],
   addressDetail: '',
+  projectAddress: '',
   orderStartTime: '',
   orderEndTime: '',
   images: [],
@@ -261,7 +272,7 @@ const rules = {
   taskType: [{ required: true, message: '请选择任务类型', trigger: 'change' }],
   customerName: [
     { required: true, message: '请输入客户姓名', trigger: 'blur' },
-    { min: 2, max: 20, message: '姓名长度2~20字符', trigger: 'blur' }
+    { min: 1, max: 64, message: '姓名长度1~64字符', trigger: 'blur' }
   ],
   customerPhone: [
     { required: true, message: '请输入客户手机号', trigger: 'blur' },
@@ -338,16 +349,18 @@ async function loadEditData() {
   loadError.value = ''
   try {
     const res = await getOrderDetailApi(orderId.value)
+    orderOrigin.value = { orderSource: res.orderSource, dealerName: res.dealerName, statusCode: res.statusCode }
     pendingUnbindFileIds.value = []
     // 回显 fileList：远程图片 url 直接作为 previewUrl，file 为 null
     const remoteFiles = res.fileList || res.images || []
     const fileList = remoteFiles.map(item => {
-      const url = typeof item === 'string' ? item : (item.url || item.previewUrl)
+      const url = typeof item === 'string' ? item : (item.originalUrl || item.url || item.previewUrl)
+      const previewUrl = typeof item === 'string' ? item : (item.thumbnailUrl || item.displayUrl || url)
       return {
         uid: fileUid++,
         id: typeof item === 'string' ? null : item.id,
         file: null,
-        previewUrl: url,
+        previewUrl,
         url,
         bound: true,
         uploading: false
@@ -359,6 +372,7 @@ async function loadEditData() {
       description: res.description || '',
       addressArea: res.addressArea || [],
       addressDetail: res.addressDetail || '',
+      projectAddress: res.projectAddress || '',
       orderStartTime: res.orderStartTime || '',
       orderEndTime: res.orderEndTime || '',
       customerName: res.customerName || '',
@@ -548,8 +562,8 @@ async function handleFileUpload(event) {
       // 上传成功：用真实 url 替换预览，释放临时 blob
       URL.revokeObjectURL(item.previewUrl)
       item.id = res.id
-      item.url = res.url
-      item.previewUrl = res.url
+      item.url = res.originalUrl || res.url
+      item.previewUrl = res.thumbnailUrl || res.displayUrl || item.url
       item.file = null
       item.uploading = false
     } catch {
@@ -611,6 +625,7 @@ async function handleSubmit() {
       customerPhone: form.customerPhone,
       addressArea: form.addressArea,
       addressDetail: form.addressDetail,
+      projectAddress: form.projectAddress,
       orderStartTime: form.orderStartTime,
       orderEndTime: form.orderEndTime,
       masterIds: selectedMasterList.value.map(m => m.id).filter(id => id != null),

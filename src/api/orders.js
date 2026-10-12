@@ -2,20 +2,29 @@ import request from '@/utils/request'
 import { bindFileApi, getFileId, unbindFileApi, uploadFileApi } from './files'
 import { createCsvBlob } from '@/utils/export'
 
+function normalizeFile(file = {}) {
+  const value = typeof file === 'string' ? { url: file } : file
+  const originalUrl = value.originalUrl || value.url || ''
+  return {
+    ...value,
+    id: getFileId(value),
+    url: originalUrl,
+    originalUrl,
+    displayUrl: value.displayUrl || originalUrl,
+    thumbnailUrl: value.thumbnailUrl || value.displayUrl || originalUrl
+  }
+}
+
 function normalizeOrder(item = {}) {
   const masters = item.selectedMasterList || item.masterList || []
   return {
     ...item,
     taskType: item.taskType || item.productName || '',
-    status: item.status || item.statusLabel || item.statusCode || '',
+    status: item.statusCode || item.status || item.statusLabel || '',
     assignMaster: masters.map(master => master.masterName).filter(Boolean).join('、'),
     createTime: item.createTime || item.createdAt || '',
     visitTime: item.visitTime || item.orderStartTime || '',
-    fileList: (item.fileList || item.images || []).map(file => ({
-      ...file,
-      id: getFileId(file),
-      url: typeof file === 'string' ? file : (file.url || '')
-    }))
+    fileList: (item.fileList || item.images || []).map(normalizeFile)
   }
 }
 
@@ -48,6 +57,7 @@ async function getAllOrders(params = {}) {
  * @param {number} [params.page=1]
  * @param {number} [params.pageSize=10]
  * @param {string} [params.keyword] - 订单号/客户姓名/手机号
+ * @param {string} [params.projectAddress] - 项目地址关键字
  * @param {string} [params.status] - 订单状态
  * @param {string} [params.startDate] - 起始日期
  * @param {string} [params.endDate] - 截止日期
@@ -71,6 +81,14 @@ export function getOrderDetailApi(id) {
     url: `/orders/detail/${id}`,
     method: 'get'
   }).then(normalizeOrder)
+}
+
+/** 管理员只读详情：订单、施工进度、全部耗材申请及评价。 */
+export function getAdminOrderDetailApi(id) {
+  return request({
+    url: `/admin/orders/${encodeURIComponent(id)}`,
+    method: 'get'
+  })
 }
 
 /**
@@ -210,8 +228,10 @@ export async function exportOrdersApi(params) {
     { label: '客户姓名', value: row => row.customerName },
     { label: '客户手机号', value: row => row.customerPhone },
     { label: '地址', value: row => row.address },
+    { label: '项目地址', value: row => row.projectAddress },
     { label: '安装师傅', value: row => row.assignMaster },
-    { label: '状态', value: row => row.status },
+    { label: '状态', value: row => ({ PENDING_VISIT: '待上门', IN_PROGRESS: '处理中', PENDING_REVIEW: '待评价', REVIEWED: '已评价', CANCELLED: '已作废' })[row.status] || row.status },
+    { label: '客户确认时间', value: row => row.customerConfirmedAt },
     { label: '创建时间', value: row => row.createTime }
   ], rows)
 }

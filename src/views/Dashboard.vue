@@ -137,7 +137,7 @@ const statCards = computed(() => [
   { key: 'pendingAssign', label: '待派单', hint: '需要尽快处理', route: { name: 'Orders', query: { status: 'PENDING_VISIT' } } },
   { key: 'processingOrders', label: '进行中', hint: '跟进施工进度', route: { name: 'Orders', query: { status: 'IN_PROGRESS' } } },
   { key: 'completedOrders', label: '已完成', hint: '查看完成情况', route: { name: 'Orders', query: { status: 'PENDING_REVIEW' } } },
-  { key: 'lowStock', label: '库存预警', hint: '处理缺货耗材', route: { name: 'Consumables', query: { stockStatus: 'low' } } }
+  { key: 'lowStock', label: '库存预警', hint: '处理缺货及低库存耗材', route: { name: 'Consumables', query: { stockStatus: 'warning' } } }
 ])
 
 // 活跃度图表数据（xAxis + series values）

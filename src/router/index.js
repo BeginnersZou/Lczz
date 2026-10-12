@@ -36,6 +36,12 @@ const routes = [
         component: () => import('@/views/orders/OrderForm.vue'),
         meta: { title: '新增订单' }
       },
+      {
+        path: 'orders/detail/:id',
+        name: 'OrderDetail',
+        component: () => import('@/views/orders/OrderDetail.vue'),
+        meta: { title: '订单详情' }
+      },
       //编辑订单（与新增共用 OrderForm.vue，通过 route.params.id 判断编辑态）
       {
         path: 'orders/form/:id',
@@ -78,6 +84,30 @@ const routes = [
         name: 'Users',
         component: () => import('@/views/users/UserList.vue'),
         meta: { title: '用户管理' }
+      },
+      {
+        path: 'cases',
+        name: 'ProjectCases',
+        component: () => import('@/views/cases/CaseList.vue'),
+        meta: { title: '项目案例' }
+      },
+      {
+        path: 'cases/form',
+        name: 'ProjectCaseForm',
+        component: () => import('@/views/cases/CaseForm.vue'),
+        meta: { title: '新增项目案例' }
+      },
+      {
+        path: 'cases/form/:id',
+        name: 'ProjectCaseEdit',
+        component: () => import('@/views/cases/CaseForm.vue'),
+        meta: { title: '修改项目案例' }
+      },
+      {
+        path: 'service',
+        name: 'ServiceManagement',
+        component: () => import('@/views/service/ServiceManagement.vue'),
+        meta: { title: '服务管理' }
       }
     ]
   },

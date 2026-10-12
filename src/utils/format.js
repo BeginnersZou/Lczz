@@ -37,8 +37,7 @@ export function formatDate(value) {
 
 export function formatPhone(value) {
   const phone = value == null ? '' : String(value).trim()
-  if (!phone) return '-'
-  return /^1\d{10}$/.test(phone) ? `${phone.slice(0, 3)}****${phone.slice(-4)}` : phone
+  return phone || '-'
 }
 
 export function formatNumber(value, fallback = '0') {

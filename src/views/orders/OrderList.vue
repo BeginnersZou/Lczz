@@ -28,9 +28,16 @@
               </el-icon>
             </template>
           </el-input>
+          <el-input v-model="searchProjectAddress" placeholder="输入项目地址检索" clearable class="search-input"
+            @keyup.enter="handleSearch">
+            <template #prefix>
+              <el-icon><Search /></el-icon>
+            </template>
+          </el-input>
           <el-select v-model="searchStatus" placeholder="全部状态" clearable class="status-select" @change="handleSearch">
             <el-option label="待上门" value="PENDING_VISIT" />
             <el-option label="处理中" value="IN_PROGRESS" />
+            <el-option label="已完成" value="COMPLETED" />
             <el-option label="待评价" value="PENDING_REVIEW" />
             <el-option label="已评价" value="REVIEWED" />
             <el-option label="已作废" value="CANCELLED" />
@@ -88,6 +95,12 @@
             <div class="secondary-cell">{{ formatPhone(scope.row.customerPhone) }}</div>
           </template>
         </el-table-column>
+        <el-table-column prop="projectAddress" label="项目地址" align="left" min-width="220" show-overflow-tooltip>
+          <template #default="scope">{{ scope.row.projectAddress || '-' }}</template>
+        </el-table-column>
+        <el-table-column label="订单来源" min-width="180">
+          <template #default="{ row }"><OrderOrigin :order="row" /></template>
+        </el-table-column>
         <el-table-column prop="assignMaster" label="指派师傅" align="left" min-width="160" show-overflow-tooltip>
           <template #default="scope">{{ scope.row.assignMaster || scope.row.masterName || '待指派' }}</template>
         </el-table-column>
@@ -96,18 +109,19 @@
             <el-tag :type="getStatusType(scope.row.status)" size="small">{{ getStatusText(scope.row.status) }}</el-tag>
           </template>
         </el-table-column>
-        <!-- 创建时间 -->
-        <el-table-column prop="createTime" label="创建时间" align="left" width="180">
+        <el-table-column label="创建 / 客户确认时间" align="left" width="200">
           <template #default="scope">
-            <span class="datetime-cell">{{ formatDateTime(scope.row.createTime) }}</span>
+            <div class="datetime-cell">创建：{{ formatDateTime(scope.row.createTime) }}</div>
+            <div class="datetime-cell">确认：{{ formatDateTime(scope.row.customerConfirmedAt) }}</div>
           </template>
         </el-table-column>
-        <!-- 操作：修改+删除 -->
-        <el-table-column label="操作" align="center" width="240" fixed="right">
+        <!-- 操作：查看、修改与作废 -->
+        <el-table-column label="操作" align="center" width="330" fixed="right">
           <template #default="scope">
             <div class="table-actions">
+              <el-button text type="primary" @click="router.push({ name: 'OrderDetail', params: { id: scope.row.id }, query: route.query })">查看详情</el-button>
               <el-button v-if="isReviewedStatus(scope.row.status)" text type="success" @click="handleViewReview(scope.row)">查看评价</el-button>
-              <el-button text type="primary" @click="handleEditOrder(scope.row)">修改</el-button>
+              <el-button text type="primary" @click="handleEditOrder(scope.row)">{{ scope.row.status === 'PENDING_ASSIGNMENT' ? '完善并派单' : '修改' }}</el-button>
               <el-button v-if="!isCancelled(scope.row.status)" text type="danger" @click="handleDeleteOrder(scope.row)">作废</el-button>
             </div>
           </template>
@@ -149,9 +163,10 @@
             <el-tag v-for="label in reviewData.labels" :key="label" type="primary" effect="light">{{ label }}</el-tag>
           </div>
           <div class="review-content-box">{{ reviewData.content || '用户未填写文字评价' }}</div>
-          <div v-if="reviewData.images?.length" class="review-image-list">
-            <el-image v-for="(image, index) in reviewData.images" :key="image" :src="image" fit="cover"
-              :preview-src-list="reviewData.images" :initial-index="index" preview-teleported />
+          <div v-if="reviewImages.length" class="review-image-list">
+            <el-image v-for="(image, index) in reviewImages" :key="image.id || image.url || index"
+              :src="image.thumbnailUrl || image.displayUrl || image.originalUrl || image.url" fit="cover" lazy
+              :preview-src-list="reviewPreviewImages" :initial-index="index" preview-teleported />
           </div>
         </template>
         <el-empty v-else-if="!reviewLoading" description="该订单暂无评价内容" :image-size="80" />
@@ -164,7 +179,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
   Plus, Search, Refresh, Download, DocumentCopy
@@ -172,12 +187,14 @@ import {
 import { useRouter, useRoute } from 'vue-router'
 import { getOrderListApi, cancelOrderApi, exportOrdersApi, getOrderEvaluationApi } from '@/api/orders'
 import { formatDateTime, formatPhone } from '@/utils/format'
+import OrderOrigin from './OrderOrigin.vue'
 
 const router = useRouter()
 const route = useRoute()
 
 // 搜索条件
 const searchKeyword = ref(typeof route.query.keyword === 'string' ? route.query.keyword : '')
+const searchProjectAddress = ref(typeof route.query.projectAddress === 'string' ? route.query.projectAddress : '')
 const searchStatus = ref(typeof route.query.status === 'string' ? route.query.status : '')
 // 分页基础数据
 const currentPage = ref(Number(route.query.page) || 1)
@@ -200,6 +217,14 @@ const reviewDialogVisible = ref(false)
 const reviewLoading = ref(false)
 const reviewData = ref(null)
 const reviewOrder = ref(null)
+const reviewImages = computed(() => {
+  if (Array.isArray(reviewData.value?.imageFiles) && reviewData.value.imageFiles.length) {
+    return reviewData.value.imageFiles
+  }
+  return (reviewData.value?.images || []).map(url => ({ url, originalUrl: url }))
+})
+const reviewPreviewImages = computed(() => reviewImages.value
+  .map(image => image.originalUrl || image.url).filter(Boolean))
 
 // 订单列表（数据全部来自接口）
 const orders = ref([])
@@ -216,6 +241,7 @@ async function loadList() {
       page: currentPage.value,
       pageSize: pageSize.value,
       keyword: searchKeyword.value,
+      projectAddress: searchProjectAddress.value || undefined,
       status: searchStatus.value || undefined
     })
     orders.value = res.list || []
@@ -230,6 +256,7 @@ async function loadList() {
 function syncRouteState() {
   router.replace({ query: {
     ...(searchKeyword.value.trim() ? { keyword: searchKeyword.value.trim() } : {}),
+    ...(searchProjectAddress.value.trim() ? { projectAddress: searchProjectAddress.value.trim() } : {}),
     ...(searchStatus.value ? { status: searchStatus.value } : {}),
     ...(currentPage.value > 1 ? { page: currentPage.value } : {}),
     ...(pageSize.value !== 10 ? { pageSize: pageSize.value } : {})
@@ -249,6 +276,7 @@ function handleSearch() {
  */
 function handleReset() {
   searchKeyword.value = ''
+  searchProjectAddress.value = ''
   searchStatus.value = ''
   currentPage.value = 1
   loadList()
@@ -261,7 +289,11 @@ async function handleBatchExport() {
   if (exportLoading.value) return
   exportLoading.value = true
   try {
-    const blob = await exportOrdersApi({ keyword: searchKeyword.value, status: searchStatus.value || undefined })
+    const blob = await exportOrdersApi({
+      keyword: searchKeyword.value,
+      projectAddress: searchProjectAddress.value || undefined,
+      status: searchStatus.value || undefined
+    })
     const url = window.URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
@@ -384,11 +416,13 @@ async function copyOrderId(id) {
 }
 
 function getStatusText(status) {
+  if (status === 'PENDING_ASSIGNMENT') return '待派单'
   const map = { pending: '待上门', assigned: '待上门', processing: '处理中', completed: '已完成', cancelled: '已作废', canceled: '已作废', PENDING_VISIT: '待上门', IN_PROGRESS: '处理中', PENDING_REVIEW: '待评价', REVIEWED: '已评价', CANCELLED: '已作废' }
   return map[status] || status || '待处理'
 }
 
 function getStatusType(status) {
+  if (status === 'PENDING_ASSIGNMENT') return 'warning'
   const map = { pending: 'warning', assigned: 'warning', processing: 'primary', completed: 'success', cancelled: 'info', canceled: 'info', '待上门': 'warning', '处理中': 'primary', '已完成': 'success', '待评价': 'warning', '已评价': 'success', '已作废': 'info', PENDING_VISIT: 'warning', IN_PROGRESS: 'primary', PENDING_REVIEW: 'warning', REVIEWED: 'success', CANCELLED: 'info' }
   return map[status] || 'warning'
 }
