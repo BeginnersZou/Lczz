@@ -427,10 +427,13 @@ public class FileService {
                             + "WHERE p.id=? AND o.deleted=0 FOR UPDATE", progressId);
             if (orders.isEmpty()) return false;
             Map<String, Object> order = orders.getFirst();
+            // 管理员需要能在小程序中更正历史施工照片；订单封存仅限制安装师傅，
+            // 不能把后台/管理端的数据修正能力一并锁死。
+            if (actor.hasRole(RoleCode.ADMIN)) return true;
             boolean assignedAuthor = actor.hasRole(RoleCode.INSTALLER)
                     && ((Number) order.get("installer_user_id")).longValue() == actor.userId()
                     && ((Number) order.get("progress_installer_id")).longValue() == actor.userId();
-            if (!actor.hasRole(RoleCode.ADMIN) && !assignedAuthor) return false;
+            if (!assignedAuthor) return false;
             if (!Set.of("PENDING_VISIT", "IN_PROGRESS").contains(order.get("order_status"))) {
                 throw new BusinessException(409, "PROGRESS_SEALED", "该订单施工进度已封存，不能修改附件");
             }
@@ -682,7 +685,7 @@ public class FileService {
     private record ValidatedFile(String originalName, String extension, String mimeType, long maxBytes) { }
     public record RelationCommand(String businessType, Long businessId, String usageType, Integer sortOrder) { }
     public record FileView(long id, String originalName, String mimeType, long size, String sha256,
-                           String url, java.time.LocalDateTime createdAt, String thumbnailUrl,
+                           String url, LocalDateTime createdAt, String thumbnailUrl,
                            String displayUrl, String originalUrl) { }
     public record FileContent(FileAssetRecord metadata, Resource resource) { }
 }

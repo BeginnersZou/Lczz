@@ -172,7 +172,7 @@ public class WorkProgressService {
                     if (file != null) {
                         grouped.computeIfAbsent(link.getBusinessId(), ignored -> new ArrayList<>())
                                 .add(new ProgressFileView(file.id(), file.originalName(), file.mimeType(), file.url(),
-                                        file.thumbnailUrl(), file.displayUrl(), file.originalUrl()));
+                                        file.thumbnailUrl(), file.displayUrl(), file.originalUrl(), file.createdAt()));
                     }
                 });
         return records.stream().map(record -> new ProgressView(record.getId(), record.getOrderId(),
@@ -182,7 +182,8 @@ public class WorkProgressService {
 
     public record ProgressCommand(String description, List<Long> fileIds) { }
     public record ProgressFileView(long id, String originalName, String mimeType, String url,
-                                   String thumbnailUrl, String displayUrl, String originalUrl) { }
+                                   String thumbnailUrl, String displayUrl, String originalUrl,
+                                   LocalDateTime uploadedAt) { }
     public record ProgressView(long id, long orderId, long installerUserId, String type, String description,
                                List<ProgressFileView> images, @UtcTime LocalDateTime submittedAt) { }
 }

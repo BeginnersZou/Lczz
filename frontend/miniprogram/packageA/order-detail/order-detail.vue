@@ -159,6 +159,14 @@
 							<text class="progress-time">{{ record.submittedAt }}</text>
 						</view>
 						<text class="progress-description">{{ record.description }}</text>
+						<view class="progress-admin-actions" v-if="isAdmin">
+							<view class="progress-admin-button"
+								:class="{ disabled: adminProgressBusyId !== null || record.media.length >= 9 }"
+								@click="chooseAdminProgressImages(record)">
+								<up-icon name="plus" size="14" color="#0b63ce"></up-icon>
+								<text>{{ record.media.length >= 9 ? '附件已达9个' : '添加照片' }}</text>
+							</view>
+						</view>
 						<view class="image-grid" v-if="record.media.length">
 							<view class="image-item" v-for="(media, mediaIndex) in record.media" :key="media.id">
 								<video v-if="media.mimeType?.startsWith('video/')" class="preview-img" :src="media.url"
@@ -166,6 +174,12 @@
 								<image v-else class="preview-img" :src="media.thumbnailUrl || media.displayUrl || media.url"
 									mode="aspectFill" lazy-load
 									@click="previewRecordImages(record.images, record.images.findIndex(item => item.id === media.id))"></image>
+								<view class="record-media-delete" v-if="isAdmin && !media.mimeType?.startsWith('video/')"
+									:class="{ disabled: adminProgressBusyId !== null }"
+									@click.stop="removeAdminProgressImage(record, media)">
+									<up-icon name="close" size="13" color="#fff"></up-icon>
+								</view>
+								<text class="record-media-time" v-if="media.uploadedAt">{{ media.uploadedAt }}</text>
 							</view>
 						</view>
 					</view>
@@ -434,6 +448,7 @@
 	const userRole = ref('')
 	const currentUserId = ref(null)
 	const confirmingCompletion = ref(false)
+	const isAdmin = computed(() => userRole.value === 'admin')
 	const isInstaller = computed(() => userRole.value === 'installer')
 	const isReviewer = computed(() => userRole.value === 'customer')
 	const isBoundCustomer = computed(() => isReviewer.value && currentUserId.value != null &&
@@ -523,11 +538,83 @@ const statusClass = computed(() => {
 		if (isUploadingProgressMedia.value || failedProgressMediaCount.value > 0) return false
 		return true
 	})
+	const adminProgressBusyId = ref(null)
 
 	const previewRecordImages = (images, index) => {
 		if (index < 0 || images.length === 0) return
 		const urls = images.map(image => image.originalUrl || image.url)
 		uni.previewImage({ current: urls[index], urls })
+	}
+
+	const chooseAdminProgressImages = (record) => {
+		if (!isAdmin.value || adminProgressBusyId.value !== null) return
+		const remaining = 9 - Number(record.media?.length || 0)
+		if (remaining <= 0) {
+			uni.showToast({ title: '本条施工记录最多9个附件', icon: 'none' })
+			return
+		}
+		uni.chooseImage({
+			count: remaining,
+			sizeType: ['original', 'compressed'],
+			sourceType: ['album', 'camera'],
+			success: async ({ tempFiles = [], tempFilePaths = [] }) => {
+				const selected = tempFiles.length
+					? tempFiles.map((file, index) => ({ path: file.path || file.tempFilePath || tempFilePaths[index], size: Number(file.size || 0) }))
+					: tempFilePaths.map(path => ({ path, size: 0 }))
+				const valid = selected.filter(file => file.path && file.size <= 10 * 1024 * 1024)
+				const oversized = selected.length - valid.length
+				if (!valid.length) {
+					if (oversized) uni.showToast({ title: '单张图片不能超过10MB', icon: 'none' })
+					return
+				}
+				adminProgressBusyId.value = record.id
+				let successCount = 0
+				try {
+					for (let index = 0; index < valid.length; index++) {
+						const response = await uploadApi.uploadImage(valid[index].path, {
+							businessType: 'PROGRESS',
+							businessId: String(record.id),
+							usageType: 'PROGRESS',
+							sortOrder: String(Number(record.media?.length || 0) + successCount)
+						}, { loading: false, showError: false })
+						if (response.code === 200) successCount++
+					}
+					await refreshOrderStatus()
+					const failed = valid.length - successCount
+					const title = failed ? `成功${successCount}张，失败${failed}张` : `已添加${successCount}张照片`
+					uni.showToast({ title, icon: failed ? 'none' : 'success' })
+					if (oversized) setTimeout(() => uni.showToast({ title: `${oversized}张图片超过10MB已忽略`, icon: 'none' }), 1200)
+				} finally {
+					adminProgressBusyId.value = null
+				}
+			},
+			fail: (error) => {
+				if (!String(error?.errMsg || '').includes('cancel')) {
+					uni.showToast({ title: '选择图片失败，请重试', icon: 'none' })
+				}
+			}
+		})
+	}
+
+	const removeAdminProgressImage = (record, media) => {
+		if (!isAdmin.value || adminProgressBusyId.value !== null || !media?.id) return
+		uni.showModal({
+			title: '删除施工照片',
+			content: '仅解除这张照片与当前施工记录的关联，确定继续吗？',
+			success: async ({ confirm }) => {
+				if (!confirm || adminProgressBusyId.value !== null) return
+				adminProgressBusyId.value = record.id
+				try {
+					const response = await uploadApi.unbindProgressMedia(media.id, record.id, { loading: false })
+					if (response.code === 200) {
+						await refreshOrderStatus()
+						uni.showToast({ title: '照片已删除', icon: 'success' })
+					}
+				} finally {
+					adminProgressBusyId.value = null
+				}
+			}
+		})
 	}
 
 	const goEvaluate = () => {
@@ -1985,6 +2072,26 @@ const statusClass = computed(() => {
 		gap: 16rpx;
 	}
 
+	.progress-admin-actions {
+		display: flex;
+		justify-content: flex-end;
+		margin: 16rpx 0;
+	}
+
+	.progress-admin-button {
+		display: inline-flex;
+		align-items: center;
+		gap: 6rpx;
+		padding: 10rpx 20rpx;
+		border-radius: 999rpx;
+		background: #eaf3ff;
+		color: $primary;
+		font-size: 22rpx;
+		font-weight: 600;
+
+		&.disabled { opacity: 0.45; }
+	}
+
 	.image-item {
 		position: relative;
 		width: 200rpx;
@@ -1996,6 +2103,35 @@ const statusClass = computed(() => {
 	.preview-img {
 		width: 100%;
 		height: 100%;
+	}
+
+	.record-media-delete {
+		position: absolute;
+		top: 8rpx;
+		right: 8rpx;
+		width: 38rpx;
+		height: 38rpx;
+		border-radius: 50%;
+		background: rgba(15, 23, 42, 0.75);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		box-shadow: 0 2rpx 8rpx rgba(15, 23, 42, 0.25);
+
+		&.disabled { opacity: 0.45; }
+	}
+
+	.record-media-time {
+		position: absolute;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		padding: 8rpx 10rpx;
+		background: linear-gradient(transparent, rgba(15, 23, 42, 0.78));
+		color: #fff;
+		font-size: 18rpx;
+		line-height: 1.2;
+		text-align: center;
 	}
 
 	.image-delete {
