@@ -92,6 +92,15 @@ export function getAdminOrderDetailApi(id) {
   })
 }
 
+export function getAdminOrderEditorApi(id) {
+  return request({ url: `/admin/orders/${encodeURIComponent(id)}/editor`, method: 'get' })
+    .then(result => ({ ...result, order: normalizeOrder(result.order) }))
+}
+
+export function saveAdminOrderEditorApi(id, data) {
+  return request({ url: `/admin/orders/${encodeURIComponent(id)}/editor`, method: 'put', data })
+}
+
 /**
  * 管理员查看指定订单的客户评价。
  * 评价内容属于后台管理信息，服务端会拒绝非管理员角色访问。

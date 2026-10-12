@@ -68,6 +68,37 @@ public class WorkProgressService {
         return toViews(actor, List.of(progress)).getFirst();
     }
 
+    @Transactional
+    public void editForAdmin(AuthenticatedUser actor, long orderId, long progressId,
+                              String description, List<Long> fileIds) {
+        if (actor == null || !actor.hasRole(RoleCode.ADMIN)) {
+            throw new BusinessException(403, "ADMIN_ORDER_EDIT_FORBIDDEN", "仅管理员可以编辑订单");
+        }
+        WorkOrderEntity order = orderMapper.selectForUpdate(orderId);
+        if (order == null) throw new BusinessException(404, "ORDER_NOT_FOUND", "订单不存在");
+        if ("CANCELLED".equals(order.getOrderStatus())) {
+            throw new BusinessException(409, "ORDER_NOT_EDITABLE", "已作废订单不能修改");
+        }
+        WorkOrderProgressEntity progress = progressMapper.selectById(progressId);
+        if (progress == null || !Objects.equals(progress.getOrderId(), orderId)) {
+            throw new BusinessException("PROGRESS_ORDER_MISMATCH", "施工记录不属于该订单");
+        }
+        if (description == null || description.isBlank() || description.length() > 2000) {
+            throw new BusinessException("INVALID_PROGRESS_DESCRIPTION", "请填写 1 至 2000 字的施工说明");
+        }
+        if (!Objects.equals(progress.getDescription(), description.trim())) {
+            progressMapper.update(null, new LambdaUpdateWrapper<WorkOrderProgressEntity>()
+                    .eq(WorkOrderProgressEntity::getId, progressId)
+                    .eq(WorkOrderProgressEntity::getOrderId, orderId)
+                    .set(WorkOrderProgressEntity::getDescription, description.trim()));
+        }
+        if (fileIds != null) {
+            fileService.replaceOrderEditorFiles(actor, orderId,
+                    new FileService.RelationCommand("PROGRESS", progressId, progress.getProgressType(), null),
+                    normalizeFiles(fileIds));
+        }
+    }
+
     private WorkOrderProgressEntity insert(AuthenticatedUser actor, long orderId, String type, String description) {
         WorkOrderProgressEntity record = new WorkOrderProgressEntity();
         record.setOrderId(orderId);
