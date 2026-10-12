@@ -11,6 +11,7 @@ import com.lczz.order.persistence.WorkOrderEntity;
 import com.lczz.order.persistence.WorkOrderMapper;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.Comparator;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
@@ -85,10 +86,14 @@ class WorkProgressIntegrationTests {
 
     @Test
     void installerCanSubmitMultipleProgressAndCustomerReadsChronologically() throws Exception {
-        mockMvc.perform(post("/api/orders/" + orderId + "/progress")
+        String firstResponse = mockMvc.perform(post("/api/orders/" + orderId + "/progress")
                         .header("Authorization", "Bearer " + installerToken).contentType("application/json")
                         .content("{\"description\":\"第一天完成管线铺设\"}"))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.data.type").value("PROGRESS"));
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.type").value("PROGRESS"))
+                .andReturn().getResponse().getContentAsString();
+        String submittedAt = objectMapper.readTree(firstResponse).at("/data/submittedAt").asText();
+        assertThat(submittedAt).endsWith("Z");
+        assertThat(Instant.parse(submittedAt)).isBeforeOrEqualTo(Instant.now());
         mockMvc.perform(post("/api/orders/" + orderId + "/progress")
                         .header("Authorization", "Bearer " + installerToken).contentType("application/json")
                         .content("{\"description\":\"第二天完成室外机安装\"}"))
@@ -119,6 +124,7 @@ class WorkProgressIntegrationTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.images.length()").value(3))
                 .andExpect(jsonPath("$.data.images[0].id").value(firstFileId))
+                .andExpect(jsonPath("$.data.images[0].uploadedAt").isString())
                 .andExpect(jsonPath("$.data.images[1].id").value(secondFileId))
                 .andExpect(jsonPath("$.data.images[2].id").value(thirdFileId));
 

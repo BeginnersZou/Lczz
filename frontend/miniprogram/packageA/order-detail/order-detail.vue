@@ -179,6 +179,7 @@
 									@click.stop="removeAdminProgressImage(record, media)">
 									<up-icon name="close" size="13" color="#fff"></up-icon>
 								</view>
+								<text class="record-media-time" v-if="media.uploadedAt">{{ media.uploadedAt }}</text>
 							</view>
 						</view>
 					</view>
@@ -2118,6 +2119,19 @@ const statusClass = computed(() => {
 		box-shadow: 0 2rpx 8rpx rgba(15, 23, 42, 0.25);
 
 		&.disabled { opacity: 0.45; }
+	}
+
+	.record-media-time {
+		position: absolute;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		padding: 8rpx 10rpx;
+		background: linear-gradient(transparent, rgba(15, 23, 42, 0.78));
+		color: #fff;
+		font-size: 18rpx;
+		line-height: 1.2;
+		text-align: center;
 	}
 
 	.image-delete {

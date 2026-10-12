@@ -15,6 +15,7 @@ import com.lczz.order.persistence.WorkOrderStatusHistoryEntity;
 import com.lczz.order.persistence.WorkOrderStatusHistoryMapper;
 import com.lczz.progress.persistence.WorkOrderProgressEntity;
 import com.lczz.progress.persistence.WorkOrderProgressMapper;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -171,17 +172,19 @@ public class WorkProgressService {
                     if (file != null) {
                         grouped.computeIfAbsent(link.getBusinessId(), ignored -> new ArrayList<>())
                                 .add(new ProgressFileView(file.id(), file.originalName(), file.mimeType(), file.url(),
-                                        file.thumbnailUrl(), file.displayUrl(), file.originalUrl()));
+                                        file.thumbnailUrl(), file.displayUrl(), file.originalUrl(), file.createdAt()));
                     }
                 });
         return records.stream().map(record -> new ProgressView(record.getId(), record.getOrderId(),
                 record.getInstallerUserId(), record.getProgressType(), record.getDescription(),
-                grouped.getOrDefault(record.getId(), List.of()), record.getSubmittedAt())).toList();
+                grouped.getOrDefault(record.getId(), List.of()),
+                record.getSubmittedAt().toInstant(ZoneOffset.UTC))).toList();
     }
 
     public record ProgressCommand(String description, List<Long> fileIds) { }
     public record ProgressFileView(long id, String originalName, String mimeType, String url,
-                                   String thumbnailUrl, String displayUrl, String originalUrl) { }
+                                   String thumbnailUrl, String displayUrl, String originalUrl,
+                                   Instant uploadedAt) { }
     public record ProgressView(long id, long orderId, long installerUserId, String type, String description,
-                               List<ProgressFileView> images, LocalDateTime submittedAt) { }
+                               List<ProgressFileView> images, Instant submittedAt) { }
 }
