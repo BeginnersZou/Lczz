@@ -181,7 +181,7 @@ import {
 } from '@element-plus/icons-vue'
 import { useRouter, useRoute } from 'vue-router'
 import { getConsumablesListApi, getConsumableCategoriesApi, deleteConsumablesApi, exportConsumablesApi, adjustConsumableStockApi, setConsumableEnabledApi, sortConsumableApi } from '@/api/consumables'
-import { formatDateTime } from '@/utils/format'
+import { formatDate, formatDateTime } from '@/utils/format'
 
 const router = useRouter()
 const route = useRoute()
@@ -276,7 +276,7 @@ async function handleBatchExport() {
     const url = window.URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `耗材列表_${new Date().toLocaleDateString('zh-CN').replace(/\//g, '')}.csv`
+    link.download = `耗材列表_${formatDate(new Date()).replace(/-/g, '')}.csv`
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)

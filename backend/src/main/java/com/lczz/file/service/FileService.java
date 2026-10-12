@@ -112,9 +112,6 @@ public class FileService {
             record.setFileSize(storedSize);
             record.setSha256(HexFormat.of().formatHex(digest.digest()));
             record.setUploadedBy(actor.userId());
-            // DATETIME 不携带时区；文件上传时统一写入 UTC，响应再返回 Instant，
-            // 避免数据库/设备时区不同导致跨日显示。
-            record.setCreatedAt(LocalDateTime.now(ZoneOffset.UTC));
             record.setDeleted(false);
             fileMapper.insert(record);
             record.setAccessUrl("/api/files/" + record.getId());
@@ -615,7 +612,7 @@ public class FileService {
         String displayUrl = image ? signedImageUrl(file.getId(), "display") : url;
         return new FileView(file.getId(), file.getOriginalName(), file.getMimeType(),
                 file.getFileSize() == null ? 0L : file.getFileSize(),
-                file.getSha256(), url, file.getCreatedAt().toInstant(ZoneOffset.UTC), thumbnailUrl, displayUrl, url);
+                file.getSha256(), url, file.getCreatedAt(), thumbnailUrl, displayUrl, url);
     }
 
     private String signedUrl(long fileId) {
@@ -688,7 +685,7 @@ public class FileService {
     private record ValidatedFile(String originalName, String extension, String mimeType, long maxBytes) { }
     public record RelationCommand(String businessType, Long businessId, String usageType, Integer sortOrder) { }
     public record FileView(long id, String originalName, String mimeType, long size, String sha256,
-                           String url, Instant createdAt, String thumbnailUrl,
+                           String url, LocalDateTime createdAt, String thumbnailUrl,
                            String displayUrl, String originalUrl) { }
     public record FileContent(FileAssetRecord metadata, Resource resource) { }
 }

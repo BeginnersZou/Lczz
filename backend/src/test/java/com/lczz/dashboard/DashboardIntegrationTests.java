@@ -7,6 +7,7 @@ import com.lczz.auth.persistence.UserMapper;
 import com.lczz.auth.security.JwtService;
 import com.lczz.order.persistence.WorkOrderEntity;
 import com.lczz.order.persistence.WorkOrderMapper;
+import com.lczz.common.time.BusinessTime;
 import java.time.LocalDate;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
@@ -149,6 +150,28 @@ class DashboardIntegrationTests {
                 .andExpect(jsonPath("$.data.list").isEmpty());
     }
 
+    @Test
+    void todayAndTrendUseBeijingCalendarEvenWhenTheServerRunsInAnotherTimezone() throws Exception {
+        java.util.TimeZone originalZone = java.util.TimeZone.getDefault();
+        try {
+            java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("America/Los_Angeles"));
+            LocalDate today = LocalDate.now(BusinessTime.ZONE);
+            long current = createOrder("WO-BJ-TODAY", customerId, installerId, "PENDING_VISIT", false);
+            long previous = createOrder("WO-BJ-PREVIOUS", customerId, installerId, "PENDING_VISIT", false);
+            jdbcTemplate.update("UPDATE work_order SET created_at=? WHERE id=?", today.atTime(0, 15), current);
+            jdbcTemplate.update("UPDATE work_order SET created_at=? WHERE id=?", today.minusDays(1).atTime(23, 55), previous);
+            mockMvc.perform(get("/api/dashboard/overview").param("range", "day")
+                            .header("Authorization", "Bearer " + adminToken))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.data.todayOrders").value(1));
+            mockMvc.perform(get("/api/dashboard/order-trend").param("range", "day")
+                            .header("Authorization", "Bearer " + adminToken))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.data.values[0]").value(1))
+                    .andExpect(jsonPath("$.data.xAxis[0]").value(today.format(java.time.format.DateTimeFormatter.ofPattern("MM-dd"))));
+        } finally {
+            java.util.TimeZone.setDefault(originalZone);
+        }
+    }
+
     private long createOrder(String number, long customer, long installer, String status, boolean deleted) {
         WorkOrderEntity order = new WorkOrderEntity();
         order.setOrderNo(number);
@@ -159,7 +182,7 @@ class DashboardIntegrationTests {
         order.setCustomerPhone("13850000001");
         order.setInstallerUserId(installer);
         order.setDetailedAddress("测试地址");
-        order.setRequiredStartAt(LocalDate.now().atTime(9, 0));
+        order.setRequiredStartAt(LocalDate.now(BusinessTime.ZONE).atTime(9, 0));
         order.setVersion(0);
         order.setDeleted(deleted);
         order.setCreatedBy(adminId);

@@ -100,6 +100,31 @@ class UnifiedPreparationServiceUnitTests {
                 .isInstanceOf(BusinessException.class).hasMessage("备货状态不合法");
     }
 
+    @Test
+    void mixedUtcAndBeijingOrdersSortAndExportByTheActualBusinessTime() {
+        jdbc.update("UPDATE material_request SET submitted_at='2026-10-12 02:36:00' WHERE id=11");
+        jdbc.update("UPDATE material_self_order SET created_at='2026-10-12 10:35:00' WHERE id=20");
+        var rows = service.list(1, 10, null, null, null).list();
+        assertThat(rows).extracting(UnifiedPreparationService.PreparationSummary::source).containsExactly("W", "A");
+        assertThat(rows.getFirst().createTime()).isEqualTo(java.time.LocalDateTime.of(2026, 10, 12, 10, 36));
+        assertThat(service.detail("W", 11).createTime()).isEqualTo(rows.getFirst().createTime());
+        assertThat(service.detail("A", 20).createTime()).isEqualTo(java.time.LocalDateTime.of(2026, 10, 12, 10, 35));
+        assertThat(new String(service.exportList(null, null, null).content(), StandardCharsets.UTF_8))
+                .contains("2026-10-12 10:36:00", "2026-10-12 10:35:00").doesNotContain("2026-10-12 02:36:00");
+        assertThat(new String(service.exportDetail("W", 11).content(), StandardCharsets.UTF_8)).contains("2026-10-12 10:36:00");
+        assertThat(jdbc.queryForObject("SELECT submitted_at FROM material_request WHERE id=11", java.time.LocalDateTime.class))
+                .isEqualTo(java.time.LocalDateTime.of(2026, 10, 12, 2, 36));
+    }
+
+    @Test
+    void materialRequestCrossingBeijingMidnightKeepsTheCorrectExportDate() {
+        jdbc.update("UPDATE material_request SET submitted_at='2026-10-11 16:15:00' WHERE id=11");
+        jdbc.update("UPDATE material_self_order SET created_at='2026-10-11 23:55:00' WHERE id=20");
+        assertThat(service.list(1, 10, null, null, null).list().getFirst().source()).isEqualTo("W");
+        assertThat(new String(service.exportList(null, null, "W").content(), StandardCharsets.UTF_8))
+                .contains("2026-10-12 00:15:00");
+    }
+
     private void seed() {
         jdbc.update("INSERT INTO sys_user VALUES (1,'installer',NULL,'张师傅','13810000001')");
         jdbc.update("INSERT INTO work_order VALUES (10,'WO202609040001','空调安装','INSTALL','王客户',FALSE)");

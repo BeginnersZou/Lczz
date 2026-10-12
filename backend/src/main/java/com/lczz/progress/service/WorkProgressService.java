@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.lczz.auth.domain.AuthenticatedUser;
 import com.lczz.auth.domain.RoleCode;
 import com.lczz.common.exception.BusinessException;
+import com.lczz.common.time.UtcTime;
 import com.lczz.file.persistence.FileRelationRecord;
 import com.lczz.file.persistence.FileRelationRecordMapper;
 import com.lczz.file.service.FileService;
@@ -15,7 +16,6 @@ import com.lczz.order.persistence.WorkOrderStatusHistoryEntity;
 import com.lczz.order.persistence.WorkOrderStatusHistoryMapper;
 import com.lczz.progress.persistence.WorkOrderProgressEntity;
 import com.lczz.progress.persistence.WorkOrderProgressMapper;
-import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -177,14 +177,13 @@ public class WorkProgressService {
                 });
         return records.stream().map(record -> new ProgressView(record.getId(), record.getOrderId(),
                 record.getInstallerUserId(), record.getProgressType(), record.getDescription(),
-                grouped.getOrDefault(record.getId(), List.of()),
-                record.getSubmittedAt().toInstant(ZoneOffset.UTC))).toList();
+                grouped.getOrDefault(record.getId(), List.of()), record.getSubmittedAt())).toList();
     }
 
     public record ProgressCommand(String description, List<Long> fileIds) { }
     public record ProgressFileView(long id, String originalName, String mimeType, String url,
                                    String thumbnailUrl, String displayUrl, String originalUrl,
-                                   Instant uploadedAt) { }
+                                   LocalDateTime uploadedAt) { }
     public record ProgressView(long id, long orderId, long installerUserId, String type, String description,
-                               List<ProgressFileView> images, Instant submittedAt) { }
+                               List<ProgressFileView> images, @UtcTime LocalDateTime submittedAt) { }
 }

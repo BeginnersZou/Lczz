@@ -9,6 +9,7 @@ import com.lczz.auth.persistence.RoleMapper;
 import com.lczz.auth.persistence.UserEntity;
 import com.lczz.auth.persistence.UserMapper;
 import com.lczz.common.exception.BusinessException;
+import com.lczz.common.time.BusinessTime;
 import com.lczz.common.audit.OperationAuditService;
 import com.lczz.file.service.FileService;
 import com.lczz.file.service.FileService.FileView;
@@ -486,9 +487,9 @@ public class OrderService {
     private LocalDateTime parseDateTime(String raw, String fieldName) {
         if (raw == null || raw.isBlank()) throw new BusinessException("INVALID_ORDER_TIME", fieldName + "不能为空");
         try {
-            return OffsetDateTime.parse(raw).withOffsetSameInstant(ZoneOffset.UTC).toLocalDateTime();
+            return OffsetDateTime.parse(raw).atZoneSameInstant(BusinessTime.ZONE).toLocalDateTime();
         } catch (DateTimeParseException ignored) {
-            try { return Instant.parse(raw).atOffset(ZoneOffset.UTC).toLocalDateTime(); }
+            try { return Instant.parse(raw).atZone(BusinessTime.ZONE).toLocalDateTime(); }
             catch (DateTimeParseException ignoredAgain) {
                 try { return LocalDateTime.parse(raw); }
                 catch (DateTimeParseException exception) {

@@ -12,6 +12,7 @@ import com.lczz.order.persistence.WorkOrderMapper;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.Comparator;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
@@ -95,8 +96,8 @@ class WorkProgressIntegrationTests {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.type").value("PROGRESS"))
                 .andReturn().getResponse().getContentAsString();
         String submittedAt = objectMapper.readTree(firstResponse).at("/data/submittedAt").asText();
-        assertThat(submittedAt).endsWith("Z");
-        assertThat(Instant.parse(submittedAt)).isBeforeOrEqualTo(Instant.now());
+        assertThat(submittedAt).endsWith("+08:00");
+        assertThat(OffsetDateTime.parse(submittedAt).toInstant()).isBeforeOrEqualTo(Instant.now());
         mockMvc.perform(post("/api/orders/" + orderId + "/progress")
                         .header("Authorization", "Bearer " + installerToken).contentType("application/json")
                         .content("{\"description\":\"第二天完成室外机安装\"}"))
@@ -127,7 +128,8 @@ class WorkProgressIntegrationTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.images.length()").value(3))
                 .andExpect(jsonPath("$.data.images[0].id").value(firstFileId))
-                .andExpect(jsonPath("$.data.images[0].uploadedAt").isString())
+                .andExpect(jsonPath("$.data.images[0].uploadedAt")
+                        .value(org.hamcrest.Matchers.endsWith("+08:00")))
                 .andExpect(jsonPath("$.data.images[1].id").value(secondFileId))
                 .andExpect(jsonPath("$.data.images[2].id").value(thirdFileId));
 
@@ -139,6 +141,28 @@ class WorkProgressIntegrationTests {
                 .andExpect(jsonPath("$.data[0].images.length()").value(3))
                 .andExpect(jsonPath("$.data[0].images[0].id").value(firstFileId))
                 .andExpect(jsonPath("$.data[0].images[2].id").value(thirdFileId));
+    }
+
+    @Test
+    void miniProgramAndAdminReturnTheSameZonedProgressWithoutChangingStoredUtc() throws Exception {
+        mockMvc.perform(post("/api/orders/" + orderId + "/progress")
+                        .header("Authorization", "Bearer " + installerToken).contentType("application/json")
+                        .content("{\"description\":\"凌晨施工跨日记录\"}"))
+                .andExpect(status().isOk());
+        jdbcTemplate.update("UPDATE work_order_progress SET submitted_at='2026-10-11 16:15:00' WHERE order_id=?", orderId);
+        jdbcTemplate.update("UPDATE work_order SET created_at='2026-10-12 10:00:00' WHERE id=?", orderId);
+
+        mockMvc.perform(get("/api/v1/orders/" + orderId + "/progress")
+                        .header("Authorization", "Bearer " + installerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].submittedAt").value("2026-10-12T00:15:00+08:00"));
+        mockMvc.perform(get("/api/v1/admin/orders/" + orderId)
+                        .header("Authorization", "Bearer " + token(adminId, RoleCode.ADMIN)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.progress[0].submittedAt").value("2026-10-12T00:15:00+08:00"))
+                .andExpect(jsonPath("$.data.order.createdAt").value("2026-10-12T10:00:00+08:00"));
+        assertThat(jdbcTemplate.queryForObject("SELECT submitted_at FROM work_order_progress WHERE order_id=?",
+                java.time.LocalDateTime.class, orderId)).isEqualTo(java.time.LocalDateTime.of(2026, 10, 11, 16, 15));
     }
 
     @Test

@@ -99,6 +99,7 @@ import { ElButton, ElInput, ElMessage, ElSwitch } from 'element-plus'
 import { ArrowDown, ArrowUp, Delete, Loading, Plus, Promotion } from '@element-plus/icons-vue'
 import { getServicePageApi, updateServicePageApi, uploadServiceImageApi } from '@/api/servicePage'
 import { useUnsavedChanges } from '@/composables/useUnsavedChanges'
+import { formatDateTime } from '@/utils/format'
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 const ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp'])
@@ -194,7 +195,7 @@ async function assignForm(data) {
   Object.assign(form, emptyForm(), data, {
     galleryImages: (data.galleryImages || []).map(image => ({ ...image, uid: uid++, uploading: false }))
   })
-  lastSavedAt.value = data.updatedAt ? new Date(data.updatedAt).toLocaleString('zh-CN', { hour12: false }) : ''
+  lastSavedAt.value = data.updatedAt ? formatDateTime(data.updatedAt, { seconds: true }) : ''
   await nextTick()
   dirty.value = false
   hydrating = false
