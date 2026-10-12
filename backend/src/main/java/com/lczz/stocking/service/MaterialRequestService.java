@@ -277,6 +277,7 @@ public class MaterialRequestService {
 
     @Transactional
     public RequestView prepare(AuthenticatedUser actor, long requestId, List<PreparedItemCommand> commands) {
+        requireAdmin(actor);
         MaterialRequestEntity request = requireProcessableForUpdate(requestId);
         List<MaterialRequestItemEntity> items = items(requestId);
         Map<Long, Boolean> checked = new HashMap<>();
@@ -304,6 +305,7 @@ public class MaterialRequestService {
 
     @Transactional
     public RequestView finish(AuthenticatedUser actor, long requestId) {
+        requireAdmin(actor);
         MaterialRequestEntity request = requireRequestForUpdate(requestId);
         if ("DONE".equals(request.getRequestStatus())) return detailForAdmin(actor, requestId);
         if (!Set.of("PENDING", "PREPARING").contains(request.getRequestStatus())) {
@@ -323,6 +325,7 @@ public class MaterialRequestService {
 
     @Transactional
     public RequestView voidRequest(AuthenticatedUser actor, long requestId, String reason) {
+        requireAdmin(actor);
         MaterialRequestEntity request = requireRequestForUpdate(requestId);
         if ("VOIDED".equals(request.getRequestStatus())) return detailForAdmin(actor, requestId);
         if ("DONE".equals(request.getRequestStatus())) {
