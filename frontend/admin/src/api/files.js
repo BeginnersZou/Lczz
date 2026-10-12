@@ -1,10 +1,11 @@
 import request from '@/utils/request'
 
-export function uploadFileApi(formData) {
+export function uploadFileApi(formData, options = {}) {
   return request({
     url: '/files/upload',
     method: 'post',
-    data: formData
+    data: formData,
+    onUploadProgress: options.onUploadProgress
   })
 }
 

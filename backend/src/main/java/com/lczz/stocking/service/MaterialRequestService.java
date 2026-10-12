@@ -128,17 +128,58 @@ public class MaterialRequestService {
         if (!Set.of("PENDING_VISIT", "IN_PROGRESS").contains(order.getOrderStatus())) {
             throw new BusinessException(409, "ORDER_NOT_ACCEPTING_MATERIALS", "当前订单状态不能提交耗材申请");
         }
+        return saveMaterials(actor, order, command, false);
+    }
+
+    /** Administrator correction uses the actual actor and retains the original submitting installer. */
+    @Transactional
+    public RequestView editForAdmin(AuthenticatedUser actor, long orderId, SubmitCommand command) {
+        requireAdmin(actor);
+        WorkOrderEntity order = orderMapper.selectForUpdate(orderId);
+        if (order == null) throw new BusinessException(404, "ORDER_NOT_FOUND", "订单不存在");
+        if ("CANCELLED".equals(order.getOrderStatus())) {
+            throw new BusinessException(409, "ORDER_NOT_EDITABLE", "已作废订单不能修改");
+        }
+        if (order.getInstallerUserId() == null && command.items() != null && !command.items().isEmpty()) {
+            throw new BusinessException("ONE_INSTALLER_REQUIRED", "请先为订单指派安装师傅再添加耗材");
+        }
+        return saveMaterials(actor, order, command, true);
+    }
+
+    private RequestView saveMaterials(AuthenticatedUser actor, WorkOrderEntity order, SubmitCommand command,
+                                      boolean adminEdit) {
+        long orderId = order.getId();
         MaterialRequestEntity existing = findActiveForUpdate(orderId);
+        if (adminEdit && command.items() != null && command.items().isEmpty()) {
+            if (existing != null) {
+                List<MaterialRequestItemEntity> previous = items(existing.getId());
+                releaseReservedStock(previous, actor.userId());
+                requestMapper.update(null, new LambdaUpdateWrapper<MaterialRequestEntity>()
+                        .eq(MaterialRequestEntity::getId, existing.getId())
+                        .set(MaterialRequestEntity::getRequestStatus, "VOIDED")
+                        .set(MaterialRequestEntity::getVoidedBy, actor.userId())
+                        .set(MaterialRequestEntity::getVoidedAt, LocalDateTime.now(ZoneOffset.UTC))
+                        .set(MaterialRequestEntity::getVoidReason, "管理员清空耗材清单")
+                        .set(MaterialRequestEntity::getCompletedBy, null)
+                        .set(MaterialRequestEntity::getCompletedAt, null)
+                        .set(MaterialRequestEntity::getVersion, existing.getVersion() + 1));
+                itemMapper.update(null, new LambdaUpdateWrapper<MaterialRequestItemEntity>()
+                        .eq(MaterialRequestItemEntity::getRequestId, existing.getId())
+                        .set(MaterialRequestItemEntity::getItemStatus, "VOIDED")
+                        .set(MaterialRequestItemEntity::getPreparedQuantity, BigDecimal.ZERO));
+            }
+            return null;
+        }
         if (existing != null) {
-            if (!existing.getInstallerUserId().equals(actor.userId())) {
+            if (!adminEdit && !existing.getInstallerUserId().equals(actor.userId())) {
                 throw new BusinessException(409, "ACTIVE_MATERIAL_REQUEST_EXISTS", "该订单已有其他师傅提交的耗材申请");
             }
             List<MaterialRequestItemEntity> previousItems = items(existing.getId());
             if (sameSubmittedItems(previousItems, command.items())) {
                 if (!java.util.Objects.equals(existing.getRemark(), blankToNull(command.remark()))) {
-                    updateRequestRemark(existing, command.remark());
+                    updateRequestRemark(existing, command.remark(), adminEdit);
                 }
-                transitionToInProgress(order, actor.userId());
+                if (!adminEdit) transitionToInProgress(order, actor.userId());
                 return toViews(List.of(existing)).getFirst();
             }
             // Return the old reservation before resolving the replacement list. The whole method is transactional,
@@ -159,8 +200,8 @@ public class MaterialRequestService {
             existing.setRequestStatus("PENDING");
             existing.setCompletedBy(null);
             existing.setCompletedAt(null);
-            updateRequestRemark(existing, command.remark());
-            transitionToInProgress(order, actor.userId());
+            updateRequestRemark(existing, command.remark(), adminEdit);
+            if (!adminEdit) transitionToInProgress(order, actor.userId());
             return toViews(List.of(existing)).getFirst();
         }
 
@@ -174,7 +215,7 @@ public class MaterialRequestService {
         MaterialRequestEntity request = new MaterialRequestEntity();
         request.setRequestNo(newRequestNo());
         request.setOrderId(orderId);
-        request.setInstallerUserId(actor.userId());
+        request.setInstallerUserId(order.getInstallerUserId());
         request.setRequestStatus("PENDING");
         request.setRemark(blankToNull(command.remark()));
         request.setSubmittedAt(LocalDateTime.now(ZoneOffset.UTC));
@@ -194,13 +235,13 @@ public class MaterialRequestService {
         }
         requested.values().forEach(row -> reserveStock(row, actor.userId()));
         requested.values().forEach(row -> insertSnapshot(request.getId(), row));
-        transitionToInProgress(order, actor.userId());
+        if (!adminEdit) transitionToInProgress(order, actor.userId());
         return toViews(List.of(requestMapper.selectById(request.getId()))).getFirst();
     }
 
-    private void updateRequestRemark(MaterialRequestEntity request, String remark) {
+    private void updateRequestRemark(MaterialRequestEntity request, String remark, boolean retainSubmittedAt) {
         request.setRemark(blankToNull(remark));
-        request.setSubmittedAt(LocalDateTime.now(ZoneOffset.UTC));
+        if (!retainSubmittedAt) request.setSubmittedAt(LocalDateTime.now(ZoneOffset.UTC));
         request.setVersion(request.getVersion() + 1);
         requestMapper.update(null, new LambdaUpdateWrapper<MaterialRequestEntity>()
                 .eq(MaterialRequestEntity::getId, request.getId())

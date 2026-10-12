@@ -9,6 +9,7 @@ on:
       - "scripts/verify-stock-warning-flow.cjs"
       - "scripts/verify-case-image-count.cjs"
       - "scripts/verify-business-time.cjs"
+      - "scripts/verify-admin-order-editor.cjs"
       - "frontend/miniprogram/utils/time.js"
       - ".github/workflows/admin-ci.yml"
   push:
@@ -19,6 +20,7 @@ on:
       - "scripts/verify-stock-warning-flow.cjs"
       - "scripts/verify-case-image-count.cjs"
       - "scripts/verify-business-time.cjs"
+      - "scripts/verify-admin-order-editor.cjs"
       - "frontend/miniprogram/utils/time.js"
       - ".github/workflows/admin-ci.yml"
 
@@ -45,5 +47,7 @@ jobs:
         run: node scripts/verify-case-image-count.cjs
       - name: Verify Beijing time display and exports
         run: node scripts/verify-business-time.cjs
+      - name: Verify atomic order editing, materials and upload drafts
+        run: node scripts/verify-admin-order-editor.cjs
       - name: Build production admin site
         run: npm run build --prefix frontend/admin

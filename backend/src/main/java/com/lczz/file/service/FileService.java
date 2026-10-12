@@ -1,6 +1,7 @@
 package com.lczz.file.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.lczz.auth.domain.AuthenticatedUser;
 import com.lczz.auth.domain.RoleCode;
 import com.lczz.common.exception.BusinessException;
@@ -205,6 +206,76 @@ public class FileService {
         return true;
     }
 
+    /** Atomic editor path: only existing links or the administrator's unbound uploads may be selected. */
+    @Transactional
+    public void replaceOrderEditorFiles(AuthenticatedUser actor, long orderId, RelationCommand relation,
+                                        List<Long> fileIds) {
+        if (actor == null || !actor.hasRole(RoleCode.ADMIN)) {
+            throw new BusinessException(403, "ADMIN_ORDER_EDIT_FORBIDDEN", "仅管理员可以编辑订单");
+        }
+        RelationCommand target = normalizeRequiredRelation(relation);
+        List<String> statuses = jdbcTemplate.query("SELECT order_status FROM work_order WHERE id=? AND deleted=0 FOR UPDATE",
+                (rs, row) -> rs.getString(1), orderId);
+        if (statuses.isEmpty()) throw new BusinessException(404, "ORDER_NOT_FOUND", "订单不存在");
+        if ("CANCELLED".equals(statuses.getFirst())) {
+            throw new BusinessException(409, "ORDER_NOT_EDITABLE", "已作废订单不能修改");
+        }
+        boolean belongs = "ORDER".equals(target.businessType()) && target.businessId() == orderId
+                || "PROGRESS".equals(target.businessType()) && count(
+                "SELECT COUNT(*) FROM work_order_progress WHERE id=? AND order_id=? AND progress_type=?",
+                target.businessId(), orderId, target.usageType()) == 1;
+        if (!belongs) throw new BusinessException("PROGRESS_ORDER_MISMATCH", "施工记录不属于该订单");
+        if (fileIds == null || fileIds.stream().anyMatch(id -> id == null || id < 1)
+                || fileIds.stream().distinct().count() != fileIds.size()) {
+            throw new BusinessException("INVALID_EDITOR_FILES", "附件标识无效或重复");
+        }
+        if (fileIds.size() > USAGE_LIMITS.get(target.usageType())) {
+            throw new BusinessException("FILE_COUNT_LIMIT", "每组附件最多 9 个");
+        }
+        List<FileRelationRecord> current = relationMapper.selectList(new LambdaQueryWrapper<FileRelationRecord>()
+                .eq(FileRelationRecord::getBusinessType, target.businessType())
+                .eq(FileRelationRecord::getBusinessId, target.businessId())
+                .eq(FileRelationRecord::getUsageType, target.usageType())
+                .orderByAsc(FileRelationRecord::getSortOrder).orderByAsc(FileRelationRecord::getId));
+        if (current.stream().map(FileRelationRecord::getFileId).toList().equals(fileIds)) return;
+        Set<Long> retainedIds = current.stream().map(FileRelationRecord::getFileId).collect(Collectors.toSet());
+        for (long id : fileIds.stream().sorted().toList()) {
+            FileAssetRecord file = fileMapper.selectOne(new LambdaQueryWrapper<FileAssetRecord>()
+                    .eq(FileAssetRecord::getId, id).last("FOR UPDATE"));
+            if (file == null || Boolean.TRUE.equals(file.getDeleted())) {
+                throw new BusinessException(404, "FILE_NOT_FOUND", "图片不存在或已删除");
+            }
+            if (retainedIds.contains(id)) continue;
+            if (!Objects.equals(file.getUploadedBy(), actor.userId()) || !jdbcTemplate.queryForList(
+                    "SELECT id FROM business_file_relation WHERE file_id=? FOR UPDATE", id).isEmpty()) {
+                throw new BusinessException(403, "EDITOR_FILE_FORBIDDEN", "新增图片必须是本人上传且未关联其它业务的文件");
+            }
+            if (!Set.of("image/jpeg", "image/png", "image/gif", "image/webp").contains(file.getMimeType())) {
+                throw new BusinessException("INVALID_FILE_TYPE", "新增附件仅支持 jpg/png/gif/webp 图片");
+            }
+            if (file.getFileSize() > Math.min(properties.getMaxBytes(), properties.getMaxImageBytes())) {
+                throw new BusinessException(413, "FILE_TOO_LARGE", "图片超过上传大小限制");
+            }
+        }
+        // Remove links only; assets may still be referenced by other records.
+        for (FileRelationRecord link : current) {
+            if (!fileIds.contains(link.getFileId())) relationMapper.deleteById(link.getId());
+        }
+        for (int index = 0; index < fileIds.size(); index++) {
+            long fileId = fileIds.get(index);
+            if (retainedIds.contains(fileId)) {
+                relationMapper.update(null, new LambdaUpdateWrapper<FileRelationRecord>()
+                        .eq(FileRelationRecord::getBusinessType, target.businessType())
+                        .eq(FileRelationRecord::getBusinessId, target.businessId())
+                        .eq(FileRelationRecord::getUsageType, target.usageType())
+                        .eq(FileRelationRecord::getFileId, fileId)
+                        .set(FileRelationRecord::getSortOrder, index));
+            } else {
+                addRelation(actor, fileId, new RelationCommand(target.businessType(), target.businessId(), target.usageType(), index));
+            }
+        }
+    }
+
     public FileContent authenticatedContent(AuthenticatedUser actor, long fileId) {
         FileAssetRecord file = requireFile(fileId);
         authorizeFile(actor, file);
@@ -378,6 +449,14 @@ public class FileService {
     }
 
     private boolean canAccessBusiness(AuthenticatedUser actor, String type, long id, boolean write) {
+        if (write && "ORDER".equals(type)) {
+            List<String> statuses = jdbcTemplate.query("SELECT order_status FROM work_order WHERE id=? AND deleted=0 FOR UPDATE",
+                    (rs, row) -> rs.getString(1), id);
+            if (statuses.isEmpty()) return false;
+            if ("CANCELLED".equals(statuses.getFirst())) {
+                throw new BusinessException(409, "ORDER_NOT_EDITABLE", "已作废订单不能修改附件");
+            }
+        }
         if ("PROGRESS".equals(type) && write) return actor != null && canAccessProgress(actor, id, true);
         if (actor != null && actor.hasRole(RoleCode.ADMIN)) return businessExists(type, id);
         return switch (type) {

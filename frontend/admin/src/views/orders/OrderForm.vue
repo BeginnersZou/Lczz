@@ -13,7 +13,11 @@
       <span>{{ loadError }}</span>
       <el-button type="primary" link @click="loadEditData">重新加载</el-button>
     </div>
-    <el-form v-else v-loading="pageLoading" ref="orderFormRef" :model="form" :rules="rules" label-width="120px" class="form-content">
+    <el-form v-else v-loading="pageLoading" ref="orderFormRef" :disabled="submitLoading || !editable" :model="form" :rules="rules" label-width="120px" class="form-content">
+      <el-alert v-if="isEdit && !editable" title="已作废订单只读，无法保存修改。" type="warning" :closable="false" show-icon />
+      <el-alert v-else-if="isEdit && ['PENDING_REVIEW', 'REVIEWED'].includes(orderOrigin.statusCode)"
+        title="此订单已完成。管理员更正会保留客户确认及完成状态；修改耗材清单将重新备货。" type="info" :closable="false" show-icon />
+      <p v-if="lastEdit" class="edit-audit">上次管理员修改：{{ lastEdit.operatorName }} · {{ formatDateTime(lastEdit.editedAt, { seconds: true }) }}</p>
       <el-card class="form-card" shadow="never">
         <template #header>
           <span class="card-title"><el-icon>
@@ -99,46 +103,47 @@
           </el-table>
         </el-form-item>
 
-        <!-- 附件上传 -->
-        <el-form-item label="附件">
-          <div class="upload-tip">
-            <el-icon>
-              <InfoFilled />
-            </el-icon>
-            <span>仅支持上传图片（jpg/png/gif/webp），最多9张，已选 {{ form.fileList.length }}/9 张</span>
-          </div>
-          <div class="upload-wrap">
-            <!-- 已上传图片卡片：hover 显示删除遮罩 -->
-            <div class="img-card" v-for="(fileItem, idx) in form.fileList" :key="fileItem.uid">
-              <img :src="fileItem.previewUrl" alt="附件" class="preview-img" />
-              <div v-if="fileItem.uploading" class="uploading-mask"><el-icon class="is-loading"><Loading /></el-icon><span>上传中</span></div>
-              <div v-else class="img-mask" @click="deleteFileImg(idx)">
-                <el-icon class="mask-icon">
-                  <Delete />
-                </el-icon>
-                <span class="mask-text">删除</span>
-              </div>
-            </div>
-            <!-- 上传按钮：达到9张自动隐藏 -->
-            <div class="upload-add file-upload-box" v-if="form.fileList.length < 9" role="button" tabindex="0" @click="triggerFileUpload" @keyup.enter="triggerFileUpload">
-              <el-icon :size="26" class="upload-icon">
-                <Plus />
-              </el-icon>
-              <span>上传附件</span>
-              <input ref="fileUploadRef" type="file" multiple class="upload-input"
-                accept="image/jpeg,image/jpg,image/png,image/gif,image/webp" @change="handleFileUpload" />
-            </div>
-          </div>
+        <el-form-item label="订单附件">
+          <OrderEditorFiles v-model="form.fileList" :disabled="submitLoading || !editable" />
+        </el-form-item>
+        <el-form-item label="管理员备注">
+          <el-input v-model="form.adminRemark" type="textarea" :rows="2" maxlength="1000" show-word-limit />
         </el-form-item>
       </el-card>
 
+      <el-card v-if="isEdit" class="form-card" shadow="never">
+        <template #header><span class="card-title">施工进度</span></template>
+        <p class="edit-tip">保留原施工师傅和提交时间，修改内容与图片将在确认提交后一起保存。</p>
+        <el-empty v-if="!progressEntries.length" description="师傅尚未提交施工记录" :image-size="60" />
+        <section v-for="entry in progressEntries" :key="entry.id" class="progress-editor">
+          <div class="progress-meta">
+            <el-tag>{{ entry.type === 'COMPLETION' ? '历史完工记录' : '施工记录' }}</el-tag>
+            <span>提交时间：{{ formatDateTime(entry.submittedAt, { seconds: true }) }}</span>
+            <span>原师傅编号：{{ entry.installerUserId }}</span>
+          </div>
+          <el-input v-model="entry.description" type="textarea" :rows="3" maxlength="2000" show-word-limit placeholder="施工说明" />
+          <OrderEditorFiles v-model="entry.files" :disabled="submitLoading || !editable" />
+        </section>
+      </el-card>
+
+      <el-card v-if="isEdit" class="form-card" shadow="never">
+        <template #header><span class="card-title">耗材清单</span></template>
+        <el-alert v-if="materialsChanged" :title="materialDraft.items.length
+          ? '耗材清单已变更。保存后将回到待备货，并清除原备货数量与勾选结果。'
+          : '耗材清单已清空。保存后将作废当前申请并释放预占库存。'" type="warning" :closable="false" show-icon />
+        <OrderEditorMaterials v-model="materialDraft" :request="materialRequest" :disabled="submitLoading || !editable" />
+      </el-card>
+      <el-alert v-if="submitError" :title="submitError" type="error" :closable="false" show-icon>
+        <el-button v-if="saveConflict" link type="primary" @click="reloadAfterConflict">重新加载订单</el-button>
+      </el-alert>
+
       <!-- 底部操作区 -->
       <div class="form-footer">
-        <el-button v-if="isEdit" text type="danger" @click="handleCancelOrder">作废订单</el-button>
+        <el-button v-if="isEdit && editable && orderOrigin.statusCode !== 'REVIEWED'" text type="danger" @click="handleCancelOrder">作废订单</el-button>
         <div class="footer-right">
           <el-button dashed plain type="default" :icon="ArrowLeft" @click="handleCancel">取消</el-button>
           <el-button dashed plain type="primary" @click="handleSubmit" :icon="Check"
-            :loading="submitLoading">确认提交</el-button>
+            :loading="submitLoading" :disabled="pageLoading || !editable || uploadingCount > 0 || hasFailedUpload">确认提交</el-button>
         </div>
       </div>
     </el-form>
@@ -203,32 +208,43 @@
 import { ref, reactive, computed, onMounted, watch, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  ArrowLeft, Plus, Document, Check, Delete, InfoFilled, Loading, Search
+  ArrowLeft, Document, Check, Search
 } from '@element-plus/icons-vue'
 import { useRouter, useRoute } from 'vue-router'
 import {
-  getOrderDetailApi, addOrderApi, updateOrderApi,
-  uploadOrderImageApi, bindOrderFileApi, unbindOrderFileApi, getMasterListApi, cancelOrderApi
+  getAdminOrderEditorApi, saveAdminOrderEditorApi, addOrderApi,
+  bindOrderFileApi, getMasterListApi, cancelOrderApi
 } from '@/api/orders'
 import { getRegionTreeApi } from '@/api/regions'
 import { useUnsavedChanges } from '@/composables/useUnsavedChanges'
 import { formatDateTime, formatDateTimeInput, parseDateTime } from '@/utils/format'
 import OrderOrigin from './OrderOrigin.vue'
+import OrderEditorFiles from './OrderEditorFiles.vue'
+import OrderEditorMaterials from './OrderEditorMaterials.vue'
 
 const orderOrigin = ref({})
+const editable = ref(true)
+const editorRevision = ref('')
+const lastEdit = ref(null)
+const progressEntries = ref([])
+const materialRequest = ref(null)
+const materialDraft = ref({ items: [], remark: '' })
+const initialDraft = ref(null)
+const submitError = ref('')
+const saveConflict = ref(false)
+let pendingSave = null
 
 const router = useRouter()
 const route = useRoute()
 const orderFormRef = ref(null)
 const masterTableRef = ref(null)
 
-// 基础状态【全部原样保留，无修改】
+// 基础信息与本次编辑草稿。
 const isEdit = ref(false)
 const orderId = ref('')
 const submitLoading = ref(false)
 const pageLoading = ref(false)
 const loadError = ref('')
-const fileUploadRef = ref(null)
 
 const masterDialogVisible = ref(false)
 const leaveDialogVisible = ref(false)
@@ -241,15 +257,18 @@ const tempSelectMaster = ref([])
 const selectedMasterList = ref([])
 const masterSearch = ref('')
 const masterLoading = ref(false)
-// 附件上传中计数，提交时据此拦截，避免丢图
-const uploadingCount = ref(0)
-const pendingUnbindFileIds = ref([])
+// 所有板块的图片上传状态共同决定是否可提交。
+const allDraftFiles = computed(() => [...form.fileList, ...progressEntries.value.flatMap(entry => entry.files)])
+const uploadingCount = computed(() => allDraftFiles.value.filter(file => file.uploading).length)
+const hasFailedUpload = computed(() => allDraftFiles.value.some(file => file.error || !file.id))
+const materialsChanged = computed(() => !!initialDraft.value && materialSignature(materialDraft.value.items)
+  !== materialSignature(initialDraft.value.materials.items))
 
 const cityOptions = ref([])
 const regionLoading = ref(false)
 const regionError = ref('')
 
-// 表单结构完全不变，fileList 存储 {uid, file, previewUrl, url, uploading}
+// 图片只在草稿中增删，确认提交后才变更业务关联。
 const form = reactive({
   taskType: '',
   description: '',
@@ -291,6 +310,8 @@ const rules = {
   orderEndTime: [{
     required: true,
     validator: (rule, value, callback) => {
+      if (isEdit.value && orderOrigin.value.statusCode === 'PENDING_ASSIGNMENT' && !selectedMasterList.value.length
+        && !form.orderStartTime && !value) return callback()
       if (!form.orderStartTime || !value) callback(new Error('请选择完整的上门时间范围'))
       else if (!parseDateTime(value) || !parseDateTime(form.orderStartTime)) callback(new Error('请选择有效的上门时间'))
       else if (parseDateTime(value).getTime() <= parseDateTime(form.orderStartTime).getTime()) callback(new Error('结束时间必须晚于开始时间'))
@@ -314,8 +335,10 @@ const pagedMasterList = computed(() => {
 
 useUnsavedChanges(formIsDirty, '订单内容尚未保存，确定要放弃并离开吗？')
 
-watch(form, () => {
-  formIsDirty.value = true
+watch([form, progressEntries, materialDraft, selectedMasterList], () => {
+  if (pageLoading.value) return
+  formIsDirty.value = initialDraft.value ? JSON.stringify(currentDraft()) !== JSON.stringify(initialDraft.value) : true
+  pendingSave = null
 }, { deep: true })
 
 onMounted(async () => {
@@ -350,24 +373,25 @@ async function loadEditData() {
   pageLoading.value = true
   loadError.value = ''
   try {
-    const res = await getOrderDetailApi(orderId.value)
+    const result = await getAdminOrderEditorApi(orderId.value)
+    const res = result.order
+    editorRevision.value = result.revision
+    editable.value = result.editable
+    lastEdit.value = result.lastEdit || null
+    submitError.value = ''
+    saveConflict.value = false
+    pendingSave = null
+    progressEntries.value = (result.progress || []).map(entry => ({ ...entry, files: (entry.images || []).map(toDraftFile) }))
+    materialRequest.value = result.materialRequest || null
+    materialDraft.value = {
+      items: (result.materialRequest?.materials || []).map(item => ({ ...item, productId: item.productId,
+        quantity: Number(item.count), name: item.name, skuId: item.skuId, stock: item.stock })),
+      remark: result.materialRequest?.remark || ''
+    }
     orderOrigin.value = { orderSource: res.orderSource, dealerName: res.dealerName, statusCode: res.statusCode }
-    pendingUnbindFileIds.value = []
     // 回显 fileList：远程图片 url 直接作为 previewUrl，file 为 null
     const remoteFiles = res.fileList || res.images || []
-    const fileList = remoteFiles.map(item => {
-      const url = typeof item === 'string' ? item : (item.originalUrl || item.url || item.previewUrl)
-      const previewUrl = typeof item === 'string' ? item : (item.thumbnailUrl || item.displayUrl || url)
-      return {
-        uid: fileUid++,
-        id: typeof item === 'string' ? null : item.id,
-        file: null,
-        previewUrl,
-        url,
-        bound: true,
-        uploading: false
-      }
-    }).filter(f => f.url)
+    const fileList = remoteFiles.map(toDraftFile)
 
     Object.assign(form, {
       taskType: res.taskType || '',
@@ -388,6 +412,8 @@ async function loadEditData() {
       adminRemark: res.adminRemark || ''
     })
     selectedMasterList.value = res.selectedMasterList || res.masterList || []
+    await nextTick()
+    initialDraft.value = currentDraft()
     formIsDirty.value = false
   } catch {
     loadError.value = '订单详情加载失败，请重试后再编辑。'
@@ -500,113 +526,64 @@ function removeSelectedMaster(index) {
   ElMessage.success('已移除该师傅')
 }
 
-// ====================== 附件上传逻辑：仅图片、去重、本地预览、选择后立即上传真实 url ======================
-const MAX_IMAGE_COUNT = 9
-let fileUid = 1
-function triggerFileUpload() { fileUploadRef.value.click() }
-async function handleFileUpload(event) {
-  const files = Array.from(event.target.files)
-  // 允许的图片格式
-  const allowTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']
-  const maxSize = 5 * 1024 * 1024
-  // 剩余可上传数量
-  const remaining = MAX_IMAGE_COUNT - form.fileList.length
-  if (remaining <= 0) {
-    ElMessage.warning(`最多只能上传${MAX_IMAGE_COUNT}张图片`)
-    event.target.value = ''
-    return
-  }
-  // 过滤非图片、去重、按剩余数量截取
-  const toUpload = []
-  for (const file of files) {
-    if (!allowTypes.includes(file.type)) {
-      ElMessage.warning(`文件${file.name}不是图片，禁止上传`)
-      continue
-    }
-    if (file.size > maxSize) {
-      ElMessage.warning(`图片${file.name}超过5MB，禁止上传`)
-      continue
-    }
-    // 文件名+大小双条件去重（已上传项 file 为 null，需 guard）
-    const repeat = form.fileList.some(item => item.file && item.file.name === file.name && item.file.size === file.size)
-    if (repeat) {
-      ElMessage.info(`图片${file.name}已存在，无需重复上传`)
-      continue
-    }
-    if (toUpload.length >= remaining) {
-      ElMessage.warning(`最多只能上传${MAX_IMAGE_COUNT}张图片，超出部分已忽略`)
-      break
-    }
-    toUpload.push(file)
-  }
-  event.target.value = ''
-  if (toUpload.length === 0) return
-
-  formIsDirty.value = true
-  // 逐个：先生成本地 blob 预览即时呈现，再立即上传，成功替换为真实 url 并释放 blob，失败移除并提示
-  await Promise.all(toUpload.map(async file => {
-    const uid = fileUid++
-    const previewUrl = URL.createObjectURL(file)
-    const item = reactive({
-      uid,
-      file,
-      previewUrl,
-      url: '',
-      bound: false,
-      uploading: true
-    })
-    form.fileList.push(item)
-    uploadingCount.value++
-    try {
-      const formData = new FormData()
-      formData.append('file', file)
-      const res = await uploadOrderImageApi(formData)
-      // 上传成功：用真实 url 替换预览，释放临时 blob
-      URL.revokeObjectURL(item.previewUrl)
-      item.id = res.id
-      item.url = res.originalUrl || res.url
-      item.previewUrl = res.thumbnailUrl || res.displayUrl || item.url
-      item.file = null
-      item.uploading = false
-    } catch {
-      // 上传失败：从列表移除该项并提示
-      const idx = form.fileList.findIndex(f => f.uid === uid)
-      if (idx > -1) {
-        URL.revokeObjectURL(form.fileList[idx].previewUrl)
-        form.fileList.splice(idx, 1)
-      }
-      ElMessage.error(`图片${file.name}上传失败，已移除`)
-    } finally {
-      uploadingCount.value--
-    }
-  }))
+function toDraftFile(item) {
+  const value = typeof item === 'string' ? { url: item } : item
+  return { ...value, uid: value.id, id: value.id, file: null,
+    url: value.originalUrl || value.url, previewUrl: value.thumbnailUrl || value.displayUrl || value.url,
+    bound: true, uploading: false, error: false }
 }
-// 删除附件图片，仅本地 blob 预览需释放内存，远程回显 url 不处理
-function deleteFileImg(idx) {
-  const target = form.fileList[idx]
-  if (target?.bound && !target.id) {
-    ElMessage.error('附件缺少文件标识，暂时无法删除，请刷新页面后重试')
-    return
-  }
-  if (target?.bound && target.id) {
-    const fileId = Number(target.id)
-    if (!pendingUnbindFileIds.value.includes(fileId)) {
-      pendingUnbindFileIds.value.push(fileId)
-    }
-  }
-  if (target && target.previewUrl && target.previewUrl.startsWith('blob:')) {
-    URL.revokeObjectURL(target.previewUrl)
-  }
-  form.fileList.splice(idx, 1)
-  formIsDirty.value = true
+function orderPayload() {
+  return { taskType: form.taskType, description: form.description, customerName: form.customerName,
+    customerPhone: form.customerPhone, addressArea: [...form.addressArea], addressDetail: form.addressDetail,
+    projectAddress: form.projectAddress, orderStartTime: form.orderStartTime, orderEndTime: form.orderEndTime,
+    masterIds: selectedMasterList.value.map(master => master.id).filter(id => id != null), adminRemark: form.adminRemark || '' }
+}
+function currentDraft() {
+  return { order: orderPayload(), attachmentFileIds: form.fileList.map(file => file.id),
+    progress: progressEntries.value.map(entry => ({ id: entry.id, description: entry.description, fileIds: entry.files.map(file => file.id) })),
+    materials: { items: materialDraft.value.items.map(item => ({ productId: item.productId, skuId: item.skuId,
+      quantity: item.quantity })), remark: materialDraft.value.remark } }
+}
+function materialSignature(items) {
+  return JSON.stringify(items.map(item => [Number(item.productId), item.skuId == null ? null : Number(item.skuId), Number(item.quantity)])
+    .sort((a, b) => a[0] - b[0] || (a[1] || 0) - (b[1] || 0)))
+}
+function createEditRequest() {
+  const draft = currentDraft()
+  const request = { requestId: globalThis.crypto?.randomUUID?.() || `edit_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+    revision: editorRevision.value }
+  if (JSON.stringify(draft.order) !== JSON.stringify(initialDraft.value.order)) request.order = draft.order
+  if (JSON.stringify(draft.attachmentFileIds) !== JSON.stringify(initialDraft.value.attachmentFileIds)) request.attachmentFileIds = draft.attachmentFileIds
+  const originalProgress = new Map(initialDraft.value.progress.map(entry => [entry.id, entry]))
+  const changedProgress = draft.progress.filter(entry => JSON.stringify(entry) !== JSON.stringify(originalProgress.get(entry.id)))
+  if (changedProgress.length) request.progress = changedProgress
+  if (materialsChanged.value || draft.materials.remark !== initialDraft.value.materials.remark) request.materials = draft.materials
+  return request
+}
+async function reloadAfterConflict() {
+  try { await ElMessageBox.confirm('重新加载会放弃当前未保存的修改，是否继续？', '订单已变化', { type: 'warning' }) }
+  catch { return }
+  await loadEditData()
 }
 
 // ====================== 提交、取消、作废 ======================
 async function handleSubmit() {
-  if (submitLoading.value) return
+  if (submitLoading.value || !editable.value || pageLoading.value || loadError.value) return
   // 附件仍在上传中时拦截提交，避免丢图
   if (uploadingCount.value > 0) {
     ElMessage.warning('附件正在上传中，请稍候再提交')
+    return
+  }
+  if (hasFailedUpload.value) {
+    ElMessage.warning('请先重试或删除上传失败的图片')
+    return
+  }
+  if (isEdit.value && progressEntries.value.some(entry => !entry.description?.trim())) {
+    ElMessage.warning('请填写每条施工记录的说明')
+    return
+  }
+  if (isEdit.value && materialDraft.value.items.some(item => !Number.isInteger(item.quantity) || item.quantity < 1)) {
+    ElMessage.warning('耗材申请数量必须为正整数')
     return
   }
   try {
@@ -614,44 +591,35 @@ async function handleSubmit() {
   } catch {
     return
   }
-  if (selectedMasterList.value.length !== 1) {
+  if (selectedMasterList.value.length !== 1 && !(isEdit.value && orderOrigin.value.statusCode === 'PENDING_ASSIGNMENT' && !selectedMasterList.value.length)) {
     ElMessage.warning('请选择一位安装师傅')
     return
   }
   submitLoading.value = true
+  submitError.value = ''
+  saveConflict.value = false
   try {
-    const submitData = {
-      taskType: form.taskType,
-      description: form.description,
-      customerName: form.customerName,
-      customerPhone: form.customerPhone,
-      addressArea: form.addressArea,
-      addressDetail: form.addressDetail,
-      projectAddress: form.projectAddress,
-      orderStartTime: form.orderStartTime,
-      orderEndTime: form.orderEndTime,
-      masterIds: selectedMasterList.value.map(m => m.id).filter(id => id != null),
-      adminRemark: form.adminRemark || ''
-    }
-    let savedOrder
     if (isEdit.value) {
-      savedOrder = await updateOrderApi(orderId.value, submitData)
-      ElMessage.success('更新成功')
+      if (materialsChanged.value) {
+        await ElMessageBox.confirm(materialDraft.value.items.length
+          ? '耗材清单发生变化，保存后将重新备货。订单原有完成状态和客户确认记录会保留。确认提交吗？'
+          : '清空清单会作废当前耗材申请并释放预占库存。确认提交吗？', '确认耗材变更', { type: 'warning' })
+      }
+      pendingSave ||= createEditRequest()
+      await saveAdminOrderEditorApi(orderId.value, pendingSave)
     } else {
-      savedOrder = await addOrderApi(submitData)
-      ElMessage.success('新增成功')
+      const savedOrder = await addOrderApi(orderPayload())
+      await Promise.all(form.fileList.map((file, index) => bindOrderFileApi(file.id, savedOrder.id, index)))
     }
-    const savedOrderId = savedOrder?.id || orderId.value
-    const unboundFiles = form.fileList.filter(file => file.id && !file.bound)
-    await Promise.all([
-      ...unboundFiles.map((file, index) => bindOrderFileApi(file.id, savedOrderId, index)),
-      ...pendingUnbindFileIds.value.map(fileId => unbindOrderFileApi(fileId, savedOrderId))
-    ])
-    pendingUnbindFileIds.value = []
+    ElMessage.success(isEdit.value ? '订单修改已全部保存' : '新增成功')
+    pendingSave = null
     formIsDirty.value = false
     returnToOrderList()
-  } catch {
-    // 拦截器已提示
+  } catch (error) {
+    if (error === 'cancel' || error === 'close') return
+    saveConflict.value = error.response?.data?.error === 'ORDER_EDIT_CONFLICT'
+      || error.response?.status === 409 && /已被修改|重新加载/.test(error.response?.data?.message || error.message || '')
+    submitError.value = error.response?.data?.message || error.message || '保存失败，请检查后重试。'
   } finally {
     submitLoading.value = false
   }
@@ -711,6 +679,10 @@ function returnToOrderList() {
 </script>
 
 <style lang="scss" scoped>
+.progress-editor + .progress-editor { margin-top: 24px; border-top: 1px solid #e2e8f0; padding-top: 24px; }
+.progress-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 12px; color: #64748b; }
+.edit-tip, .edit-audit { color: #64748b; font-size: 13px; line-height: 1.7; }
+.el-alert { margin-bottom: 16px; }
 .order-form-page {
   padding: 20px;
   background-color: #f8fafc;
