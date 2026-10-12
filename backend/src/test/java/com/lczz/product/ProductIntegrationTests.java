@@ -403,6 +403,71 @@ class ProductIntegrationTests {
                 .andExpect(jsonPath("$.data.list[0].id").value(mixedId));
     }
 
+    @Test
+    void equipmentRootScopeCombinesWithSearchPaginationAndExactChildIdentity() throws Exception {
+        String admin = adminToken();
+        long equipment = createCategory(admin, "lczz-equipment", "设备", null);
+        long air = createCategory(admin, "equipment-air", "空调", equipment);
+        long fresh = createCategory(admin, "equipment-fresh", "新风", equipment);
+        long otherRoot = createCategory(admin, "other-equipment", "其他产品", null);
+        // A name equal to another category code must not broaden the scoped child filter.
+        long sameCodeName = createCategory(admin, "another-device", "equipment-air", equipment);
+        long unrelated = createCategory(admin, "other-air", "空调", otherRoot);
+        long airProduct = insertProduct("EQ-AIR", "测试空调设备", air, true);
+        insertProduct("EQ-FRESH", "测试新风设备", fresh, true);
+        insertProduct("EQ-MATCH-NAME", "测试同名设备", sameCodeName, true);
+        insertProduct("OTHER-AIR", "测试空调辅料", unrelated, true);
+        insertProduct("EQ-HIDDEN", "下架空调设备", air, false);
+
+        mockMvc.perform(get("/api/v1/consumables/list").param("categoryRootId", String.valueOf(equipment))
+                        .param("category", "lczz-equipment").param("keyword", "测试").param("pageSize", "1"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(3))
+                .andExpect(jsonPath("$.data.list.length()").value(1));
+        mockMvc.perform(get("/api/v1/consumables/list").param("categoryRootId", String.valueOf(equipment))
+                        .param("category", "lczz-equipment").param("keyword", "测试").param("pageSize", "2").param("page", "2"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(3))
+                .andExpect(jsonPath("$.data.list.length()").value(1));
+        mockMvc.perform(get("/api/v1/consumables/list").param("categoryRootId", String.valueOf(equipment))
+                        .param("categoryId", String.valueOf(air)).param("category", "equipment-air"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.list[0].id").value(airProduct));
+        mockMvc.perform(get("/api/consumables/list").param("categoryRootId", String.valueOf(equipment))
+                        .param("categoryId", String.valueOf(unrelated)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(0));
+        // Existing unscoped callers retain their original product visibility.
+        mockMvc.perform(get("/api/v1/consumables/list"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(4));
+        mockMvc.perform(get("/api/v1/consumables/detail/{id}", airProduct))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.id").value(airProduct));
+    }
+
+    @Test
+    void newEquipmentCategoriesParticipateDynamicallyAndDisabledOrMissingScopesStayEmpty() throws Exception {
+        String admin = adminToken();
+        long equipment = createCategory(admin, "lczz-equipment", "设备", null);
+        long added = createCategory(admin, "equipment-added", "第五种设备", equipment);
+        long device = insertProduct("EQ-ADDED", "新设备", added, true);
+        mockMvc.perform(get("/api/v1/consumables/list").param("categoryRootId", String.valueOf(equipment)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.list[0].id").value(device));
+        jdbcTemplate.update("UPDATE product_category SET enabled=FALSE WHERE id=?", added);
+        mockMvc.perform(get("/api/v1/consumables/list").param("categoryRootId", String.valueOf(equipment)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(0));
+        mockMvc.perform(get("/api/v1/consumables/list").param("categoryRootId", String.valueOf(equipment))
+                        .param("categoryId", String.valueOf(added)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(0));
+        jdbcTemplate.update("UPDATE product_category SET enabled=TRUE WHERE id=?", added);
+        jdbcTemplate.update("UPDATE product_category SET enabled=FALSE WHERE id=?", equipment);
+        mockMvc.perform(get("/api/v1/consumables/list").param("categoryRootId", String.valueOf(equipment)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(0));
+        for (long invalidRoot : new long[] {added, 9999999L}) {
+            mockMvc.perform(get("/api/v1/consumables/list").param("categoryRootId", String.valueOf(invalidRoot)))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(0));
+        }
+        mockMvc.perform(get("/api/v1/consumables/list").param("categoryRootId", "0"))
+                .andExpect(status().isBadRequest());
+    }
+
     private void insertSku(long productId, String code, int stock, boolean enabled, boolean deleted) {
         jdbcTemplate.update("""
                 INSERT INTO product_sku(product_id, sku_code, spec_signature_hash, unit, stock, enabled, deleted)
