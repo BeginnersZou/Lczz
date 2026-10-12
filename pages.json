@@ -127,6 +127,16 @@
 					}
 				},
 				{
+					"path": "equipment-showcase/equipment-showcase",
+					"style": {
+						"navigationBarTitleText": "设备展示",
+						"navigationBarTextStyle": "black",
+						"enablePullDownRefresh": true,
+						"backgroundColorTop": "#f4f7fb",
+						"backgroundColorBottom": "#f4f7fb"
+					}
+				},
+				{
 					"path": "goos-details/goos-details",
 					"style": {
 						"navigationBarTitleText": "耗材详情",
@@ -158,6 +168,26 @@
 					"style": {
 						"navigationBarTitleText": "取货订单详情",
 						"navigationBarTextStyle": "black",
+						"backgroundColorTop": "#f4f7fb",
+						"backgroundColorBottom": "#f4f7fb"
+					}
+				},
+				{
+					"path": "preparation/preparation-list",
+					"style": {
+						"navigationBarTitleText": "订单备货",
+						"navigationBarTextStyle": "black",
+						"enablePullDownRefresh": true,
+						"backgroundColorTop": "#f4f7fb",
+						"backgroundColorBottom": "#f4f7fb"
+					}
+				},
+				{
+					"path": "preparation/preparation-detail",
+					"style": {
+						"navigationBarTitleText": "备货详情",
+						"navigationBarTextStyle": "black",
+						"enablePullDownRefresh": true,
 						"backgroundColorTop": "#f4f7fb",
 						"backgroundColorBottom": "#f4f7fb"
 					}

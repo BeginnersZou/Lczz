@@ -38,7 +38,8 @@ const normalizeFile = (file = {}) => {
 		url: originalUrl,
 		originalUrl,
 		displayUrl,
-		thumbnailUrl
+		thumbnailUrl,
+		uploadedAt: formatDateTime(value.uploadedAt || value.createdAt || '')
 	}
 }
 
@@ -243,9 +244,9 @@ export const evaluationApi = {
 
 // ====================== 耗材相关 ======================
 export const consumablesApi = {
-	// 耗材列表（分页） params: { page, pageSize, keyword, category }
-	getList: async (params) => {
-		const res = await http.get('/consumables/list', params, { auth: false, redirectOnUnauthorized: false })
+	// 耗材列表（分页） params: { page, pageSize, keyword, category, categoryRootId, categoryId }
+	getList: async (params, options = {}) => {
+		const res = await http.get('/consumables/list', params, { ...options, auth: false, redirectOnUnauthorized: false })
 		if (res.code === 200 && res.data) res.data.list = (res.data.list || []).map(normalizeProduct)
 		return res
 	},
@@ -255,7 +256,7 @@ export const consumablesApi = {
 		if (res.code === 200) res.data = normalizeProduct(res.data)
 		return res
 	},
-	getCategories: () => http.get('/consumables/categories', {}, { auth: false, redirectOnUnauthorized: false })
+	getCategories: (options = {}) => http.get('/consumables/categories', {}, { ...options, auth: false, redirectOnUnauthorized: false })
 }
 
 // ====================== 项目案例相关 ======================
@@ -303,6 +304,15 @@ export const installerMaterialApi = {
 	getOrderDetail: (id) => http.get(`/installer/self-orders/${id}`)
 }
 
+// ====================== 管理员移动端订单备货 ======================
+// 与 PC 管理端复用同一套后端状态机和数据，避免两端产生不同的备货结果。
+export const preparationApi = {
+	getList: (params = {}, options = {}) => http.get('/preparation/list', params, options),
+	getDetail: (id, source = 'W', options = {}) => http.get(`/preparation/detail/${id}`, { source }, options),
+	prepare: (id, materials, options = {}) => http.post(`/preparation/${id}/prepare`, { materials }, options),
+	finish: (id, options = {}) => http.post(`/preparation/${id}/finish`, {}, options)
+}
+
 // ====================== 仪表盘 / 工作台概览 ======================
 export const dashboardApi = {
 	// 角色可见的待办列表与订单统计
@@ -323,6 +333,11 @@ export const uploadApi = {
 			if (res.code === 200 && res.data) res.data = normalizeFile(res.data)
 			return res
 		})
+	},
+	// 管理员维护施工记录图片时，仅解除当前施工记录的文件关系。
+	unbindProgressMedia: (id, progressId, options = {}) => {
+		const query = `businessType=PROGRESS&businessId=${encodeURIComponent(progressId)}&usageType=PROGRESS`
+		return http.delete(`/files/${id}/relations?${query}`, {}, options)
 	},
 	// 删除尚未提交、未绑定业务的临时文件，防止退出页面后残留孤立附件。
 	deleteTemporary: (id, options = {}) => http.delete(`/files/${id}`, {}, options)
