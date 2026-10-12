@@ -14,6 +14,7 @@ import com.lczz.auth.persistence.UserRoleEntity;
 import com.lczz.auth.persistence.UserRoleMapper;
 import com.lczz.common.audit.OperationAuditService;
 import com.lczz.common.exception.BusinessException;
+import com.lczz.common.time.UtcTime;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -436,7 +437,7 @@ public class UserManagementService {
     public record UserPage(List<UserView> list, long total, int page, int pageSize) { }
     public record UserView(long id, String username, String nickname, String realName, String gender, String phone,
                            String role, List<String> roles, String accountStatus, String auditStatus,
-                           boolean blacklist, String installerStatus, LocalDateTime lastLoginAt,
+                           boolean blacklist, String installerStatus, @UtcTime LocalDateTime lastLoginAt,
                            LocalDateTime createdAt, LocalDateTime registerTime, LocalDateTime updatedAt) { }
     private record AuditSnapshot(long id, String nickname, String realName, String gender, List<String> roles,
                                  String accountStatus, boolean blacklist, String installerStatus) { }

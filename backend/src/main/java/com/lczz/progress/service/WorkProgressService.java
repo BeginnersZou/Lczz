@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.lczz.auth.domain.AuthenticatedUser;
 import com.lczz.auth.domain.RoleCode;
 import com.lczz.common.exception.BusinessException;
+import com.lczz.common.time.UtcTime;
 import com.lczz.file.persistence.FileRelationRecord;
 import com.lczz.file.persistence.FileRelationRecordMapper;
 import com.lczz.file.service.FileService;
@@ -183,5 +184,5 @@ public class WorkProgressService {
     public record ProgressFileView(long id, String originalName, String mimeType, String url,
                                    String thumbnailUrl, String displayUrl, String originalUrl) { }
     public record ProgressView(long id, long orderId, long installerUserId, String type, String description,
-                               List<ProgressFileView> images, LocalDateTime submittedAt) { }
+                               List<ProgressFileView> images, @UtcTime LocalDateTime submittedAt) { }
 }

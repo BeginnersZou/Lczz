@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lczz.auth.domain.AuthenticatedUser;
 import com.lczz.auth.domain.RoleCode;
 import com.lczz.common.exception.BusinessException;
+import com.lczz.common.time.UtcTime;
 import com.lczz.file.persistence.FileRelationRecord;
 import com.lczz.file.persistence.FileRelationRecordMapper;
 import com.lczz.file.service.FileService;
@@ -226,5 +227,5 @@ public class OrderReviewService {
     public record ReviewSubmissionView(long id, long orderId, String status) { }
     public record ReviewView(long id, long orderId, long reviewerUserId, int score, boolean liked, String content,
                              List<String> labels, List<String> images, List<FileService.FileView> imageFiles,
-                             LocalDateTime createTime) { }
+                             @UtcTime LocalDateTime createTime) { }
 }

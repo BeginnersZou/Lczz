@@ -8,6 +8,8 @@ on:
       - "scripts/verify-admin-order-list.cjs"
       - "scripts/verify-stock-warning-flow.cjs"
       - "scripts/verify-case-image-count.cjs"
+      - "scripts/verify-business-time.cjs"
+      - "frontend/miniprogram/utils/time.js"
       - ".github/workflows/admin-ci.yml"
   push:
     branches: [dev]
@@ -16,6 +18,8 @@ on:
       - "scripts/verify-admin-order-list.cjs"
       - "scripts/verify-stock-warning-flow.cjs"
       - "scripts/verify-case-image-count.cjs"
+      - "scripts/verify-business-time.cjs"
+      - "frontend/miniprogram/utils/time.js"
       - ".github/workflows/admin-ci.yml"
 
 permissions:
@@ -39,5 +43,7 @@ jobs:
         run: node scripts/verify-stock-warning-flow.cjs
       - name: Verify case list image counts
         run: node scripts/verify-case-image-count.cjs
+      - name: Verify Beijing time display and exports
+        run: node scripts/verify-business-time.cjs
       - name: Build production admin site
         run: npm run build --prefix frontend/admin

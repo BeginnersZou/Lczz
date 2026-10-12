@@ -1,6 +1,7 @@
 package com.lczz.stocking.service;
 
 import com.lczz.common.exception.BusinessException;
+import com.lczz.common.time.BusinessTime;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
@@ -73,10 +74,10 @@ public class UnifiedPreparationService {
                         rs.getString("submitter_name"), nullToEmpty(rs.getString("material_name")),
                         nullToEmpty(rs.getString("sku_code")), nullToEmpty(rs.getString("spec")),
                         nullToEmpty(rs.getString("unit_name")), plain(rs.getBigDecimal("quantity")),
-                        rs.getTimestamp("created_at").toLocalDateTime().format(CSV_TIME),
+                        rs.getObject("created_at", LocalDateTime.class).format(CSV_TIME),
                         statusLabel(rs.getString("source_type"), rs.getString("status_code"))),
                 query.args().toArray());
-        return csv("备货总表_" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss")) + ".csv",
+        return csv("备货总表_" + LocalDateTime.now(BusinessTime.ZONE).format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss")) + ".csv",
                 List.of("订单编号", "订单名称", "来源", "客户", "下单人/师傅", "耗材名称", "SKU编码", "规格",
                         "单位", "数量", "创建时间", "状态"), rows);
     }
@@ -103,7 +104,8 @@ public class UnifiedPreparationService {
                            COALESCE(NULLIF(w.description,''),NULLIF(w.task_type,''),'安装订单') order_name,
                            '工程订单耗材' source_label,w.customer_name customer_name,
                            COALESCE(NULLIF(u.real_name,''),NULLIF(u.nickname,''),NULLIF(u.username,''),'安装师傅') submitter_name,
-                           r.installer_user_id submitter_id,r.request_status status_code,r.submitted_at created_at,
+                           r.installer_user_id submitter_id,r.request_status status_code,
+                           r.submitted_at + INTERVAL '8' HOUR created_at,
                            r.order_id work_order_id,
                            (SELECT COUNT(*) FROM material_request_item x WHERE x.request_id=r.id) item_count,
                            (SELECT COALESCE(SUM(x.requested_quantity),0) FROM material_request_item x WHERE x.request_id=r.id) total_quantity
@@ -172,7 +174,7 @@ public class UnifiedPreparationService {
                 """, (rs, row) -> new PreparationView(rs.getLong("id"), "W", rs.getString("request_no"),
                 rs.getString("order_no"), rs.getString("order_name"), "工程订单耗材", rs.getString("customer_name"),
                 rs.getLong("installer_user_id"), rs.getString("submitter_name"), rs.getString("submitter_phone"), rs.getString("request_status"),
-                statusLabel("W", rs.getString("request_status")), rs.getTimestamp("submitted_at").toLocalDateTime(),
+                statusLabel("W", rs.getString("request_status")), BusinessTime.fromUtc(rs.getObject("submitted_at", LocalDateTime.class)),
                 rs.getObject("order_id", Long.class), rs.getString("remark"), new ArrayList<>()), id);
         if (rows.isEmpty()) throw new BusinessException(404, "PREPARATION_NOT_FOUND", "备货记录不存在");
         PreparationView view = rows.getFirst();
@@ -202,7 +204,7 @@ public class UnifiedPreparationService {
                 """, (rs, row) -> new PreparationView(rs.getLong("id"), "A", rs.getString("order_no"),
                 rs.getString("order_no"), "客户下单", "师傅自助下单", null,
                 rs.getLong("installer_id"), rs.getString("submitter_name"), rs.getString("submitter_phone"), rs.getString("order_status"),
-                statusLabel("A", rs.getString("order_status")), rs.getTimestamp("created_at").toLocalDateTime(),
+                statusLabel("A", rs.getString("order_status")), rs.getObject("created_at", LocalDateTime.class),
                 null, null, new ArrayList<>()), id);
         if (rows.isEmpty()) throw new BusinessException(404, "PREPARATION_NOT_FOUND", "备货记录不存在");
         PreparationView view = rows.getFirst();
@@ -223,7 +225,7 @@ public class UnifiedPreparationService {
         return new PreparationSummary(rs.getLong("source_id"), source, rs.getString("request_no"),
                 rs.getString("order_no"), rs.getString("order_name"), rs.getString("source_label"),
                 rs.getString("customer_name"), rs.getLong("submitter_id"), rs.getString("submitter_name"),
-                code, statusLabel(source, code), rs.getTimestamp("created_at").toLocalDateTime(),
+                code, statusLabel(source, code), rs.getObject("created_at", LocalDateTime.class),
                 rs.getObject("work_order_id", Long.class), rs.getInt("item_count"),
                 rs.getBigDecimal("total_quantity"));
     }

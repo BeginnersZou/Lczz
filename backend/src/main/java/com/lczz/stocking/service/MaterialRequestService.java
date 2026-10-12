@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.lczz.auth.domain.AuthenticatedUser;
 import com.lczz.auth.domain.RoleCode;
 import com.lczz.common.exception.BusinessException;
+import com.lczz.common.time.UtcTime;
 import com.lczz.order.persistence.WorkOrderEntity;
 import com.lczz.order.persistence.WorkOrderMapper;
 import com.lczz.order.persistence.WorkOrderStatusHistoryEntity;
@@ -579,7 +580,7 @@ public class MaterialRequestService {
                                BigDecimal displayPrice, String itemStatus) { }
     public record RequestView(long id, String requestNo, long orderId, String orderNo, String productName,
                               String status, String statusCode, String statusLabel, String remark,
-                              List<MaterialView> materials, LocalDateTime createTime, LocalDateTime submittedAt,
-                              Long completedBy, LocalDateTime completedAt, Long voidedBy, LocalDateTime voidedAt,
+                              List<MaterialView> materials, @UtcTime LocalDateTime createTime, @UtcTime LocalDateTime submittedAt,
+                              Long completedBy, @UtcTime LocalDateTime completedAt, Long voidedBy, @UtcTime LocalDateTime voidedAt,
                               String voidReason) { }
 }

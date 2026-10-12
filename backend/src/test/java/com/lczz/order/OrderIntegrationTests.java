@@ -213,6 +213,31 @@ class OrderIntegrationTests {
         return objectMapper.readTree(response).path("data");
     }
 
+    @Test
+    void zonedAppointmentsRoundTripAsBeijingWallTimeAndDateFiltersKeepTheirCalendarDay() throws Exception {
+        JsonNode created = createOrder("13800138000", installerId);
+        long id = created.path("id").asLong();
+        assertThat(created.path("orderStartTime").asText()).isEqualTo("2026-08-20T09:00:00+08:00");
+        assertThat(jdbcTemplate.queryForObject("SELECT required_start_at FROM work_order WHERE id=?",
+                java.time.LocalDateTime.class, id)).isEqualTo(java.time.LocalDateTime.of(2026, 8, 20, 9, 0));
+
+        String update = orderJson("13800138000", "[" + installerId + "]")
+                .replace("2026-08-20T01:00:00Z", "2026-08-20T09:00:00")
+                .replace("2026-08-20T03:00:00Z", "2026-08-20T11:00:00+08:00");
+        mockMvc.perform(put("/api/v1/orders/" + id).header("Authorization", "Bearer " + adminToken)
+                        .contentType("application/json").content(update))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.orderStartTime").value("2026-08-20T09:00:00+08:00"))
+                .andExpect(jsonPath("$.data.orderEndTime").value("2026-08-20T11:00:00+08:00"));
+        jdbcTemplate.update("UPDATE work_order SET created_at='2026-10-12 00:15:00' WHERE id=?", id);
+        long yesterday = createOrder("13800138000", installerId).path("id").asLong();
+        jdbcTemplate.update("UPDATE work_order SET created_at='2026-10-11 23:55:00' WHERE id=?", yesterday);
+        mockMvc.perform(get("/api/orders/list").header("Authorization", "Bearer " + adminToken)
+                        .param("startDate", "2026-10-12").param("endDate", "2026-10-12"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.list[0].id").value(id));
+    }
+
     private void updateStatus(long orderId, String statusCode) throws Exception {
         mockMvc.perform(patch("/api/orders/" + orderId + "/status")
                         .header("Authorization", "Bearer " + adminToken)

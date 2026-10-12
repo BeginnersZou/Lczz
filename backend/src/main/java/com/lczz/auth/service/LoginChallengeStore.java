@@ -44,7 +44,7 @@ public class LoginChallengeStore {
                         + "WHERE code_hash=? FOR UPDATE",
                 (rs, rowNum) -> new Challenge(
                         new WechatIdentity(rs.getString("app_id"), rs.getString("open_id"), rs.getString("union_id")),
-                        rs.getTimestamp("expires_at").toLocalDateTime()),
+                        rs.getObject("expires_at", LocalDateTime.class)),
                 codeHash);
         jdbcTemplate.update("DELETE FROM wechat_login_challenge WHERE code_hash=?", codeHash);
         LocalDateTime now = LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);

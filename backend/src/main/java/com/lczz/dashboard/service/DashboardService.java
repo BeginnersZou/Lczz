@@ -3,10 +3,10 @@ package com.lczz.dashboard.service;
 import com.lczz.auth.domain.AuthenticatedUser;
 import com.lczz.auth.domain.RoleCode;
 import com.lczz.common.exception.BusinessException;
+import com.lczz.common.time.BusinessTime;
 import com.lczz.product.service.ProductStockFilter;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
@@ -68,8 +68,8 @@ public class DashboardService {
         Map<String, Long> buckets = window.emptyBuckets();
         List<LocalDateTime> createdTimes = jdbcTemplate.query(
                 "SELECT created_at FROM work_order WHERE deleted = FALSE AND created_at >= ? ORDER BY created_at",
-                (resultSet, rowNum) -> resultSet.getTimestamp("created_at").toLocalDateTime(),
-                Timestamp.valueOf(window.start()));
+                (resultSet, rowNum) -> resultSet.getObject("created_at", LocalDateTime.class),
+                window.start());
         for (LocalDateTime createdAt : createdTimes) {
             String key = window.monthly() ? YearMonth.from(createdAt).format(MONTH_LABEL)
                     : createdAt.toLocalDate().format(DAY_LABEL);
@@ -108,7 +108,7 @@ public class DashboardService {
                 (resultSet, rowNum) -> new TodoItem(
                         resultSet.getLong("id"), resultSet.getString("order_no"),
                         resultSet.getString("task_type"), resultSet.getString("order_status"),
-                        resultSet.getString("customer_name"), nullableDateTime(resultSet.getTimestamp("required_start_at"))),
+                        resultSet.getString("customer_name"), resultSet.getObject("required_start_at", LocalDateTime.class)),
                 args.toArray());
         return new TodoPage(items, total, page, pageSize, scope.role().name(),
                 allStatusCounts.getOrDefault("PENDING_VISIT", 0L),
@@ -117,7 +117,7 @@ public class DashboardService {
     }
 
     private long countOrdersCreatedSince(LocalDateTime start) {
-        return count("SELECT COUNT(*) FROM work_order WHERE deleted = FALSE AND created_at >= ?", Timestamp.valueOf(start));
+        return count("SELECT COUNT(*) FROM work_order WHERE deleted = FALSE AND created_at >= ?", start);
     }
 
     private Map<String, Long> orderStatusCounts(String scopeColumn, Long userId) {
@@ -150,10 +150,6 @@ public class DashboardService {
     private long count(String sql, Object... args) {
         Long result = jdbcTemplate.queryForObject(sql, Long.class, args);
         return result == null ? 0 : result;
-    }
-
-    private static LocalDateTime nullableDateTime(Timestamp value) {
-        return value == null ? null : value.toLocalDateTime();
     }
 
     public record Overview(long todayOrders, long pendingAssign, long processingOrders, long completedOrders,
@@ -191,7 +187,7 @@ public class DashboardService {
     private record RangeWindow(LocalDateTime start, boolean monthly, int bucketCount) {
         private static RangeWindow parse(String value) {
             String normalized = value == null || value.isBlank() ? "7d" : value.trim().toLowerCase();
-            LocalDate today = LocalDate.now();
+            LocalDate today = LocalDate.now(BusinessTime.ZONE);
             return switch (normalized) {
                 case "day" -> new RangeWindow(today.atStartOfDay(), false, 1);
                 case "7d" -> new RangeWindow(today.minusDays(6).atStartOfDay(), false, 7);
