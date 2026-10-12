@@ -41,7 +41,7 @@
 				</view>
 			</view>
 			<view class="info-row">
-				<text class="info-label">收货人</text>
+				<text class="info-label">{{ userRole === 'dealer' ? '客户' : '收货人' }}</text>
 				<text class="info-value">{{ orderInfo.name }} {{ orderInfo.phone }}</text>
 			</view>
 			<view class="info-row">
@@ -50,8 +50,22 @@
 			</view>
 			<view class="info-row">
 				<text class="info-label">上门时间</text>
-				<text class="info-value highlight">{{ orderInfo.visitTime }}</text>
+				<text class="info-value highlight">{{ orderInfo.visitTime || '待管理员安排' }}</text>
 			</view>
+			<template v-if="userRole === 'dealer'">
+				<view class="info-row">
+					<text class="info-label">预约提交</text>
+					<text class="info-value">{{ orderInfo.createdTime }}</text>
+				</view>
+				<view class="info-row">
+					<text class="info-label">需求描述</text>
+					<text class="info-value">{{ orderInfo.description || '无' }}</text>
+				</view>
+				<view class="info-row">
+					<text class="info-label">指派师傅</text>
+					<text class="info-value">{{ orderInfo.selectedMasterList?.[0]?.masterName || '待指派' }}</text>
+				</view>
+			</template>
 		</view>
 
 		<!-- ═══ 安装师傅耗材申请：清单与备注属于同一业务模块 ═══ -->
@@ -96,9 +110,10 @@
 							<text class="tool-qty-value" v-else>{{ tool.qty }}</text>
 						</view>
 					</view>
-					<view class="tool-delete" @click="deleteTool(index)" v-if="!materialReadonly">
-						<up-icon name="trash" size="18" color="#ff4d4f"></up-icon>
-					</view>
+						<view class="tool-delete" @click="deleteTool(index)" v-if="!materialReadonly">
+							<up-icon name="trash" size="18" color="#dc2626"></up-icon>
+							<text>删除</text>
+						</view>
 				</view>
 			</view>
 
@@ -123,8 +138,8 @@
 			</view>
 
 			<view class="material-submit" v-if="!materialReadonly && toolList.length > 0"
-				:class="{ disabled: submitting }" @click="handleSubmit">
-				<text>{{ submitting ? '提交中...' : '提交耗材申请' }}</text>
+				:class="{ disabled: submitting || !hasMaterialDraft }" @click="handleSubmit">
+				<text>{{ submitting ? '保存中...' : (hasMaterialDraft ? (materialRequest ? '保存耗材清单' : '提交耗材申请') : '耗材清单已保存') }}</text>
 			</view>
 		</view>
 
@@ -148,7 +163,8 @@
 							<view class="image-item" v-for="(media, mediaIndex) in record.media" :key="media.id">
 								<video v-if="media.mimeType?.startsWith('video/')" class="preview-img" :src="media.url"
 									controls object-fit="cover" :show-center-play-btn="true"></video>
-								<image v-else class="preview-img" :src="media.url" mode="aspectFill"
+								<image v-else class="preview-img" :src="media.thumbnailUrl || media.displayUrl || media.url"
+									mode="aspectFill" lazy-load
 									@click="previewRecordImages(record.images, record.images.findIndex(item => item.id === media.id))"></image>
 							</view>
 						</view>
@@ -191,18 +207,30 @@
 			</view>
 		</view>
 
-		<!-- ═══ 指派师傅提交施工进度或完工 ═══ -->
+		<view class="section-card" v-if="orderInfo.customerConfirmedAt">
+			<view class="info-row">
+				<text class="info-label">客户确认时间</text>
+				<text class="info-value">{{ orderInfo.customerConfirmedAt }}</text>
+			</view>
+			<text class="complete-text">订单已完成，施工进度已封存。</text>
+		</view>
+
+		<view class="section-card" v-if="canConfirmCompletion">
+			<view class="section-header"><text class="section-title">确认订单完成</text></view>
+			<text class="complete-text">确认服务完成后，施工进度将封存，您可以继续评价本次服务。</text>
+			<view class="inline-submit" :class="{ disabled: confirmingCompletion }" @click="handleConfirmCompletion">
+				<text>{{ confirmingCompletion ? '确认中...' : '确认订单完成' }}</text>
+			</view>
+		</view>
+
+		<!-- ═══ 指派师傅提交施工进度 ═══ -->
 		<view class="section-card" v-if="canOperateProgress">
 			<view class="section-header">
 				<view class="section-title-wrap"><text class="section-title">施工操作</text></view>
 			</view>
-			<view class="progress-tabs">
-				<view class="progress-tab" :class="{ active: progressType === 'PROGRESS' }" @click="progressType = 'PROGRESS'">提交进度</view>
-				<view class="progress-tab" :class="{ active: progressType === 'COMPLETION' }" @click="progressType = 'COMPLETION'">提交完工</view>
-			</view>
 			<view class="textarea-wrap">
 				<textarea class="complete-textarea" v-model="progressDescription"
-					:placeholder="progressType === 'COMPLETION' ? '必填：填写完工说明' : '必填：填写本次施工进度'"
+					placeholder="必填：填写本次施工进度"
 					placeholder-class="placeholder-style" maxlength="2000"></textarea>
 				<text class="text-count">{{ progressDescription.length }}/2000</text>
 			</view>
@@ -213,8 +241,7 @@
 						<view class="upload-title-copy">
 							<view class="upload-title-line">
 								<text class="upload-title">施工附件</text>
-								<text class="upload-required" v-if="progressType === 'COMPLETION'">至少上传1个</text>
-								<text class="upload-optional" v-else>选填</text>
+								<text class="upload-optional">选填</text>
 							</view>
 							<text class="upload-subtitle">图片与视频合计最多9个，可全选图片或全选视频</text>
 						</view>
@@ -260,7 +287,7 @@
 				</view>
 			</view>
 			<view class="inline-submit" :class="{ disabled: !canSubmitProgress || submittingProgress }" @click="handleProgressSubmit">
-				<text>{{ submittingProgress ? '提交中...' : (progressType === 'COMPLETION' ? '确认完工' : '提交进度') }}</text>
+				<text>{{ submittingProgress ? '提交中...' : '提交进度' }}</text>
 			</view>
 		</view>
 
@@ -281,10 +308,9 @@
 				<!-- 搜索框 -->
 				<view class="popup-search">
 					<up-search v-model="searchKeyword" placeholder="搜索耗材名称" :showAction="false" bgColor="#f5f5f5"
-						shape="round" height="40">
+						@search="fetchTools" @clear="fetchTools" shape="round" height="40">
 					</up-search>
-					<view class="search-btn">搜索</view>
-					<!-- <up-button style="width:160rpx;height:80rpx" type="primary" plain shape="circle"   text="搜索"></up-button> -->
+					<view class="search-btn" :class="{ disabled: popupLoading }" @click="fetchTools">{{ popupLoading ? '搜索中' : '搜索' }}</view>
 				</view>
 
 				<!-- 分类标签 — 小程序scroll-x必须用inline-block -->
@@ -299,38 +325,50 @@
 
 				<!-- 工具列表 — 动态高度，内部滚动 -->
 				<scroll-view scroll-y class="popup-list" :style="{ height: popupListHeight + 'px' }">
+					<view class="popup-empty" v-if="popupLoading && filteredTools.length === 0">
+						<up-loading-icon color="#0b63ce"></up-loading-icon>
+						<text class="popup-empty-text">正在加载全部耗材</text>
+					</view>
 					<!-- 两行式布局：上行=图片+名称，下行=规格+价格+操作 -->
-					<view class="popup-tool-card" v-for="(tool, index) in filteredTools" :key="index">
+					<view class="popup-tool-card" v-for="tool in filteredTools" :key="tool.id">
 						<view class="popup-tool-row1">
 							<image class="popup-tool-img" :src="tool.image" mode="aspectFill"></image>
 							<text class="popup-tool-name">{{ tool.title }}</text>
 						</view>
+						<view class="popup-sku-list" v-if="tool.skus && tool.skus.length">
+							<view v-for="sku in tool.skus" :key="sku.id" class="popup-sku-chip"
+								:class="{ active: selectedSkuIds[tool.id] === sku.id, disabled: !sku.enabled || Number(sku.stock) <= 0 }"
+								@click="selectToolSku(tool, sku)">
+								<text>{{ sku.specLabel || '通用规格' }}</text>
+								<text class="popup-sku-stock">{{ Number(sku.stock) > 0 ? ('余' + sku.stock + sku.unit) : '售罄' }}</text>
+							</view>
+						</view>
 						<view class="popup-tool-row2">
-							<text class="popup-tool-spec">{{ tool.spec }} · 库存 {{ tool.stock }}{{ tool.unit || '' }}</text>
-							<text class="popup-tool-price">¥{{ tool.price }}</text>
+							<text class="popup-tool-spec">{{ getSelectedSku(tool)?.spec || (tool.skus?.length > 1 ? '请先选择具体规格' : '通用规格') }}</text>
 							<view class="popup-tool-action">
-								<view class="popup-qty-wrap" v-if="getToolQty(tool) > 0">
-									<view class="popup-qty-btn" @click="changePopupQty(tool, -1)"><text>-</text></view>
-									<text class="popup-qty-num">{{ getToolQty(tool) }}</text>
-									<view class="popup-qty-btn" @click="changePopupQty(tool, 1)"><text>+</text></view>
+								<view class="popup-qty-wrap" v-if="getToolQty(getSelectedSku(tool)) > 0">
+									<view class="popup-qty-btn" @click="changePopupQty(getSelectedSku(tool), -1)"><text>-</text></view>
+									<text class="popup-qty-num">{{ getToolQty(getSelectedSku(tool)) }}</text>
+									<view class="popup-qty-btn" @click="changePopupQty(getSelectedSku(tool), 1)"><text>+</text></view>
 								</view>
-								<view class="popup-add-btn" :class="{ disabled: tool.stock <= 0 }" v-else @click="addToolToCart(tool)">
-									<text class="popup-add-label">{{ tool.stock > 0 ? '添加' : '无库存' }}</text>
+								<view class="popup-add-btn" :class="{ disabled: !getSelectedSku(tool) || getSelectedSku(tool).stock <= 0 }"
+									v-else @click="addToolToCart(getSelectedSku(tool))">
+									<text class="popup-add-label">{{ getSelectedSku(tool) ? (getSelectedSku(tool).stock > 0 ? '添加' : '已售罄') : '选择规格' }}</text>
 								</view>
 							</view>
 						</view>
 					</view>
-					<view class="popup-empty" v-if="filteredTools.length === 0">
+					<view class="popup-empty" v-if="!popupLoading && filteredTools.length === 0">
 						<up-icon name="empty-list" size="60" color="#9aa8b6"></up-icon>
-						<text class="popup-empty-text">暂无相关耗材</text>
+						<text class="popup-empty-text">{{ popupLoadError || '暂无相关耗材' }}</text>
 					</view>
 					<view style="height: 20rpx;"></view>
 				</scroll-view>
 
 				<!-- 底部确认 -->
 				<view class="popup-footer">
-					<text class="popup-selected">已选 {{ selectedCount }} 件</text>
-					<view class="popup-confirm-btn" @click="confirmTools">
+					<text class="popup-selected">已选 {{ selectedKindCount }} 种规格</text>
+					<view class="popup-confirm-btn" :class="{ disabled: selectedKindCount === 0 }" @click="confirmTools">
 						<text>确认添加</text>
 					</view>
 				</view>
@@ -348,15 +386,17 @@
 	import {
 		onBackPress,
 		onLoad,
-		onShow
+		onShow,
+		onUnload
 	} from '@dcloudio/uni-app'
 	import {
 	orderApi,
 	consumablesApi,
 	authApi,
+	uploadApi,
 	resolveMediaUrl
 	} from '@/api/api.js'
-	import { getAuthToken } from '@/utils/auth-session.js'
+	import { requireLogin } from '@/utils/auth-guard.js'
 
 	// ===== 动态计算弹出框高度 =====
 	// #ifdef MP-WEIXIN
@@ -389,13 +429,20 @@
 	})
 
 	const materialRequest = ref(null)
-	// 耗材申请仅允许指派师傅提交一次；重复提交由服务端幂等/冲突规则兜底。
+	const progressRecords = ref([])
+	// 客户确认订单完成前，施工记录和备货状态都不影响师傅修改耗材清单。
 	const userRole = ref('')
+	const currentUserId = ref(null)
+	const confirmingCompletion = ref(false)
 	const isInstaller = computed(() => userRole.value === 'installer')
-	const isReviewer = computed(() => ['customer', 'dealer'].includes(userRole.value))
-	const canReview = computed(() => isReviewer.value && orderInfo.value.statusCode === 'PENDING_REVIEW')
-	const hasReviewed = computed(() => isReviewer.value && orderInfo.value.statusCode === 'REVIEWED')
-	const materialReadonly = computed(() => !isInstaller.value || !['待上门', '处理中'].includes(orderInfo.value.status) || Boolean(materialRequest.value))
+	const isReviewer = computed(() => userRole.value === 'customer')
+	const isBoundCustomer = computed(() => isReviewer.value && currentUserId.value != null &&
+		String(orderInfo.value.customerUserId) === String(currentUserId.value))
+	const canConfirmCompletion = computed(() => isBoundCustomer.value && orderInfo.value.statusCode === 'IN_PROGRESS')
+	const canReview = computed(() => isBoundCustomer.value && orderInfo.value.statusCode === 'PENDING_REVIEW')
+	const hasReviewed = computed(() => isBoundCustomer.value && orderInfo.value.statusCode === 'REVIEWED')
+	const materialReadonly = computed(() => !isInstaller.value
+		|| !['PENDING_VISIT', 'IN_PROGRESS'].includes(orderInfo.value.statusCode))
 
 const statusClass = computed(() => {
 		const s = orderInfo.value.status
@@ -430,28 +477,56 @@ const statusClass = computed(() => {
 	}
 
 	const materialRemark = ref('')
-	const progressRecords = ref([])
-	const progressType = ref('PROGRESS')
+	const materialSavedSignature = ref('{"items":[],"remark":""}')
+	const materialSignature = (items, remark) => JSON.stringify({
+		items: items.map(item => ({
+			productId: Number(item.productId || item.id),
+			skuId: item.skuId == null ? null : Number(item.skuId),
+			quantity: Number(item.qty || 0)
+		})).sort((left, right) => (left.skuId || left.productId) - (right.skuId || right.productId)),
+		remark: String(remark || '').trim()
+	})
+	const applyMaterialRequest = (data) => {
+		materialRequest.value = data || null
+		materialRemark.value = data?.remark || ''
+		toolList.value = (data?.materials || []).map(item => {
+			const quantity = Number(item.count || 1)
+			return {
+				id: item.productId,
+				productId: item.productId,
+				skuId: item.skuId,
+				title: item.name || '',
+				spec: item.spec || '',
+				unit: item.unit || '',
+				// 后端 stock 是扣除本申请预占后的库存；编辑时需加回当前申请量。
+				stock: Number(item.stock || 0) + quantity,
+				qty: quantity,
+				price: Number(item.displayPrice || 0)
+			}
+		})
+		materialSavedSignature.value = materialSignature(toolList.value, materialRemark.value)
+	}
 	const progressDescription = ref('')
 	const progressImages = ref([])
 	const uploadProgress = ref('')
 	const submittingProgress = ref(false)
 	let progressMediaUid = 0
 	const allowLeave = ref(false)
-	const canOperateProgress = computed(() => isInstaller.value && ['待上门', '处理中'].includes(orderInfo.value.status))
-	const hasMaterialDraft = computed(() => !materialReadonly.value && (toolList.value.length > 0 || Boolean(materialRemark.value.trim())))
+	const canOperateProgress = computed(() => isInstaller.value && ['PENDING_VISIT', 'IN_PROGRESS'].includes(orderInfo.value.statusCode))
+	const hasMaterialDraft = computed(() => !materialReadonly.value
+		&& materialSignature(toolList.value, materialRemark.value) !== materialSavedSignature.value)
 	const uploadedProgressMediaCount = computed(() => progressImages.value.filter(media => media.status === 'success' && media.id).length)
 	const failedProgressMediaCount = computed(() => progressImages.value.filter(media => media.status === 'failed').length)
 	const isUploadingProgressMedia = computed(() => progressImages.value.some(media => media.status === 'queued' || media.status === 'uploading'))
 	const canSubmitProgress = computed(() => {
-		if (!progressDescription.value.trim()) return false
+		if (!canOperateProgress.value || !progressDescription.value.trim()) return false
 		if (isUploadingProgressMedia.value || failedProgressMediaCount.value > 0) return false
-		return progressType.value !== 'COMPLETION' || uploadedProgressMediaCount.value > 0
+		return true
 	})
 
 	const previewRecordImages = (images, index) => {
 		if (index < 0 || images.length === 0) return
-		const urls = images.map(image => image.url)
+		const urls = images.map(image => image.originalUrl || image.url)
 		uni.previewImage({ current: urls[index], urls })
 	}
 
@@ -461,11 +536,46 @@ const statusClass = computed(() => {
 
 	const refreshOrderStatus = async () => {
 		if (!orderId.value) return
-		const orderRes = await orderApi.getDetail(orderId.value, { loading: false })
-		if (orderRes.code === 200) orderInfo.value = orderRes.data || {}
+		const [orderRes, progressRes] = await Promise.all([
+			orderApi.getDetail(orderId.value, { loading: false }),
+			orderApi.getProgress(orderId.value, { loading: false, silent: true })
+		])
+		if (orderRes.code !== 200) {
+			setDetailError(orderRes)
+			return
+		}
+		detailError.value = null
+		orderInfo.value = orderRes.data || {}
+		if (progressRes.code === 200) progressRecords.value = progressRes.data || []
+		if (isInstaller.value && materialRequest.value) {
+			const materialRes = await orderApi.getMaterials(orderId.value, { loading: false, silent: true })
+			if (materialRes.code === 200 && !hasMaterialDraft.value) applyMaterialRequest(materialRes.data)
+		}
 	}
 
-	onShow(() => refreshOrderStatus())
+	let initialLoadComplete = false
+	onShow(() => initialLoadComplete ? refreshOrderStatus() : undefined)
+
+	const handleConfirmCompletion = async () => {
+		if (!canConfirmCompletion.value || confirmingCompletion.value) return
+		confirmingCompletion.value = true
+		try {
+			const result = await new Promise((resolve, reject) => uni.showModal({
+				title: '确认订单完成', content: '是否确认订单已完成', success: resolve, fail: reject
+			}))
+			if (!result.confirm || !canConfirmCompletion.value) return
+			const response = await orderApi.confirmCompletion(orderId.value)
+			if (response.code === 200) {
+				orderInfo.value = { ...orderInfo.value, ...response.data }
+				uni.showToast({ title: '订单已确认完成', icon: 'success' })
+			}
+			await refreshOrderStatus()
+		} catch {
+			uni.showToast({ title: '确认失败，请刷新订单后重试', icon: 'none' })
+		} finally {
+			confirmingCompletion.value = false
+		}
+	}
 
 	const previewProgressImage = (media) => {
 		if (media.mimeType?.startsWith('video/')) return
@@ -476,7 +586,8 @@ const statusClass = computed(() => {
 	}
 
 	const deleteProgressImage = (index) => {
-		progressImages.value.splice(index, 1)
+		const [removed] = progressImages.value.splice(index, 1)
+		if (removed?.id) uploadApi.deleteTemporary(removed.id, { loading: false, silent: true })
 	}
 
 	const createProgressMediaDraft = (selected) => {
@@ -530,13 +641,14 @@ const statusClass = computed(() => {
 	}
 
 	const retryProgressMedia = async (media) => {
-		if (isUploadingProgressMedia.value || media.status !== 'failed') return
+		if (!canOperateProgress.value || isUploadingProgressMedia.value || media.status !== 'failed') return
 		uploadProgress.value = '正在重新上传附件'
 		await uploadProgressMedia(media)
 		uploadProgress.value = ''
 	}
 
-	const chooseProgressMedia = () => {
+	const openProgressMediaPicker = (source) => {
+		if (!canOperateProgress.value) return
 		const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 		const MAX_VIDEO_BYTES = 200 * 1024 * 1024
 		if (isUploadingProgressMedia.value) {
@@ -548,10 +660,11 @@ const statusClass = computed(() => {
 		uni.chooseMedia({
 			count: remaining,
 			mediaType: ['image', 'video'],
-			sourceType: ['album', 'camera'],
+			sourceType: [source],
 			maxDuration: 60,
 			camera: 'back',
 			success: async (res) => {
+				if (!canOperateProgress.value) return
 				const files = res.tempFiles || []
 				let oversized = 0
 				const accepted = []
@@ -587,14 +700,19 @@ const statusClass = computed(() => {
 		})
 	}
 
-	const refreshProgress = async () => {
-		const res = await orderApi.getProgress(orderId.value, { loading: false })
-		if (res.code === 200) progressRecords.value = res.data || []
+	const chooseProgressMedia = () => {
+		if (!canOperateProgress.value) return
+		uni.showActionSheet({
+			itemList: ['从相册选择（支持长视频）', '现场拍摄（视频最长60秒）'],
+			success: ({ tapIndex }) => openProgressMediaPicker(tapIndex === 1 ? 'camera' : 'album')
+		})
 	}
 
-	const handleProgressSubmit = () => {
-		if (progressType.value === 'COMPLETION' && hasMaterialDraft.value) {
-			uni.showToast({ title: '请先提交或清空耗材申请', icon: 'none' })
+
+	const handleProgressSubmit = async () => {
+		if (!canOperateProgress.value || submittingProgress.value) return
+		if (hasMaterialDraft.value) {
+			uni.showToast({ title: '请先保存耗材清单，再提交施工进度', icon: 'none' })
 			return
 		}
 		if (isUploadingProgressMedia.value) {
@@ -605,44 +723,36 @@ const statusClass = computed(() => {
 			uni.showToast({ title: '请重试或删除上传失败的附件', icon: 'none' })
 			return
 		}
-		if (!canSubmitProgress.value || submittingProgress.value) {
-			uni.showToast({
-				title: progressType.value === 'COMPLETION' && !uploadedProgressMediaCount.value ? '完工至少上传一个附件' : '请填写施工说明',
-				icon: 'none'
-			})
+		if (!canSubmitProgress.value) {
+			uni.showToast({ title: '请填写施工说明', icon: 'none' })
 			return
 		}
-		uni.showModal({
-			title: progressType.value === 'COMPLETION' ? '确认提交完工' : '确认提交进度',
-			content: progressType.value === 'COMPLETION' ? '提交后订单将进入待评价，且不能重复完工。' : '提交后客户可在订单详情查看本条进度。',
-			success: async ({ confirm }) => {
-				if (!confirm) return
-				submittingProgress.value = true
-				try {
-					const payload = {
-						description: progressDescription.value.trim(),
-						fileIds: progressImages.value.filter(media => media.status === 'success' && media.id).map(media => media.id)
-					}
-					const res = progressType.value === 'COMPLETION'
-						? await orderApi.complete(orderId.value, payload)
-						: await orderApi.submitProgress(orderId.value, payload)
-					if (res.code !== 200) return
-					progressDescription.value = ''
-					progressImages.value = []
-					await refreshProgress()
-					const orderRes = await orderApi.getDetail(orderId.value)
-					if (orderRes.code === 200) orderInfo.value = orderRes.data || {}
-					uni.showToast({ title: '提交成功', icon: 'success' })
-				} finally {
-					submittingProgress.value = false
-				}
+		submittingProgress.value = true
+		try {
+			const result = await new Promise((resolve, reject) => uni.showModal({
+				title: '确认提交进度', content: '提交后客户可在订单详情查看本条进度。', success: resolve, fail: reject
+			}))
+			if (!result.confirm || !canOperateProgress.value) return
+			const response = await orderApi.submitProgress(orderId.value, {
+				description: progressDescription.value.trim(),
+				fileIds: progressImages.value.filter(media => media.status === 'success' && media.id).map(media => media.id)
+			})
+			if (response.code === 200) {
+				progressDescription.value = ''
+				progressImages.value = []
+				uni.showToast({ title: '提交成功', icon: 'success' })
 			}
-		})
+			await refreshOrderStatus()
+		} catch {
+			uni.showToast({ title: '提交失败，请刷新订单后重试', icon: 'none' })
+		} finally {
+			submittingProgress.value = false
+		}
 	}
 
 	const hasUnsavedChanges = computed(() => {
 		return hasMaterialDraft.value ||
-			Boolean(progressDescription.value.trim()) || progressImages.value.length > 0
+			(canOperateProgress.value && (Boolean(progressDescription.value.trim()) || progressImages.value.length > 0))
 	})
 
 	onBackPress(() => {
@@ -659,6 +769,12 @@ const statusClass = computed(() => {
 		return true
 	})
 
+	onUnload(() => {
+		progressImages.value.filter(media => media.id).forEach(media => {
+			uploadApi.deleteTemporary(media.id, { loading: false, silent: true })
+		})
+	})
+
 	// ===== 耗材选择弹出框 =====
 	const showToolPopup = ref(false)
 	const searchKeyword = ref('')
@@ -668,6 +784,7 @@ const statusClass = computed(() => {
 	// 耗材列表（由后端耗材接口拉取）
 	const popupTools = ref([])
 	const popupLoading = ref(false)
+	const popupLoadError = ref('')
 
 	// 按分类 + 关键词过滤
 	const filteredTools = computed(() => {
@@ -688,15 +805,33 @@ const statusClass = computed(() => {
 
 	// 拉取耗材列表（同时构建分类标签）
 	const fetchTools = async () => {
+		if (popupLoading.value) return
 		popupLoading.value = true
+		popupLoadError.value = ''
 		try {
+			const keyword = searchKeyword.value.trim()
 			const res = await consumablesApi.getList({
 				page: 1,
-				pageSize: 100
+				pageSize: 100,
+				...(keyword ? { keyword } : {}),
+				t: Date.now()
 			})
-			if (res.code !== 200) return
+			if (res.code !== 200) {
+				popupTools.value = []
+				popupLoadError.value = res.msg || '耗材加载失败，请重试'
+				return
+			}
 			// 耗材字段已与弹窗对齐（id/title/spec/price/image/category），res.data.list 直接使用
-			const list = (res.data && res.data.list) || []
+			const reservedBySku = new Map((materialRequest.value?.materials || [])
+				.filter(item => item.skuId != null)
+				.map(item => [Number(item.skuId), Number(item.count || 0)]))
+			const list = ((res.data && res.data.list) || []).map(tool => ({
+				...tool,
+				skus: (tool.skus || []).map(sku => ({
+					...sku,
+					stock: Number(sku.stock || 0) + (reservedBySku.get(Number(sku.id)) || 0)
+				}))
+			}))
 			popupTools.value = list
 			// 动态构建分类：首项"全部" + 去重后的实际分类
 			const cats = ['全部']
@@ -705,7 +840,8 @@ const statusClass = computed(() => {
 			})
 			categories.value = cats
 		} catch (err) {
-			// request.js 已统一处理错误提示
+			popupTools.value = []
+			popupLoadError.value = '耗材加载失败，请重试'
 		} finally {
 			popupLoading.value = false
 		}
@@ -713,28 +849,61 @@ const statusClass = computed(() => {
 
 	// 用 id 作为唯一 key（后端耗材有 id；兼容无 id 场景回退 title+spec）
 	const getToolKey = (tool) => {
+		if (tool && tool.skuId != null) return 'sku-' + tool.skuId
 		if (tool && tool.id != null) return String(tool.id)
 		return `${tool.title}_${tool.spec}`
 	}
 
+	const toSelectableSku = (tool, sku) => ({
+		id: tool.id,
+		productId: tool.id,
+		skuId: sku.id,
+		title: tool.title,
+		spec: sku.specLabel || tool.spec || '通用规格',
+		unit: sku.unit || tool.unit || '',
+		stock: Number(sku.stock || 0),
+		price: Number(tool.price || 0),
+		image: tool.image
+	})
+
+	const getSelectedSku = (tool) => {
+		if (!tool) return null
+		const enabled = (tool.skus || []).filter(sku => sku.enabled !== false)
+		const selected = enabled.find(sku => sku.id === selectedSkuIds.value[tool.id])
+		if (selected) return toSelectableSku(tool, selected)
+		if (enabled.length === 1) return toSelectableSku(tool, enabled[0])
+		return null
+	}
+
+	const selectToolSku = (tool, sku) => {
+		if (!sku.enabled || Number(sku.stock || 0) <= 0) {
+			uni.showToast({ title: '该规格已售罄', icon: 'none' })
+			return
+		}
+		selectedSkuIds.value[tool.id] = sku.id
+	}
+
 	// popupSelected 存储完整对象 { [key]: { ...tool, qty } }，避免反解 key 丢失字段
 	const popupSelected = ref({})
+	const selectedSkuIds = ref({})
 
 	const openToolPopup = async () => {
 		// 用已选工具初始化弹窗选中态（保留完整对象）
 		popupSelected.value = {}
+		selectedSkuIds.value = {}
 		toolList.value.forEach(tool => {
 			popupSelected.value[getToolKey(tool)] = {
 				...tool
 			}
+			if (tool.productId && tool.skuId) selectedSkuIds.value[tool.productId] = tool.skuId
 		})
 		searchKeyword.value = ''
 		currentCategory.value = 0
+		categories.value = ['全部']
+		popupTools.value = []
 		showToolPopup.value = true
-		// 首次打开时拉取耗材列表
-		if (popupTools.value.length === 0) {
-			await fetchTools()
-		}
+		// 每次打开都刷新全部耗材，避免微信端缓存过期的空列表和库存。
+		await fetchTools()
 	}
 
 	const closeToolPopup = () => {
@@ -742,11 +911,16 @@ const statusClass = computed(() => {
 	}
 
 	const getToolQty = (tool) => {
+		if (!tool) return 0
 		const item = popupSelected.value[getToolKey(tool)]
 		return (item && item.qty) || 0
 	}
 
 	const addToolToCart = (tool) => {
+		if (!tool) {
+			uni.showToast({ title: '请先选择具体规格', icon: 'none' })
+			return
+		}
 		if (Number(tool.stock || 0) <= 0) {
 			uni.showToast({ title: '该耗材暂无库存', icon: 'none' })
 			return
@@ -758,6 +932,7 @@ const statusClass = computed(() => {
 	}
 
 	const changePopupQty = (tool, delta) => {
+		if (!tool) return
 		const key = getToolKey(tool)
 		const item = popupSelected.value[key]
 		const current = (item && item.qty) || 0
@@ -781,6 +956,8 @@ const statusClass = computed(() => {
 		})
 		return count
 	})
+	const selectedKindCount = computed(() => Object.values(popupSelected.value)
+		.filter(item => item && item.qty > 0).length)
 
 	const confirmTools = () => {
 		if (selectedCount.value === 0) {
@@ -792,7 +969,9 @@ const statusClass = computed(() => {
 		}
 		// 直接用完整对象重建 toolList，保留 id/image/price 等字段
 		toolList.value = Object.values(popupSelected.value).map(item => ({
-			id: item.id,
+			id: item.productId,
+			productId: item.productId,
+			skuId: item.skuId,
 			title: item.title,
 			spec: item.spec,
 			unit: item.unit,
@@ -829,9 +1008,12 @@ const statusClass = computed(() => {
 			})
 			return
 		}
+		if (!hasMaterialDraft.value) return
 		uni.showModal({
 			title: '确认提交',
-			content: '提交后后台可查看备货清单，请确认耗材和数量无误。',
+			content: materialRequest.value
+				? '将保存修改后的耗材清单；如已备货，管理员需按新清单重新核对。客户确认订单完成后将不能修改。'
+				: '提交后仍可修改耗材清单；客户确认订单完成后将不能修改。',
 			success: async (res) => {
 				if (!res.confirm) return
 				if (submitting.value) return
@@ -842,15 +1024,19 @@ const statusClass = computed(() => {
 				})
 				try {
 					const submitRes = await orderApi.submitMaterials(orderId.value, {
-						items: toolList.value.map(t => ({ productId: t.id, quantity: t.qty })),
+						items: toolList.value.map(t => ({ productId: t.productId || t.id, skuId: t.skuId, quantity: t.qty })),
 						remark: materialRemark.value.trim()
 					})
-					if (submitRes.code !== 200) return
+					if (submitRes.code !== 200) {
+						uni.showToast({ title: submitRes.msg || '耗材申请保存失败', icon: 'none' })
+						return
+					}
 					materialRequest.value = submitRes.data || { statusLabel: '待备货' }
+					if (submitRes.data) applyMaterialRequest(submitRes.data)
 					const orderRes = await orderApi.getDetail(orderId.value)
 					if (orderRes.code === 200) orderInfo.value = orderRes.data || {}
 					uni.showToast({
-						title: '耗材申请已提交',
+						title: '耗材清单已保存',
 						icon: 'success'
 					})
 				} catch (err) {
@@ -906,7 +1092,9 @@ const statusClass = computed(() => {
 				return
 			}
 			if (userRes.code === 200 && userRes.data) {
-				userRole.value = userRes.data.role || ''
+				userRole.value = userRes.data.role === 'admin' ? 'admin'
+					: userRes.data.roles?.includes('dealer') ? 'dealer' : (userRes.data.role || '')
+				currentUserId.value = userRes.data.id
 			}
 			// 订单字段已与模板对齐，res.data 直接赋值
 			const data = orderRes.data || {}
@@ -914,37 +1102,23 @@ const statusClass = computed(() => {
 			if (progressRes.code === 200) progressRecords.value = progressRes.data || []
 			if (userRole.value === 'installer') {
 				const materialsRes = await orderApi.getMaterials(orderId.value, { loading: false, silent: true })
-				// 后端以 404 表示该订单尚未提交耗材申请，此时应展示可填写的空表单。
-				if (![200, 404].includes(materialsRes.code)) {
+				// API 层只将明确的“尚未申请”归一化为空；不能吞掉其他 404。
+				if (materialsRes.code !== 200) {
 					setDetailError(materialsRes)
 					return
 				}
-				if (materialsRes.code === 200 && materialsRes.data) {
-					materialRequest.value = materialsRes.data
-					materialRemark.value = materialsRes.data.remark || ''
-					toolList.value = (materialsRes.data.materials || []).map(item => ({
-						id: item.productId,
-						title: item.name || '',
-						spec: item.spec || '',
-						unit: item.unit || '',
-						stock: Number(item.stock || 0),
-						qty: Number(item.count || 1),
-						price: Number(item.displayPrice || 0)
-					}))
-				}
+				applyMaterialRequest(materialsRes.data)
 			}
 		} catch (err) {
 			setDetailError({ code: -1, msg: '请求异常，请稍后重试' })
 		} finally {
 			detailLoading.value = false
+			initialLoadComplete = true
 		}
 	}
 
 	onLoad((options) => {
-		if (!getAuthToken()) {
-			uni.reLaunch({ url: '/pages/login/login' })
-			return
-		}
+		if (!requireLogin({ content: '订单详情包含个人服务信息。你可以暂不登录，继续浏览产品和服务。' })) return
 		orderId.value = options?.id || ''
 		loadOrderDetails()
 	})
@@ -1343,10 +1517,10 @@ const statusClass = computed(() => {
 		align-items: center;
 	}
 
-	.qty-btn {
-		width: 44rpx;
-		height: 44rpx;
-		border-radius: 8rpx;
+		.qty-btn {
+			width: 64rpx;
+			height: 64rpx;
+			border-radius: 12rpx;
 		background-color: #fff;
 		border: 1rpx solid #ddd;
 		display: flex;
@@ -1372,14 +1546,21 @@ const statusClass = computed(() => {
 		text-align: center;
 	}
 
-	.tool-delete {
-		width: 60rpx;
-		height: 60rpx;
-		display: flex;
+		.tool-delete {
+			min-width: 112rpx;
+			height: 64rpx;
+			padding: 0 16rpx;
+			gap: 6rpx;
+			border: 2rpx solid #fecaca;
+			border-radius: 14rpx;
+			background: #fff7f7;
+			display: flex;
 		align-items: center;
 		justify-content: center;
 		flex-shrink: 0;
-		margin-left: 16rpx;
+			margin-left: 16rpx;
+			color: #dc2626;
+			font-size: 23rpx;
 
 		&:active {
 			opacity: 0.6;
@@ -1501,30 +1682,6 @@ const statusClass = computed(() => {
 		line-height: 1.6;
 		color: $text-sub;
 		margin-bottom: 16rpx;
-	}
-
-	.progress-tabs {
-		display: flex;
-		padding: 6rpx;
-		background: #f1f5f9;
-		border-radius: 12rpx;
-		margin-bottom: 20rpx;
-	}
-
-	.progress-tab {
-		flex: 1;
-		padding: 16rpx 0;
-		border-radius: 10rpx;
-		text-align: center;
-		font-size: 26rpx;
-		color: $text-sub;
-
-		&.active {
-			background: #fff;
-			color: $primary;
-			font-weight: 600;
-			box-shadow: 0 2rpx 8rpx rgba(15, 23, 42, 0.08);
-		}
 	}
 
 	.upload-heading {
@@ -1994,11 +2151,25 @@ const statusClass = computed(() => {
 		align-items: center;
 	}
 
-	.search-btn {
-		margin-left: 20rpx;
-		color: #0b63ce;
+		.search-btn {
+			margin-left: 20rpx;
+			min-width: 128rpx;
+			height: 72rpx;
+			padding: 0 20rpx;
+			box-sizing: border-box;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			border: 2rpx solid #0b63ce;
+			border-radius: 36rpx;
+			background: #fff;
+			color: #0b63ce;
+			font-size: 25rpx;
+			font-weight: 600;
 
-	}
+			&.disabled { opacity: .55; }
+			&:active { background: #edf5ff; }
+		}
 
 	/* 分类标签 — 小程序scroll-x必须用inline-block + white-space:nowrap */
 	.category-bar {
@@ -2089,6 +2260,30 @@ const statusClass = computed(() => {
 		/* flex:1必须配合min-width:0才能真正收缩 */
 	}
 
+	.popup-sku-list {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 12rpx;
+		margin: 10rpx 0 14rpx 92rpx;
+	}
+
+	.popup-sku-chip {
+		display: flex;
+		align-items: center;
+		gap: 8rpx;
+		padding: 10rpx 16rpx;
+		border: 2rpx solid #dbe5f1;
+		border-radius: 12rpx;
+		background: #fff;
+		color: $text-main;
+		font-size: 22rpx;
+
+		&.active { border-color: $primary; background: #eaf3ff; color: $primary; }
+		&.disabled { opacity: .45; background: #f5f7fa; }
+	}
+
+	.popup-sku-stock { font-size: 19rpx; color: $text-light; }
+
 	/* 下行：规格 + 价格 + 操作按钮 — overflow:hidden防止溢出 */
 	.popup-tool-row2 {
 		display: flex;
@@ -2129,10 +2324,10 @@ const statusClass = computed(() => {
 		align-items: center;
 	}
 
-	.popup-qty-btn {
-		width: 40rpx;
-		height: 40rpx;
-		border-radius: 6rpx;
+		.popup-qty-btn {
+			width: 64rpx;
+			height: 64rpx;
+			border-radius: 12rpx;
 		background-color: #f5f5f5;
 		display: flex;
 		align-items: center;
@@ -2152,17 +2347,21 @@ const statusClass = computed(() => {
 	.popup-qty-num {
 		font-size: 28rpx;
 		color: $text-main;
-		margin: 0 4rpx;
-		min-width: 24rpx;
+			margin: 0 10rpx;
+			min-width: 32rpx;
 		text-align: center;
 	}
 
-	.popup-add-btn {
-		padding: 6rpx 20rpx;
-		border-radius: 20rpx;
-		font-size: 30rpx;
-		background: linear-gradient(135deg, #ff6b6b, #ee5a24);
-		min-width: 56rpx;
+		.popup-add-btn {
+			height: 64rpx;
+			padding: 0 24rpx;
+			border-radius: 16rpx;
+		font-size: 24rpx;
+		background: $primary;
+		min-width: 112rpx;
+		display: flex;
+		align-items: center;
+		justify-content: center;
 
 		&.disabled {
 			background: #cbd5e1;
@@ -2218,8 +2417,8 @@ const statusClass = computed(() => {
 	.popup-confirm-btn {
 		flex: 1;
 		margin-left: 24rpx;
-		height: 72rpx;
-		border-radius: 36rpx;
+			height: 88rpx;
+			border-radius: 44rpx;
 		background: linear-gradient(135deg, #3b8eea, #0b63ce);
 		display: flex;
 		align-items: center;
@@ -2231,8 +2430,13 @@ const statusClass = computed(() => {
 			color: #fff;
 		}
 
-		&:active {
-			opacity: 0.85;
-		}
+			&:active {
+				opacity: 0.85;
+			}
+
+			&.disabled {
+				background: #b8c8da;
+				box-shadow: none;
+			}
 	}
 </style>

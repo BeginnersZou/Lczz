@@ -1,5 +1,6 @@
 import baseUrl from '../config.js'
 import { clearAuthSession, getAuthToken } from './auth-session.js'
+import { showLoginChoice } from './auth-guard.js'
 
 // ====================== Loading 管理（计数器，支持并发请求） ======================
 let loadingCount = 0
@@ -23,25 +24,26 @@ function getToken() {
   return getAuthToken()
 }
 
-// ====================== 401 统一处理（防重复跳转） ======================
-let isRedirecting = false
+// 微信端会将 GET 对象中的 undefined/null 串行化为字面搜索词。
+// 只过滤查询参数，保留写请求中用于清空字段的 null/空字符串及有效的 0/false。
+function queryData(data) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return data
+  return Object.fromEntries(Object.entries(data)
+    .filter(([, value]) => value !== undefined && value !== null && value !== ''))
+}
 
-function handleUnauthorized() {
-  if (isRedirecting) return
-  isRedirecting = true
-  // 仅清除登录态，保留其他本地数据
+// ====================== 401 统一处理（允许用户拒绝登录并继续使用公共功能） ======================
+function handleUnauthorized(redirectOnUnauthorized = true) {
+  // 仅清除失效登录态，保留其他本地数据
   clearAuthSession()
-  uni.showToast({ title: '请先登录', icon: 'none' })
-  setTimeout(() => {
-    uni.reLaunch({ url: '/pages/login/login' })
-    isRedirecting = false
-  }, 1500)
+  if (!redirectOnUnauthorized) return
+  showLoginChoice()
 }
 
 // ====================== 核心请求方法 ======================
 // 统一返回后端完整响应体 { code, data, msg }：
 //  - code===200：业务成功，页面用 res.data 取数据
-//  - code===401：登录失效，自动跳登录
+//  - code===401：清除失效登录态；受保护功能提供可拒绝的登录引导
 //  - 其他业务码：统一 toast(res.msg)，页面无需重复提示
 //  - 网络异常：统一 toast，返回 code:-1
 // 页面用法：const res = await api(); if (res.code === 200) { list.value = res.data }
@@ -53,7 +55,9 @@ const request = (options = {}) => {
     header = {},     // 额外请求头（可覆盖默认）
     loading = true,  // 是否显示 loading
     timeout = 10000, // 超时时间（毫秒）
-    silent = false   // 预期性探测失败时不弹 Toast
+    silent = false,  // 预期性探测失败时不弹 Toast
+    auth = true,     // 公共接口设为 false，不发送本地登录凭证
+    redirectOnUnauthorized = true // 公共接口设为 false，避免游客被强制送往登录页
   } = options
 
   if (loading) showLoading()
@@ -62,11 +66,11 @@ const request = (options = {}) => {
     uni.request({
       url: baseUrl + url,
       method,
-      data,
+      data: String(method).toUpperCase() === 'GET' ? queryData(data) : data,
       timeout,
       header: {
         'Content-Type': 'application/json',
-        Authorization: getToken() ? `Bearer ${getToken()}` : '',
+        ...(auth && getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
         ...header
       },
       success: (res) => {
@@ -76,27 +80,34 @@ const request = (options = {}) => {
         if (resData && typeof resData === 'object' && resData.code !== undefined) {
           // 归一化业务数据到 data：
           //  - 标准结构 {code,data,msg}：直接取 data
-          //  - 平铺结构 {code,list,total,msg}：收集除 code/msg/message 外的字段为 data，保证前端统一用 res.data
+          //  - 平铺结构 {code,list,total,msg}：只收集业务字段，排除响应信封元数据
+          //  - 后端 non_null 会省略空 data；不能将 requestId/timestamp 误判为业务对象
           let data
           if (resData.data !== undefined) {
             data = resData.data
           } else {
-            data = {}
+            const fields = {}
+            const envelopeKeys = ['code', 'msg', 'message', 'error', 'requestId', 'timestamp']
             Object.keys(resData).forEach(k => {
-              if (k !== 'code' && k !== 'msg' && k !== 'message') data[k] = resData[k]
+              if (!envelopeKeys.includes(k)) fields[k] = resData[k]
             })
+            data = Object.keys(fields).length ? fields : null
           }
           body = {
             code: resData.code,
             data,
-            msg: resData.message || resData.msg || '请求失败'
+            msg: resData.message || resData.msg || '请求失败',
+            error: resData.error,
+            requestId: resData.requestId,
+            httpStatus: statusCode
           }
         } else {
           // 非标准结构，按 HTTP 状态码包装
           body = {
             code: statusCode === 200 ? 200 : statusCode,
             data: resData,
-            msg: (resData && (resData.message || resData.msg)) || '请求失败'
+            msg: (resData && (resData.message || resData.msg)) || '请求失败',
+            httpStatus: statusCode
           }
         }
 
@@ -105,8 +116,8 @@ const request = (options = {}) => {
           return
         }
         if (body.code === 401) {
-          handleUnauthorized()
-          resolve({ code: 401, data: null, msg: body.msg })
+          handleUnauthorized(redirectOnUnauthorized)
+          resolve({ ...body, data: null })
           return
         }
         if (body.code === 403) {
@@ -196,7 +207,7 @@ const upload = (options = {}) => {
           return
         }
         if (body.code === 401) {
-          handleUnauthorized()
+          handleUnauthorized(true)
           resolve({ code: 401, data: null, msg: body.msg })
           return
         }
@@ -229,6 +240,7 @@ const http = {
   get: (url, data = {}, options = {}) => request({ url, method: 'GET', data, ...options }),
   post: (url, data = {}, options = {}) => request({ url, method: 'POST', data, ...options }),
   put: (url, data = {}, options = {}) => request({ url, method: 'PUT', data, ...options }),
+  patch: (url, data = {}, options = {}) => request({ url, method: 'PATCH', data, ...options }),
   delete: (url, data = {}, options = {}) => request({ url, method: 'DELETE', data, ...options }),
   upload
 }

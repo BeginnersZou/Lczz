@@ -81,7 +81,8 @@
 				</view>
 				<view class="image-grid">
 					<view class="image-item" v-for="(image, index) in images" :key="image.id">
-						<image class="preview-img" :src="image.url" mode="aspectFill" @click="previewImages(index)"></image>
+						<image class="preview-img" :src="image.thumbnailUrl || image.displayUrl || image.url"
+							mode="aspectFill" lazy-load @click="previewImages(index)"></image>
 						<view class="image-delete" @click.stop="removeImage(index)"><up-icon name="close" size="12" color="#fff"></up-icon></view>
 					</view>
 					<view class="image-add" v-if="images.length < 9" @click="chooseImages">
@@ -105,9 +106,9 @@
 
 <script setup>
 import { computed, ref } from 'vue'
-import { onBackPress, onLoad } from '@dcloudio/uni-app'
+import { onBackPress, onLoad, onUnload } from '@dcloudio/uni-app'
 import { authApi, evaluationApi, orderApi, uploadApi } from '@/api/api.js'
-import { getAuthToken } from '@/utils/auth-session.js'
+import { requireLogin } from '@/utils/auth-guard.js'
 
 const orderId = ref('')
 const orderInfo = ref({})
@@ -141,11 +142,14 @@ const toggleLabel = (label) => {
 }
 
 const previewImages = (index) => {
-	const urls = images.value.map(image => image.url)
+	const urls = images.value.map(image => image.originalUrl || image.url)
 	uni.previewImage({ current: urls[index], urls })
 }
 
-const removeImage = (index) => images.value.splice(index, 1)
+const removeImage = (index) => {
+	const [removed] = images.value.splice(index, 1)
+	if (removed?.id) uploadApi.deleteTemporary(removed.id, { loading: false, silent: true })
+}
 
 const chooseImages = () => {
 	const remaining = 9 - images.value.length
@@ -165,7 +169,7 @@ const chooseImages = () => {
 					}
 				})
 				const file = result.code === 200 ? result.data : null
-				if (file && file.id && file.url) images.value.push({ id: Number(file.id), url: file.url })
+				if (file && file.id && file.url) images.value.push(file)
 				else failed++
 			}
 			uploadProgress.value = ''
@@ -222,6 +226,13 @@ onBackPress(() => {
 	return true
 })
 
+onUnload(() => {
+	if (submitted.value) return
+	images.value.filter(image => image.id).forEach(image => {
+		uploadApi.deleteTemporary(image.id, { loading: false, silent: true })
+	})
+})
+
 const loadPage = async () => {
 	loading.value = true
 	loadFailed.value = false
@@ -242,7 +253,7 @@ const loadPage = async () => {
 			setTimeout(() => uni.navigateBack(), 1200)
 			return
 		}
-		if (!['customer', 'dealer'].includes(role) || orderInfo.value.statusCode !== 'PENDING_REVIEW') {
+		if (role !== 'customer' || userResult.data?.roles?.includes('dealer') || orderInfo.value.statusCode !== 'PENDING_REVIEW') {
 			allowLeave.value = true
 			uni.showToast({ title: '当前订单不可评价', icon: 'none' })
 			setTimeout(() => uni.navigateBack(), 1000)
@@ -253,10 +264,7 @@ const loadPage = async () => {
 }
 
 onLoad(async (options) => {
-	if (!getAuthToken()) {
-		uni.reLaunch({ url: '/pages/login/login' })
-		return
-	}
+	if (!requireLogin({ content: '提交服务评价需要关联你的订单。你可以暂不登录，继续浏览产品和服务。' })) return
 	if (!options?.id) {
 		loading.value = false
 		loadFailed.value = true

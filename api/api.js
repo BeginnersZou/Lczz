@@ -4,7 +4,7 @@
  *
  * 统一返回结构：{ code, data, msg }
  *   - code===200 成功，页面用 res.data 取数据
- *   - code===401 登录失效（request.js 自动跳登录）
+ *   - code===401 登录失效（request.js 清除登录态并提供可拒绝的登录引导）
  *   - 其他业务码：request.js 已统一 toast(res.msg)，页面无需重复提示
  *
  * 使用示例：
@@ -15,6 +15,7 @@
 import http from '../utils/request.js'
 import baseUrl from '../config.js'
 import { formatDateTime } from '../utils/time.js'
+import { normalizeProductImage } from '../utils/product-images.js'
 
 const apiOrigin = (String(baseUrl).match(/^https?:\/\/[^/]+/i) || [''])[0]
 
@@ -25,12 +26,21 @@ export const resolveMediaUrl = (value) => {
 	return url.startsWith('/') ? `${apiOrigin}${url}` : `${apiOrigin}/${url}`
 }
 
-const normalizeFile = (file = {}) => ({
-	...(typeof file === 'object' ? file : {}),
-	id: Number(file?.id || 0) || undefined,
-	mimeType: file?.mimeType || file?.type || '',
-	url: resolveMediaUrl(file)
-})
+const normalizeFile = (file = {}) => {
+	const value = typeof file === 'object' ? file : { url: file }
+	const originalUrl = resolveMediaUrl(value.originalUrl || value.url || value.previewUrl || '')
+	const displayUrl = resolveMediaUrl(value.displayUrl || originalUrl)
+	const thumbnailUrl = resolveMediaUrl(value.thumbnailUrl || displayUrl || originalUrl)
+	return {
+		...value,
+		id: Number(value.id || 0) || undefined,
+		mimeType: value.mimeType || value.type || '',
+		url: originalUrl,
+		originalUrl,
+		displayUrl,
+		thumbnailUrl
+	}
+}
 
 const normalizeRole = (user = {}) => ({
 	...user,
@@ -46,17 +56,59 @@ const normalizeAuthResponse = (res) => {
 	return res
 }
 
-const normalizeProduct = (item = {}) => ({
-	...item,
-	title: item.title || item.name || '',
-	desc: item.desc || item.remark || '',
-	model: item.model || item.code || '',
-	category: Array.isArray(item.category) ? item.category[item.category.length - 1] : (item.category || ''),
-	tags: item.tags || [],
-	stock: Number(item.stock ?? item.quantity ?? 0),
-	image: resolveMediaUrl(item.image || item.coverImage || item.thumbnail),
-	detailImages: (item.detailImages || item.images || []).map(resolveMediaUrl).filter(Boolean)
-})
+const normalizeProduct = (item = {}) => {
+	const variants = item.imageVariants || {
+		cardUrl: item.thumbnail || item.image || item.coverImage,
+		displayUrl: item.displayImage || item.image || item.coverImage,
+		originalUrl: item.originalImage || item.image || item.coverImage
+	}
+	const cover = normalizeProductImage(variants, resolveMediaUrl)
+	const imageItems = (item.images || []).map(value => normalizeProductImage(value, resolveMediaUrl))
+		.filter(value => value.displayUrl)
+	const detailImageItems = (item.detailImages || item.images || [])
+		.map(value => normalizeProductImage(value, resolveMediaUrl)).filter(value => value.displayUrl)
+	return {
+		...item,
+		title: item.title || item.name || '',
+		desc: item.desc || item.remark || '',
+		model: item.model || item.code || '',
+		category: Array.isArray(item.category) ? item.category[item.category.length - 1] : (item.category || ''),
+		tags: item.tags || [],
+		stock: item.stock == null ? null : Number(item.stock),
+		stockSummary: item.stockSummary || '',
+		image: cover.cardUrl,
+		displayImage: cover.displayUrl,
+		originalImage: cover.originalUrl,
+		imageVariants: cover,
+		imageItems,
+		images: imageItems.map(value => value.displayUrl),
+		detailImageItems,
+		detailImages: detailImageItems.map(value => value.displayUrl),
+		specDimensions: (item.specDimensions || []).map(dimension => ({
+			...dimension,
+			values: (dimension.values || []).map(value => ({ ...value, value: value.value || '' }))
+		})),
+		skus: (item.skus || []).map(sku => ({
+			...sku,
+			id: Number(sku.id),
+			stock: Number(sku.stock || 0),
+			specValues: sku.specValues || {},
+			enabled: sku.enabled !== false
+		}))
+	}
+}
+
+const normalizeProjectCase = (item = {}) => {
+	const coverFile = item.coverImage ? normalizeFile(item.coverImage) : null
+	return {
+		...item,
+		id: Number(item.id || 0),
+		siteName: item.siteName || '未命名工地',
+		coverImage: coverFile?.thumbnailUrl || '',
+		coverImageFile: coverFile,
+		images: (item.images || []).map(normalizeFile).filter(file => file.url)
+	}
+}
 
 const normalizeOrder = (item = {}) => {
 	const fileList = (item.fileList || item.attachments || item.images || []).map(normalizeFile).filter(file => file.url)
@@ -64,12 +116,14 @@ const normalizeOrder = (item = {}) => {
 	return {
 		...item,
 		visitTime: formatDateTime(item.visitTime || item.orderStartTime || ''),
+		createdTime: formatDateTime(item.createdAt || ''),
+		customerConfirmedAt: item.customerConfirmedAt ? formatDateTime(item.customerConfirmedAt) : '',
 		quantity: item.quantity == null ? null : Number(item.quantity),
 		status: item.status || item.statusLabel || item.statusCode || '',
 		name: item.name || item.customerName || '',
 		phone: item.phone || item.customerPhone || '',
 		fileList,
-		image: resolveMediaUrl(item.image) || firstImage?.url || ''
+		image: resolveMediaUrl(item.image) || firstImage?.thumbnailUrl || ''
 	}
 }
 
@@ -98,17 +152,25 @@ const normalizeEvaluation = (item = {}) => ({
 // ====================== 认证相关 ======================
 export const authApi = {
 	// 微信一键登录（传微信 code；已注册用户返回 { token, userInfo }，新用户返回 { needPhone: true }）
-	loginWithWechat: (data) => http.post('/auth/wechat/login', data).then(normalizeAuthResponse),
+	loginWithWechat: (data) => http.post('/auth/wechat/login', data, { auth: false, redirectOnUnauthorized: false }).then(normalizeAuthResponse),
 	// 手机号授权绑定
-	bindPhone: (data) => http.post('/auth/wechat/bind-phone', data).then(normalizeAuthResponse),
+	bindPhone: (data) => http.post('/auth/wechat/bind-phone', data, { auth: false, redirectOnUnauthorized: false }).then(normalizeAuthResponse),
 	// 获取当前登录用户信息
 	getUserInfo: async (options = {}) => {
 		const res = await http.get('/auth/info', {}, options)
 		if (res.code === 200) res.data = normalizeRole(res.data)
 		return res
 	},
+	// 更新当前登录用户本人的昵称和真实姓名
+	updateProfile: async (data) => {
+		const res = await http.put('/auth/profile', data)
+		if (res.code === 200) res.data = normalizeRole(res.data)
+		return res
+	},
 	// 退出登录
-	logout: () => http.post('/auth/logout')
+	logout: () => http.post('/auth/logout'),
+	// 用户主动注销账号并删除/匿名化账号个人信息
+	cancelAccount: () => http.post('/auth/account/cancel', { confirmed: true })
 }
 
 // ====================== 订单相关 ======================
@@ -125,13 +187,20 @@ export const orderApi = {
 		if (res.code === 200) res.data = normalizeOrder(res.data)
 		return res
 	},
-	// 编辑订单（更新订单状态、完工信息等）
+	// 管理员编辑订单基础信息
 	update: (id, data) => http.put(`/orders/${id}`, data),
 	// 作废订单
 	cancel: (id) => http.post(`/orders/${id}/cancel`),
 	// 可指派师傅列表
 	getMasters: (params) => http.get('/orders/masters', params),
-	getMaterials: (id, options = {}) => http.get(`/orders/${id}/materials`, {}, options),
+	getMaterials: async (id, options = {}) => {
+		const res = await http.get(`/orders/${id}/materials`, {}, { silent: true, ...options })
+		// 仅兼容旧后端“尚未申请”的业务响应，其他权限/路由/服务错误仍交由页面处理。
+		if (res.code === 404 && res.error === 'MATERIAL_REQUEST_NOT_FOUND') {
+			return { ...res, code: 200, data: null, error: undefined, msg: 'success' }
+		}
+		return res
+	},
 	submitMaterials: (id, data) => http.post(`/orders/${id}/materials`, data),
 	getProgress: async (id, options = {}) => {
 		const res = await http.get(`/orders/${id}/progress`, {}, options)
@@ -139,7 +208,11 @@ export const orderApi = {
 		return res
 	},
 	submitProgress: (id, data) => http.post(`/orders/${id}/progress`, data),
-	complete: (id, data) => http.post(`/orders/${id}/completion`, data),
+	confirmCompletion: async (id) => {
+		const res = await http.post(`/orders/${id}/confirm-completion`)
+		if (res.code === 200 && res.data?.customerConfirmedAt) res.data.customerConfirmedAt = formatDateTime(res.data.customerConfirmedAt)
+		return res
+	},
 	// 上传订单附件 / 安装图片（返回 { url }）
 	uploadMedia: (filePath, formData = {}, options = {}) => {
 		return http.upload({
@@ -148,6 +221,9 @@ export const orderApi = {
 			name: 'file',
 			formData,
 			...options
+		}).then(res => {
+			if (res.code === 200 && res.data) res.data = normalizeFile(res.data)
+			return res
 		})
 	},
 	uploadImage: (filePath, formData = {}, options = {}) => orderApi.uploadMedia(filePath, formData, options)
@@ -169,16 +245,62 @@ export const evaluationApi = {
 export const consumablesApi = {
 	// 耗材列表（分页） params: { page, pageSize, keyword, category }
 	getList: async (params) => {
-		const res = await http.get('/consumables/list', params)
+		const res = await http.get('/consumables/list', params, { auth: false, redirectOnUnauthorized: false })
 		if (res.code === 200 && res.data) res.data.list = (res.data.list || []).map(normalizeProduct)
 		return res
 	},
 	// 耗材详情
 	getDetail: async (id) => {
-		const res = await http.get(`/consumables/detail/${id}`)
+		const res = await http.get(`/consumables/detail/${id}`, {}, { auth: false, redirectOnUnauthorized: false })
 		if (res.code === 200) res.data = normalizeProduct(res.data)
 		return res
+	},
+	getCategories: () => http.get('/consumables/categories', {}, { auth: false, redirectOnUnauthorized: false })
+}
+
+// ====================== 项目案例相关 ======================
+export const projectCaseApi = {
+	getList: async (params = {}) => {
+		const res = await http.get('/cases/list', params, { auth: false, redirectOnUnauthorized: false })
+		if (res.code === 200 && res.data) res.data.list = (res.data.list || []).map(normalizeProjectCase)
+		return res
+	},
+	getDetail: async (id) => {
+		const res = await http.get(`/cases/${id}`, {}, { auth: false, redirectOnUnauthorized: false })
+		if (res.code === 200 && res.data) res.data = normalizeProjectCase(res.data)
+		return res
 	}
+}
+
+// ====================== 服务页相关 ======================
+export const servicePageApi = {
+	get: async (options = {}) => {
+		const res = await http.get('/service-page', {}, {
+			auth: false,
+			redirectOnUnauthorized: false,
+			...options
+		})
+		if (res.code === 200 && res.data) {
+			res.data.galleryImages = (res.data.galleryImages || []).map(normalizeFile).filter(file => file.url)
+		}
+		return res
+	}
+}
+
+// ====================== 安装师傅耗材购物车 / 自助取货订单 ======================
+export const dealerBookingApi = {
+	create: (data) => http.post('/dealer/appointments', data, { silent: true, redirectOnUnauthorized: false })
+}
+
+export const installerMaterialApi = {
+	getCart: () => http.get('/installer/cart'),
+	addCartItem: (skuId, quantity = 1) => http.post('/installer/cart/items', { skuId, quantity }),
+	updateCartItem: (id, quantity) => http.patch(`/installer/cart/items/${id}`, { quantity }),
+	removeCartItem: (id) => http.delete(`/installer/cart/items/${id}`),
+	clearCart: () => http.delete('/installer/cart'),
+	submitOrder: (requestId, options = {}) => http.post('/installer/self-orders', { requestId }, options),
+	getOrders: (params = {}) => http.get('/installer/self-orders', params),
+	getOrderDetail: (id) => http.get(`/installer/self-orders/${id}`)
 }
 
 // ====================== 仪表盘 / 工作台概览 ======================
@@ -197,6 +319,11 @@ export const uploadApi = {
 			name: 'file',
 			formData,
 			...options
+		}).then(res => {
+			if (res.code === 200 && res.data) res.data = normalizeFile(res.data)
+			return res
 		})
-	}
+	},
+	// 删除尚未提交、未绑定业务的临时文件，防止退出页面后残留孤立附件。
+	deleteTemporary: (id, options = {}) => http.delete(`/files/${id}`, {}, options)
 }

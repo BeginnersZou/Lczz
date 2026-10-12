@@ -1,0 +1,20 @@
+<template>
+	<view class="page"><view class="hero"><text class="title">我的取货订单</text><text class="subtitle">仅展示你本人提交的耗材取货记录</text></view>
+		<view v-if="loading" class="state"><up-loading-icon color="#0b63ce"></up-loading-icon><text>正在加载</text></view>
+		<view v-else-if="error" class="state"><text>{{ error }}</text><view class="outline-button" @click="loadOrders">重新加载</view></view>
+		<view v-else-if="!orders.length" class="state"><up-icon name="order" size="46" color="#cbd5e1"></up-icon><text class="state-title">暂无取货订单</text><text>从耗材详情加入购物车后即可提交</text></view>
+		<view v-else class="list"><view v-for="order in orders" :key="order.id" class="card" @click="goDetail(order.id)"><view class="card-head"><text class="order-name">{{ order.orderName }}</text><text class="status">已下单</text></view><text class="order-no">{{ order.orderNo }}</text><view class="meta"><text>{{ order.itemCount }} 种规格</text><text>{{ formatTime(order.createdAt) }}</text></view></view><view v-if="loadingMore" class="page-tip">正在加载更多…</view><view v-else-if="orders.length >= total" class="page-tip">没有更多了</view></view>
+		<view v-if="pickupPhone" class="pickup-tip"><text>取货咨询</text><text class="phone" @click="callPickup">{{ pickupPhone }}</text></view>
+	</view>
+</template>
+<script setup>
+import { ref } from 'vue'; import { onShow, onReachBottom } from '@dcloudio/uni-app'; import { installerMaterialApi } from '@/api/api.js'; import { formatDateTime } from '@/utils/time.js'
+const orders=ref([]),loading=ref(true),loadingMore=ref(false),error=ref(''),pickupPhone=ref(''),page=ref(1),total=ref(0)
+const loadOrders=async(reset=true)=>{if(reset){loading.value=true;page.value=1;error.value=''}else loadingMore.value=true;try{const res=await installerMaterialApi.getOrders({page:page.value,pageSize:20});if(res.code===200){const rows=res.data?.list||[];orders.value=reset?rows:[...orders.value,...rows];total.value=Number(res.data?.total||0);pickupPhone.value=res.data?.pickupPhone||''}else error.value=res.msg||'加载失败'}catch{if(reset)error.value='网络异常，请稍后重试';else uni.showToast({title:'加载更多失败',icon:'none'})}finally{loading.value=false;loadingMore.value=false}}
+onReachBottom(()=>{if(!loadingMore.value&&orders.value.length<total.value){page.value+=1;loadOrders(false)}})
+onShow(loadOrders);const formatTime=value=>formatDateTime(value);const goDetail=id=>uni.navigateTo({url:`/packageA/self-order-detail/self-order-detail?id=${id}`});const callPickup=()=>pickupPhone.value&&uni.makePhoneCall({phoneNumber:pickupPhone.value.replace(/[^\d]/g,'')})
+</script>
+<style scoped lang="scss">
+.page{min-height:100vh;padding:24rpx;box-sizing:border-box;background:#f4f7fb}.hero{padding:34rpx 30rpx;border-radius:24rpx;background:linear-gradient(135deg,#0b63ce,#2785e6);color:#fff}.title{display:block;font-size:34rpx;font-weight:750}.subtitle{display:block;margin-top:10rpx;font-size:23rpx;opacity:.86}.state{min-height:520rpx;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16rpx;color:#8b9aaa;font-size:24rpx}.state-title{color:#334155;font-size:28rpx;font-weight:650}.outline-button{height:70rpx;padding:0 32rpx;margin-top:10rpx;border:2rpx solid #0b63ce;border-radius:18rpx;display:flex;align-items:center;color:#0b63ce}.list{display:flex;flex-direction:column;gap:18rpx;margin-top:22rpx}.card{padding:28rpx;border-radius:22rpx;background:#fff;box-shadow:0 4rpx 16rpx rgba(30,41,59,.05)}.card-head,.meta{display:flex;justify-content:space-between;align-items:center}.order-name{font-size:29rpx;font-weight:700;color:#142434}.status{padding:7rpx 16rpx;border-radius:18rpx;background:#eaf3ff;color:#0b63ce;font-size:21rpx}.order-no{display:block;margin-top:14rpx;color:#475569;font-size:24rpx}.meta{margin-top:22rpx;padding-top:20rpx;border-top:1rpx solid #edf1f5;color:#8b9aaa;font-size:21rpx}.pickup-tip{display:flex;justify-content:space-between;margin-top:24rpx;padding:24rpx 28rpx;border-radius:20rpx;background:#fff;color:#64748b;font-size:24rpx}.phone{color:#0b63ce;font-weight:650}
+.page-tip{text-align:center;padding:14rpx;color:#94a3b8;font-size:22rpx}
+</style>

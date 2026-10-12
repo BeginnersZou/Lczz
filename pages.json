@@ -9,6 +9,17 @@
 	},
 	"pages": [
 		{
+			"path": "pages/index/index",
+			"style": {
+				"enablePullDownRefresh": true,
+				"navigationBarTitleText": "力创之尊",
+				"navigationBarBackgroundColor": "#0b63ce",
+				"navigationBarTextStyle": "white",
+				"backgroundColorTop": "#0b63ce",
+				"backgroundColorBottom": "#f4f7fb"
+			}
+		},
+		{
 			"path": "pages/login/login",
 			"style": {
 				"navigationStyle": "custom",
@@ -19,21 +30,29 @@
 			}
 		},
 		{
-			"path": "pages/index/index",
+			"path": "pages/cases/cases",
 			"style": {
+				"navigationBarTitleText": "项目案例",
 				"enablePullDownRefresh": true,
-				"navigationBarTitleText": "鑫立创",
-				"navigationBarBackgroundColor": "#0b63ce",
-				"navigationBarTextStyle": "white",
-				"backgroundColorTop": "#0b63ce",
+				"navigationBarTextStyle": "black",
+				"backgroundColorTop": "#f4f7fb",
+				"backgroundColorBottom": "#f4f7fb"
+			}
+		},
+		{
+			"path": "pages/cases/case-detail",
+			"style": {
+				"navigationBarTitleText": "案例详情",
+				"navigationBarTextStyle": "black",
+				"backgroundColorTop": "#f4f7fb",
 				"backgroundColorBottom": "#f4f7fb"
 			}
 		},
 		{
 			"path": "pages/official/official",
 			"style": {
-				"navigationBarTitleText": "品牌服务",
-				"enablePullDownRefresh": false,
+				"navigationBarTitleText": "服务",
+				"enablePullDownRefresh": true,
 				"navigationStyle": "custom",
 				"navigationBarTextStyle": "black",
 				"backgroundColorTop": "#0b63ce",
@@ -65,6 +84,14 @@
 		{
 			"root": "packageA",
 			"pages": [
+				{
+					"path": "dealer-booking/dealer-booking",
+					"style": {
+						"navigationBarTitleText": "预约安装",
+						"navigationBarTextStyle": "black",
+						"navigationBarBackgroundColor": "#ffffff"
+					}
+				},
 				{
 					"path": "order-detail/order-detail",
 					"style": {
@@ -109,9 +136,45 @@
 					}
 				},
 				{
+					"path": "material-cart/material-cart",
+					"style": {
+						"navigationBarTitleText": "耗材购物车",
+						"navigationBarTextStyle": "black",
+						"backgroundColorTop": "#f4f7fb",
+						"backgroundColorBottom": "#f4f7fb"
+					}
+				},
+				{
+					"path": "self-order-list/self-order-list",
+					"style": {
+						"navigationBarTitleText": "我的取货订单",
+						"navigationBarTextStyle": "black",
+						"backgroundColorTop": "#f4f7fb",
+						"backgroundColorBottom": "#f4f7fb"
+					}
+				},
+				{
+					"path": "self-order-detail/self-order-detail",
+					"style": {
+						"navigationBarTitleText": "取货订单详情",
+						"navigationBarTextStyle": "black",
+						"backgroundColorTop": "#f4f7fb",
+						"backgroundColorBottom": "#f4f7fb"
+					}
+				},
+				{
 					"path": "settings/settings",
 					"style": {
 						"navigationBarTitleText": "设置",
+						"navigationBarTextStyle": "black",
+						"backgroundColorTop": "#f4f7fb",
+						"backgroundColorBottom": "#f4f7fb"
+					}
+				},
+				{
+					"path": "profile/profile",
+					"style": {
+						"navigationBarTitleText": "个人资料",
 						"navigationBarTextStyle": "black",
 						"backgroundColorTop": "#f4f7fb",
 						"backgroundColorBottom": "#f4f7fb"
@@ -122,7 +185,7 @@
 	],
 	"globalStyle": {
 		"navigationBarTextStyle": "black",
-		"navigationBarTitleText": "鑫立创",
+		"navigationBarTitleText": "力创之尊",
 		"navigationBarBackgroundColor": "#ffffff",
 		"backgroundColor": "#f4f7fb",
 		"backgroundColorTop": "#f4f7fb",

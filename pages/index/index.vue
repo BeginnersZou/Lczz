@@ -4,9 +4,9 @@
 		<view class="header-section">
 			<view class="welcome-row">
 				<view class="brand-group">
-					<view class="brand-mark">鑫</view>
+					<view class="brand-mark">力</view>
 					<view class="brand-copy">
-						<text class="brand-name">鑫立创制冷</text>
+						<text class="brand-name">力创之尊制冷</text>
 						<text class="brand-subtitle">安装 · 售后 · 配件一站式服务</text>
 					</view>
 				</view>
@@ -114,7 +114,8 @@
 				<view class="product-card" hover-class="hover-card" :hover-stay-time="80"
 					v-for="(item, index) in displayList" :key="item.id || index" @click="handleCardClick(item)">
 					<view class="product-visual" :class="`visual-${item.type || 'aux'}`">
-						<image v-if="item.image" class="product-cover" :src="item.image" mode="aspectFill" lazy-load></image>
+						<LazyProductImage v-if="item.image" class="product-cover" :src="item.image"
+							mode="aspectFill" :eager="index < 4" />
 						<view class="visual-ring ring-one"></view>
 						<view class="visual-ring ring-two"></view>
 						<up-icon v-if="!item.image" :name="productIcon(item.type)" size="40" color="#ffffff"></up-icon>
@@ -123,10 +124,9 @@
 					</view>
 					<view class="product-body">
 						<text class="product-title">{{ item.title }}</text>
-						<text class="product-spec">库存 {{ item.stock }} {{ item.unit || '件' }} · {{ item.spec || '规格待确认' }}</text>
+						<text class="product-spec">库存 {{ item.stockSummary || ((item.stock ?? 0) + ' ' + (item.unit || '件')) }} · {{ item.skuCount > 1 ? (item.skuCount + '种规格') : (item.spec || '通用规格') }}</text>
 						<view class="product-meta">
-							<text class="product-price">产品展示</text>
-							<text class="product-sales">{{ item.stock > 0 ? `剩余 ${item.stock}` : '暂无库存' }}</text>
+							<text class="product-sales">{{ (item.skus || []).some(sku => sku.enabled && sku.stock > 0) ? '有库存' : '暂无库存' }}</text>
 						</view>
 					</view>
 				</view>
@@ -166,13 +166,30 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { onReachBottom, onPullDownRefresh, onShareAppMessage, onShareTimeline } from '@dcloudio/uni-app'
-import { consumablesApi } from '@/api/api.js'
+import { onShow, onReachBottom, onPullDownRefresh, onShareAppMessage, onShareTimeline } from '@dcloudio/uni-app'
+import { authApi, consumablesApi } from '@/api/api.js'
+import LazyProductImage from '@/components/LazyProductImage.vue'
+import { getAuthToken } from '@/utils/auth-session.js'
+import { isDealer } from '@/utils/dealer-booking.js'
 
-onMounted(() => fetchList(true))
+const dealerVisible = ref(false)
+onShow(async () => {
+	dealerVisible.value = false
+	if (!getAuthToken()) return
+	try {
+		const res = await authApi.getUserInfo({ redirectOnUnauthorized: false, loading: false, silent: true })
+		dealerVisible.value = res.code === 200 && isDealer(res.data)
+	} catch { dealerVisible.value = false }
+})
 
-onShareAppMessage(() => ({ title: '鑫立创 — 专业空调安装与配件展示', path: '/pages/index/index' }))
-onShareTimeline(() => ({ title: '鑫立创 — 专业空调安装与配件展示' }))
+onMounted(() => {
+	// 产品首屏不再等待分类接口；分类失败或变慢都不阻塞图片和卡片展示。
+	fetchList(true)
+	fetchCategories()
+})
+
+onShareAppMessage(() => ({ title: '力创之尊 — 专业空调安装与配件展示', path: '/pages/index/index' }))
+onShareTimeline(() => ({ title: '力创之尊 — 专业空调安装与配件展示' }))
 
 const heroList = [
 	{ eyebrow: '专业暖通服务', title: '舒适，不止于冷暖', desc: '水系统中央空调安装、维修与保养', link: '立即咨询', icon: 'home-fill', theme: 'hero-blue', action: 'service' },
@@ -186,22 +203,20 @@ const trustList = [
 	{ icon: 'server-fill', text: '售后保障' }
 ]
 
-const functionList = [
-	{ title: '预约安装', tip: '专业施工', icon: 'calendar', tone: 'blue', color: '#0b63ce', action: 'service' },
+const functionList = computed(() => [
+	...(dealerVisible.value ? [{ title: '预约安装', tip: '经销商申请', icon: 'calendar', tone: 'blue', color: '#0b63ce', action: 'booking' }] : []),
 	{ title: '快速报修', tip: '及时响应', icon: 'setting-fill', tone: 'red', color: '#dc5b62', action: 'service' },
 	{ title: '配件展示', tip: '电话咨询', icon: 'bag', tone: 'cyan', color: '#0f9b91', action: 'shop' },
+	{ title: '项目案例', tip: '施工实景', icon: 'photo', tone: 'purple', color: '#7656bd', action: 'cases' },
 	{ title: '清洗保养', tip: '节能健康', icon: 'reload', tone: 'green', color: '#189566', action: 'service' },
 	{ title: '我的订单', tip: '进度可查', icon: 'order', tone: 'blue', color: '#0b63ce', action: 'order' },
 	{ title: '服务保障', tip: '售后无忧', icon: 'server-fill', tone: 'amber', color: '#d47a18', action: 'official' },
 	{ title: '联系客服', tip: '电话咨询', icon: 'phone-fill', tone: 'cyan', color: '#0f9b91', action: 'phone' }
-]
+])
 
 const searchKeyword = ref('')
 const activeKeyword = ref('')
-const tabList = [
-	{ name: '全部', type: 'all' }, { name: '铜管', type: 'copper' }, { name: '支架', type: 'bracket' },
-	{ name: '电缆线', type: 'cable' }, { name: '辅材', type: 'aux' }, { name: '冷媒', type: 'refrigerant' }
-]
+const tabList = ref([{ name: '全部', type: 'all' }])
 const currentTab = ref(0)
 const activeTabId = computed(() => `product-tab-${currentTab.value}`)
 const allList = ref([])
@@ -212,6 +227,19 @@ const listLoading = ref(false)
 const loadStatus = ref('')
 const listError = ref(null)
 const displayList = computed(() => allList.value)
+
+const fetchCategories = async () => {
+	const res = await consumablesApi.getCategories()
+	if (res.code !== 200 || !Array.isArray(res.data)) return
+	const enabled = res.data.filter(item => item && item.enabled !== false && item.code && item.name)
+	const roots = enabled.filter(item => item.parentId == null || Number(item.level) === 1)
+	const visible = roots.length ? roots : enabled
+	tabList.value = [
+		{ name: '全部', type: 'all' },
+		...visible.map(item => ({ name: item.name, type: item.code }))
+	]
+	if (currentTab.value >= tabList.value.length) currentTab.value = 0
+}
 
 const performSearch = () => {
 	activeKeyword.value = searchKeyword.value.trim()
@@ -261,7 +289,7 @@ const fetchList = async (isRefresh = false) => {
 	listLoading.value = true
 	loadStatus.value = 'loading'
 	try {
-		const tab = tabList[currentTab.value]
+		const tab = tabList.value[currentTab.value] || tabList.value[0]
 		const params = { page: page.value, pageSize }
 		if (tab.type !== 'all') params.category = tab.type
 		if (activeKeyword.value) params.keyword = activeKeyword.value
@@ -293,7 +321,9 @@ onReachBottom(() => {
 })
 
 onPullDownRefresh(async () => {
-	const success = await fetchList(true)
+	const products = fetchList(true)
+	const categories = fetchCategories()
+	const [success] = await Promise.all([products, categories])
 	uni.stopPullDownRefresh()
 	if (success) uni.showToast({ title: '已刷新', icon: 'none', duration: 1000 })
 })
@@ -302,10 +332,15 @@ const handleHeroClick = (item) => handleAction(item.action, item.title)
 const handleItemClick = (item) => handleAction(item.action, item.title)
 
 const handleAction = (action, title) => {
+	if (action === 'booking') {
+		if (dealerVisible.value) uni.navigateTo({ url: '/packageA/dealer-booking/dealer-booking' })
+		return
+	}
 	if (action === 'shop') {
 		uni.pageScrollTo({ selector: '#product-section', duration: 320 })
 		return
 	}
+	if (action === 'cases') return uni.navigateTo({ url: '/pages/cases/cases' })
 	if (action === 'order') return uni.switchTab({ url: '/pages/order/order' })
 	if (action === 'official') return uni.switchTab({ url: '/pages/official/official' })
 	if (action === 'phone') return callService()

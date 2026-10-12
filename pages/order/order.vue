@@ -1,14 +1,14 @@
 <template>
 	<view class="page">
-		<view class="order-banner">
+		<view class="order-banner" v-if="!isGuest">
 			<view class="banner-icon"><up-icon name="order" size="28" color="#ffffff"></up-icon></view>
 			<view class="banner-copy">
 				<text class="banner-title">服务进度，随时掌握</text>
-				<text class="banner-desc">上门时间、处理状态与完工记录清晰可查</text>
+				<text class="banner-desc">上门时间、施工进度与完成状态清晰可查</text>
 			</view>
 			<view class="live-dot"><view class="dot"></view><text>实时更新</text></view>
 		</view>
-		<view class="order-search">
+		<view class="order-search" v-if="!isGuest">
 			<view class="search-input-wrap">
 				<up-icon name="search" size="18" color="#6f8396"></up-icon>
 				<input v-model="searchKeyword" class="search-input" placeholder="搜索订单编号、客户姓名"
@@ -20,7 +20,7 @@
 			<view class="search-btn" hover-class="hover-press" :hover-stay-time="80" @click="performSearch">搜索</view>
 		</view>
 		<!-- 标签切换 -->
-		<view class="tabs-wrap">
+		<view class="tabs-wrap" v-if="!isGuest">
 		<view class="tabs-row">
 			<view class="tab-item" v-for="(tab, index) in tabs" :key="index" :class="{ active: currentTab === index }"
 				@click="switchTab(index)">
@@ -32,7 +32,7 @@
 
 
 		<!-- ═══ 订单列表 ═══ -->
-		<view class="order-list">
+		<view class="order-list" v-if="!isGuest">
 			<!-- 骨架屏 -->
 			<template v-if="listLoading && allOrders.length === 0">
 				<view class="order-card skeleton-card" v-for="i in 4" :key="'sk' + i">
@@ -80,7 +80,7 @@
 						</view>
 					</view>
 					<view class="info-row">
-						<text class="info-label">收货人</text>
+						<text class="info-label">{{ userRole === 'dealer' ? '客户' : '收货人' }}</text>
 						<text class="info-value">{{ order.name }} {{ order.phone }}</text>
 					</view>
 					<view class="info-row">
@@ -89,8 +89,12 @@
 					</view>
 			<view class="info-row">
 				<text class="info-label">上门时间</text>
-				<text class="info-value highlight">{{ order.visitTime }}</text>
-			</view>
+				<text class="info-value highlight">{{ order.visitTime || '待管理员安排' }}</text>
+				</view>
+				<view class="info-row" v-if="userRole === 'dealer'">
+					<text class="info-label">预约提交</text>
+					<text class="info-value">{{ order.createdTime }}</text>
+				</view>
 			<view class="action-row" v-if="canReview(order) || isReviewed(order)">
 				<view class="review-entry" v-if="canReview(order)">
 					<view class="review-entry-copy">
@@ -145,6 +149,13 @@
 				</view>
 			</template>
 		</view>
+		<view class="guest-state" v-else>
+			<view class="guest-icon"><up-icon name="order" size="42" color="#0b63ce"></up-icon></view>
+			<text class="guest-title">登录后查看个人订单</text>
+			<text class="guest-desc">订单信息与手机号关联，用于展示上门时间、处理状态和服务记录。你也可以暂不登录，继续浏览产品和服务。</text>
+			<button class="guest-login-btn" hover-class="hover-press" @click="goLogin">一键快捷登录</button>
+			<button class="guest-home-btn" hover-class="hover-press" @click="goHome">暂不登录，返回首页</button>
+		</view>
 
 
 	</view>
@@ -164,24 +175,28 @@ import {
 import { orderApi, authApi } from '@/api/api.js'
 import { getAuthToken } from '@/utils/auth-session.js'
 
-// onShow 确保从详情页返回时刷新列表（完工提交后状态会变化）
+// onShow 确保从详情页返回时刷新列表（客户确认完成后状态会变化）
 // 同时处理从"我的"页统计项点击跳转时切换到对应 tab
-onShow(() => {
-	if (!getAuthToken()) {
-		uni.reLaunch({ url: '/pages/login/login' })
+onShow(async () => {
+	isGuest.value = !getAuthToken()
+	userRole.value = ''
+	if (isGuest.value) {
+		allOrders.value = []
+		total.value = 0
+		listError.value = null
 		return
 	}
 	if (uni.$pendingOrderTab != null) {
 		currentTab.value = uni.$pendingOrderTab
 		uni.$pendingOrderTab = null
 	}
-	loadUserRole()
+	await loadUserRole()
 	fetchOrders(true)
 })
 
 // 分享给好友
 onShareAppMessage(() => ({
-	title: '鑫立创 — 我的订单',
+	title: '力创之尊 — 我的订单',
 	path: '/pages/index/index'
 }))
 
@@ -215,13 +230,15 @@ const userRole = ref('')
 const searchKeyword = ref('')
 const activeKeyword = ref('')
 const listError = ref(null)
+const isGuest = ref(!getAuthToken())
 
 // 当前登录用户角色
 const loadUserRole = async () => {
 	try {
 		const res = await authApi.getUserInfo()
 		if (res.code === 200 && res.data) {
-			userRole.value = res.data.role || ''
+			userRole.value = res.data.role === 'admin' ? 'admin'
+				: res.data.roles?.includes('dealer') ? 'dealer' : (res.data.role || '')
 		}
 	} catch (err) {
 		// 忽略错误，按默认处理
@@ -359,14 +376,15 @@ const goDetail = (order) => {
 	})
 }
 
-const isReviewer = computed(() => ['customer', 'dealer'].includes(userRole.value))
+const isReviewer = computed(() => userRole.value === 'customer')
 const canReview = (order) => isReviewer.value && order.statusCode === 'PENDING_REVIEW'
-const isReviewed = (order) => order.statusCode === 'REVIEWED'
+const isReviewed = (order) => isReviewer.value && order.statusCode === 'REVIEWED'
 const goEvaluate = (order) => {
 	uni.navigateTo({ url: `/packageA/order-evaluate/order-evaluate?id=${order.id}` })
 }
 
 const goHome = () => uni.switchTab({ url: '/pages/index/index' })
+const goLogin = () => uni.navigateTo({ url: '/pages/login/login' })
 </script>
 
 <style scoped lang="scss">
@@ -729,6 +747,14 @@ $text-light: #94a3b8;
 .error-state { padding-top: 110rpx; }
 .error-icon { background: #fff7e6; }
 .load-retry { color: #b45309; background: #fff7e6; border-radius: 24rpx; padding: 12rpx 24rpx; font-size: 22rpx; }
+.guest-state { margin: 36rpx 24rpx 0; padding: 88rpx 44rpx 52rpx; border-radius: 30rpx; background: #fff; box-shadow: $shadow-card; display: flex; flex-direction: column; align-items: center; text-align: center; }
+.guest-icon { width: 116rpx; height: 116rpx; border-radius: 32rpx; background: #eaf3ff; display: flex; align-items: center; justify-content: center; }
+.guest-title { margin-top: 28rpx; color: $text-main; font-size: 32rpx; font-weight: 700; }
+.guest-desc { margin-top: 16rpx; color: $text-sub; font-size: 24rpx; line-height: 1.7; }
+.guest-login-btn, .guest-home-btn { width: 100%; height: 84rpx; margin: 32rpx 0 0; padding: 0; border-radius: 21rpx; display: flex; align-items: center; justify-content: center; font-size: 27rpx; font-weight: 600; }
+.guest-login-btn { color: #fff; background: linear-gradient(135deg, #0b63ce, #2088e2); }
+.guest-home-btn { margin-top: 18rpx; color: #0b63ce; background: #f7fbff; border: 1rpx solid #cbdcf2; }
+.guest-login-btn::after, .guest-home-btn::after { border: 0; }
 
 /* ═══ 触底加载状态 ═══ */
 .load-status {
