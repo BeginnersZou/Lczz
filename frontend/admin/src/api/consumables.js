@@ -159,6 +159,14 @@ export function setConsumableEnabledApi(id, enabled) {
   })
 }
 
+export function sortConsumableApi(id, action) {
+  return request({
+    url: `/consumables/${id}/sort`,
+    method: 'patch',
+    data: { action: String(action || '').toUpperCase() }
+  })
+}
+
 /**
  * 原子调整耗材库存，并由后端记录调整原因与审计信息。
  * @param {string|number} id
