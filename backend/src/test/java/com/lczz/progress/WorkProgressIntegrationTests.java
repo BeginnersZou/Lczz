@@ -25,6 +25,7 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -53,6 +54,7 @@ class WorkProgressIntegrationTests {
     private long customerId;
     private long otherCustomerId;
     private long orderId;
+    private String adminToken;
     private String installerToken;
     private String customerToken;
 
@@ -76,6 +78,7 @@ class WorkProgressIntegrationTests {
         customerId = createUser(null, "王客户", "13830000001", RoleCode.CUSTOMER);
         otherCustomerId = createUser(null, "赵客户", "13830000002", RoleCode.CUSTOMER);
         orderId = createOrder();
+        adminToken = token(adminId, RoleCode.ADMIN);
         installerToken = token(installerId, RoleCode.INSTALLER);
         customerToken = token(customerId, RoleCode.CUSTOMER);
     }
@@ -157,6 +160,47 @@ class WorkProgressIntegrationTests {
                         .header("Authorization", "Bearer " + token(otherCustomerId, RoleCode.CUSTOMER)))
                 .andExpect(status().isNotFound()).andExpect(jsonPath("$.error").value("ORDER_NOT_FOUND"));
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM work_order_progress", Long.class)).isZero();
+    }
+
+    @Test
+    void adminCanMaintainProgressImagesAfterCompletionWhileInstallerRemainsSealed() throws Exception {
+        String progressResponse = mockMvc.perform(post("/api/orders/" + orderId + "/progress")
+                        .header("Authorization", "Bearer " + installerToken)
+                        .contentType("application/json").content("{\"description\":\"施工记录\"}"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        long progressId = objectMapper.readTree(progressResponse).at("/data/id").asLong();
+        jdbcTemplate.update("UPDATE work_order SET order_status='COMPLETED' WHERE id=?", orderId);
+
+        MockMultipartFile adminImage = new MockMultipartFile("file", "admin-fix.png", "image/png", PNG);
+        String uploadResponse = mockMvc.perform(multipart("/api/files/upload").file(adminImage)
+                        .param("businessType", "PROGRESS")
+                        .param("businessId", String.valueOf(progressId))
+                        .param("usageType", "PROGRESS")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        long fileId = objectMapper.readTree(uploadResponse).at("/data/id").asLong();
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM business_file_relation WHERE "
+                + "business_type='PROGRESS' AND business_id=? AND file_id=?", Long.class, progressId, fileId))
+                .isEqualTo(1L);
+
+        MockMultipartFile installerImage = new MockMultipartFile("file", "sealed.png", "image/png", PNG);
+        mockMvc.perform(multipart("/api/files/upload").file(installerImage)
+                        .param("businessType", "PROGRESS")
+                        .param("businessId", String.valueOf(progressId))
+                        .param("usageType", "PROGRESS")
+                        .header("Authorization", "Bearer " + installerToken))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value("PROGRESS_SEALED"));
+
+        mockMvc.perform(delete("/api/files/" + fileId + "/relations")
+                        .param("businessType", "PROGRESS")
+                        .param("businessId", String.valueOf(progressId))
+                        .param("usageType", "PROGRESS")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data").value(true));
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM business_file_relation WHERE "
+                + "business_type='PROGRESS' AND business_id=? AND file_id=?", Long.class, progressId, fileId))
+                .isZero();
     }
 
     private long uploadImage() throws Exception {
