@@ -127,6 +127,16 @@
 					}
 				},
 				{
+					"path": "equipment-showcase/equipment-showcase",
+					"style": {
+						"navigationBarTitleText": "设备展示",
+						"navigationBarTextStyle": "black",
+						"enablePullDownRefresh": true,
+						"backgroundColorTop": "#f4f7fb",
+						"backgroundColorBottom": "#f4f7fb"
+					}
+				},
+				{
 					"path": "goos-details/goos-details",
 					"style": {
 						"navigationBarTitleText": "耗材详情",

@@ -244,9 +244,9 @@ export const evaluationApi = {
 
 // ====================== 耗材相关 ======================
 export const consumablesApi = {
-	// 耗材列表（分页） params: { page, pageSize, keyword, category }
-	getList: async (params) => {
-		const res = await http.get('/consumables/list', params, { auth: false, redirectOnUnauthorized: false })
+	// 耗材列表（分页） params: { page, pageSize, keyword, category, categoryRootId, categoryId }
+	getList: async (params, options = {}) => {
+		const res = await http.get('/consumables/list', params, { ...options, auth: false, redirectOnUnauthorized: false })
 		if (res.code === 200 && res.data) res.data.list = (res.data.list || []).map(normalizeProduct)
 		return res
 	},
@@ -256,7 +256,7 @@ export const consumablesApi = {
 		if (res.code === 200) res.data = normalizeProduct(res.data)
 		return res
 	},
-	getCategories: () => http.get('/consumables/categories', {}, { auth: false, redirectOnUnauthorized: false })
+	getCategories: (options = {}) => http.get('/consumables/categories', {}, { ...options, auth: false, redirectOnUnauthorized: false })
 }
 
 // ====================== 项目案例相关 ======================

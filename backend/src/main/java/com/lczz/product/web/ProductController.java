@@ -60,10 +60,13 @@ public class ProductController {
                                   @RequestParam(defaultValue = "10") @Min(1) @Max(100) int pageSize,
                                   @RequestParam(required = false) @Size(max = 100) String keyword,
                                   @RequestParam(required = false) @Size(max = 128) String category,
+                                  @RequestParam(required = false) @Min(1) Long categoryRootId,
+                                  @RequestParam(required = false) @Min(1) Long categoryId,
                                   @RequestParam(required = false) Boolean enabled,
                                   @RequestParam(required = false) @Size(max = 16) String stockStatus,
                                   HttpServletRequest request) {
-        return ApiResponse.success(productService.list(actor, page, pageSize, keyword, category, enabled, stockStatus),
+        return ApiResponse.success(productService.list(actor, page, pageSize, keyword, category, enabled, stockStatus,
+                        categoryRootId, categoryId),
                 requestId(request));
     }
 

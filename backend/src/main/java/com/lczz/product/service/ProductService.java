@@ -72,6 +72,12 @@ public class ProductService {
 
     public ProductPage list(AuthenticatedUser actor, int page, int pageSize, String keyword,
                             String category, Boolean enabled, String stockStatus) {
+        return list(actor, page, pageSize, keyword, category, enabled, stockStatus, null, null);
+    }
+
+    public ProductPage list(AuthenticatedUser actor, int page, int pageSize, String keyword,
+                            String category, Boolean enabled, String stockStatus,
+                            Long categoryRootId, Long categoryId) {
         boolean admin = isAdmin(actor);
         LambdaQueryWrapper<ProductEntity> query = new LambdaQueryWrapper<>();
         if (!admin) {
@@ -90,6 +96,18 @@ public class ProductService {
         if (category != null && !category.isBlank()) {
             if (categoryIds.isEmpty()) return new ProductPage(List.of(), 0, page, pageSize);
             query.in(ProductEntity::getCategoryId, categoryIds);
+        }
+        if (categoryRootId != null) {
+            Set<Long> scopedIds = resolveRootCategoryIds(categoryRootId, admin);
+            if (scopedIds.isEmpty()) return new ProductPage(List.of(), 0, page, pageSize);
+            query.in(ProductEntity::getCategoryId, scopedIds);
+        }
+        if (categoryId != null) {
+            ProductCategoryEntity selected = categoryMapper.selectById(categoryId);
+            if (selected == null || !admin && !Boolean.TRUE.equals(selected.getEnabled())) {
+                return new ProductPage(List.of(), 0, page, pageSize);
+            }
+            query.eq(ProductEntity::getCategoryId, categoryId);
         }
         applyStockStatus(query, stockStatus);
         Page<ProductEntity> result = productMapper.selectPage(new Page<>(page, pageSize), query);
@@ -373,6 +391,19 @@ public class ProductService {
         if (ids.isEmpty()) return Map.of();
         return fileMapper.selectBatchIds(ids).stream()
                 .collect(Collectors.toMap(FileAssetEntity::getId, Function.identity()));
+    }
+
+    private Set<Long> resolveRootCategoryIds(long id, boolean admin) {
+        ProductCategoryEntity root = categoryMapper.selectById(id);
+        if (root == null || root.getParentId() != null || root.getCategoryLevel() != 1
+                || !admin && !Boolean.TRUE.equals(root.getEnabled())) return Set.of();
+        LinkedHashSet<Long> ids = new LinkedHashSet<>();
+        ids.add(root.getId());
+        categoryMapper.selectList(new LambdaQueryWrapper<ProductCategoryEntity>()
+                        .eq(ProductCategoryEntity::getParentId, id)
+                        .eq(!admin, ProductCategoryEntity::getEnabled, true))
+                .forEach(child -> ids.add(child.getId()));
+        return ids;
     }
 
     private Set<Long> resolveCategoryIds(String value, boolean admin) {
