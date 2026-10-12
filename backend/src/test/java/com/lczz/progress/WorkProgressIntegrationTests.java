@@ -11,6 +11,8 @@ import com.lczz.order.persistence.WorkOrderEntity;
 import com.lczz.order.persistence.WorkOrderMapper;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.Comparator;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
@@ -21,10 +23,13 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.web.client.RestClient;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -46,6 +51,7 @@ class WorkProgressIntegrationTests {
     @Autowired WorkOrderMapper orderMapper;
     @Autowired JwtService jwtService;
     @Autowired ObjectMapper objectMapper;
+    @MockitoBean RestClient restClient;
 
     private long adminId;
     private long installerId;
@@ -53,6 +59,7 @@ class WorkProgressIntegrationTests {
     private long customerId;
     private long otherCustomerId;
     private long orderId;
+    private String adminToken;
     private String installerToken;
     private String customerToken;
 
@@ -76,16 +83,21 @@ class WorkProgressIntegrationTests {
         customerId = createUser(null, "王客户", "13830000001", RoleCode.CUSTOMER);
         otherCustomerId = createUser(null, "赵客户", "13830000002", RoleCode.CUSTOMER);
         orderId = createOrder();
+        adminToken = token(adminId, RoleCode.ADMIN);
         installerToken = token(installerId, RoleCode.INSTALLER);
         customerToken = token(customerId, RoleCode.CUSTOMER);
     }
 
     @Test
     void installerCanSubmitMultipleProgressAndCustomerReadsChronologically() throws Exception {
-        mockMvc.perform(post("/api/orders/" + orderId + "/progress")
+        String firstResponse = mockMvc.perform(post("/api/orders/" + orderId + "/progress")
                         .header("Authorization", "Bearer " + installerToken).contentType("application/json")
                         .content("{\"description\":\"第一天完成管线铺设\"}"))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.data.type").value("PROGRESS"));
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.type").value("PROGRESS"))
+                .andReturn().getResponse().getContentAsString();
+        String submittedAt = objectMapper.readTree(firstResponse).at("/data/submittedAt").asText();
+        assertThat(submittedAt).endsWith("+08:00");
+        assertThat(OffsetDateTime.parse(submittedAt).toInstant()).isBeforeOrEqualTo(Instant.now());
         mockMvc.perform(post("/api/orders/" + orderId + "/progress")
                         .header("Authorization", "Bearer " + installerToken).contentType("application/json")
                         .content("{\"description\":\"第二天完成室外机安装\"}"))
@@ -116,6 +128,8 @@ class WorkProgressIntegrationTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.images.length()").value(3))
                 .andExpect(jsonPath("$.data.images[0].id").value(firstFileId))
+                .andExpect(jsonPath("$.data.images[0].uploadedAt")
+                        .value(org.hamcrest.Matchers.endsWith("+08:00")))
                 .andExpect(jsonPath("$.data.images[1].id").value(secondFileId))
                 .andExpect(jsonPath("$.data.images[2].id").value(thirdFileId));
 
@@ -179,6 +193,47 @@ class WorkProgressIntegrationTests {
                         .header("Authorization", "Bearer " + token(otherCustomerId, RoleCode.CUSTOMER)))
                 .andExpect(status().isNotFound()).andExpect(jsonPath("$.error").value("ORDER_NOT_FOUND"));
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM work_order_progress", Long.class)).isZero();
+    }
+
+    @Test
+    void adminCanMaintainProgressImagesAfterCompletionWhileInstallerRemainsSealed() throws Exception {
+        String progressResponse = mockMvc.perform(post("/api/orders/" + orderId + "/progress")
+                        .header("Authorization", "Bearer " + installerToken)
+                        .contentType("application/json").content("{\"description\":\"施工记录\"}"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        long progressId = objectMapper.readTree(progressResponse).at("/data/id").asLong();
+        jdbcTemplate.update("UPDATE work_order SET order_status='REVIEWED' WHERE id=?", orderId);
+
+        MockMultipartFile adminImage = new MockMultipartFile("file", "admin-fix.png", "image/png", PNG);
+        String uploadResponse = mockMvc.perform(multipart("/api/files/upload").file(adminImage)
+                        .param("businessType", "PROGRESS")
+                        .param("businessId", String.valueOf(progressId))
+                        .param("usageType", "PROGRESS")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        long fileId = objectMapper.readTree(uploadResponse).at("/data/id").asLong();
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM business_file_relation WHERE "
+                + "business_type='PROGRESS' AND business_id=? AND file_id=?", Long.class, progressId, fileId))
+                .isEqualTo(1L);
+
+        MockMultipartFile installerImage = new MockMultipartFile("file", "sealed.png", "image/png", PNG);
+        mockMvc.perform(multipart("/api/files/upload").file(installerImage)
+                        .param("businessType", "PROGRESS")
+                        .param("businessId", String.valueOf(progressId))
+                        .param("usageType", "PROGRESS")
+                        .header("Authorization", "Bearer " + installerToken))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value("PROGRESS_SEALED"));
+
+        mockMvc.perform(delete("/api/files/" + fileId + "/relations")
+                        .param("businessType", "PROGRESS")
+                        .param("businessId", String.valueOf(progressId))
+                        .param("usageType", "PROGRESS")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data").value(true));
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM business_file_relation WHERE "
+                + "business_type='PROGRESS' AND business_id=? AND file_id=?", Long.class, progressId, fileId))
+                .isZero();
     }
 
     private long uploadImage() throws Exception {

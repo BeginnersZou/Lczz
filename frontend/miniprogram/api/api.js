@@ -38,7 +38,8 @@ const normalizeFile = (file = {}) => {
 		url: originalUrl,
 		originalUrl,
 		displayUrl,
-		thumbnailUrl
+		thumbnailUrl,
+		uploadedAt: formatDateTime(value.uploadedAt || value.createdAt || '')
 	}
 }
 
@@ -323,6 +324,11 @@ export const uploadApi = {
 			if (res.code === 200 && res.data) res.data = normalizeFile(res.data)
 			return res
 		})
+	},
+	// 管理员维护施工记录图片时，仅解除当前施工记录的文件关系。
+	unbindProgressMedia: (id, progressId, options = {}) => {
+		const query = `businessType=PROGRESS&businessId=${encodeURIComponent(progressId)}&usageType=PROGRESS`
+		return http.delete(`/files/${id}/relations?${query}`, {}, options)
 	},
 	// 删除尚未提交、未绑定业务的临时文件，防止退出页面后残留孤立附件。
 	deleteTemporary: (id, options = {}) => http.delete(`/files/${id}`, {}, options)

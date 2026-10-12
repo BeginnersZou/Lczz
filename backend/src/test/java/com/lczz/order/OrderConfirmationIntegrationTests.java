@@ -152,7 +152,7 @@ class OrderConfirmationIntegrationTests {
     }
 
     @Test
-    void confirmationSealsProgressAndAllAttachmentMutationEndpoints() throws Exception {
+    void confirmationSealsInstallerProgressMutationsButKeepsAdminPhotoMaintenance() throws Exception {
         long image = upload();
         long extraImage = upload();
         JsonNode progress = data(post("/api/orders/" + orderId + "/progress").contentType("application/json")
@@ -163,14 +163,18 @@ class OrderConfirmationIntegrationTests {
                         .contentType("application/json").content("{\"description\":\"封存后追加\"}"))
                 .andExpect(status().isConflict()).andExpect(jsonPath("$.error").value("ORDER_NOT_ACCEPTING_PROGRESS"));
         String relation = "{\"businessType\":\"PROGRESS\",\"businessId\":" + progressId + ",\"usageType\":\"PROGRESS\"}";
-        for (String caller : List.of(installer, admin)) {
-            mvc.perform(post("/api/files/" + extraImage + "/relations").header("Authorization", "Bearer " + caller)
-                            .contentType("application/json").content(relation))
-                    .andExpect(status().isConflict()).andExpect(jsonPath("$.error").value("PROGRESS_SEALED"));
-            mvc.perform(delete("/api/files/" + image + "/relations").header("Authorization", "Bearer " + caller)
-                            .param("businessType", "PROGRESS").param("businessId", String.valueOf(progressId)).param("usageType", "PROGRESS"))
-                    .andExpect(status().isConflict()).andExpect(jsonPath("$.error").value("PROGRESS_SEALED"));
-        }
+        mvc.perform(post("/api/files/" + extraImage + "/relations").header("Authorization", "Bearer " + installer)
+                        .contentType("application/json").content(relation))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.error").value("PROGRESS_SEALED"));
+        mvc.perform(delete("/api/files/" + image + "/relations").header("Authorization", "Bearer " + installer)
+                        .param("businessType", "PROGRESS").param("businessId", String.valueOf(progressId)).param("usageType", "PROGRESS"))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.error").value("PROGRESS_SEALED"));
+        mvc.perform(post("/api/files/" + extraImage + "/relations").header("Authorization", "Bearer " + admin)
+                        .contentType("application/json").content(relation))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.id").value(extraImage));
+        mvc.perform(delete("/api/files/" + extraImage + "/relations").header("Authorization", "Bearer " + admin)
+                        .param("businessType", "PROGRESS").param("businessId", String.valueOf(progressId)).param("usageType", "PROGRESS"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data").value(true));
         mvc.perform(multipart("/api/files/upload").file(new MockMultipartFile("file", "late.png", "image/png", PNG))
                         .header("Authorization", "Bearer " + installer).param("businessType", "PROGRESS")
                         .param("businessId", String.valueOf(progressId)).param("usageType", "PROGRESS"))

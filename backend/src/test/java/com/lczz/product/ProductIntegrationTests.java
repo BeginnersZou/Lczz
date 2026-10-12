@@ -241,6 +241,48 @@ class ProductIntegrationTests {
     }
 
     @Test
+    void administratorCanTopMoveProductsAndCustomerCannotSort() throws Exception {
+        String admin = adminToken();
+        long parentId = createCategory(admin, "sort-materials", "排序大类", null);
+        long childId = createCategory(admin, "sort-items", "排序耗材", parentId);
+        long firstId = insertProduct("SORT-A", "耗材A", childId, true);
+        long secondId = insertProduct("SORT-B", "耗材B", childId, true);
+        long thirdId = insertProduct("SORT-C", "耗材C", childId, true);
+        jdbcTemplate.update("UPDATE product SET sort_order=0 WHERE id=?", firstId);
+        jdbcTemplate.update("UPDATE product SET sort_order=1 WHERE id=?", secondId);
+        jdbcTemplate.update("UPDATE product SET sort_order=2 WHERE id=?", thirdId);
+
+        mockMvc.perform(patch("/api/v1/consumables/{id}/sort", secondId)
+                        .header("Authorization", bearer(admin)).contentType("application/json")
+                        .content("{\"action\":\"UP\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.moved").value(true));
+        mockMvc.perform(get("/api/v1/consumables/list").header("Authorization", bearer(admin)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.list[0].id").value(secondId))
+                .andExpect(jsonPath("$.data.list[1].id").value(firstId))
+                .andExpect(jsonPath("$.data.list[2].id").value(thirdId));
+
+        mockMvc.perform(patch("/api/v1/consumables/{id}/sort", thirdId)
+                        .header("Authorization", bearer(admin)).contentType("application/json")
+                        .content("{\"action\":\"TOP\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.position").value(0));
+        mockMvc.perform(get("/api/v1/consumables/list").header("Authorization", bearer(admin)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.list[0].id").value(thirdId))
+                .andExpect(jsonPath("$.data.list[1].id").value(secondId))
+                .andExpect(jsonPath("$.data.list[2].id").value(firstId));
+
+        mockMvc.perform(patch("/api/v1/consumables/{id}/sort", firstId)
+                        .header("Authorization", bearer(admin)).contentType("application/json")
+                        .content("{\"action\":\"DOWN\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.moved").value(false));
+        mockMvc.perform(patch("/api/v1/consumables/{id}/sort", firstId)
+                        .header("Authorization", bearer(customerToken())).contentType("application/json")
+                        .content("{\"action\":\"TOP\"}"))
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.error").value("FORBIDDEN"));
+    }
+
+    @Test
     void guestCanBrowseEnabledProductsAndCategoriesButCannotWrite() throws Exception {
         String admin = adminToken();
         long parentId = createCategory(admin, "guest-materials", "游客可见分类", null);

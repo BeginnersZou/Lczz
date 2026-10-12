@@ -102,15 +102,25 @@
           <template #default="scope"><span class="datetime-cell">{{ formatDateTime(scope.row.createTime) }}</span></template>
         </el-table-column>
         <!-- 操作 -->
-        <el-table-column label="操作" align="center" width="280" fixed="right">
+        <el-table-column label="操作" align="center" width="300" fixed="right">
           <template #default="scope">
             <div class="table-actions">
-              <el-button text type="primary" @click="handleEdit(scope.row)">修改</el-button>
-              <el-button text :type="scope.row.enabled ? 'warning' : 'success'" @click="toggleEnabled(scope.row)">
-                {{ scope.row.enabled ? '下架' : '上架' }}
-              </el-button>
-              <el-button text type="success" @click="openStockDialog(scope.row)">调整库存</el-button>
-              <el-button text type="danger" @click="handleDelete(scope.row)">删除</el-button>
+              <div class="action-row">
+                <el-button text type="primary" @click="handleEdit(scope.row)">修改</el-button>
+                <el-button text :type="scope.row.enabled ? 'warning' : 'success'" @click="toggleEnabled(scope.row)">
+                  {{ scope.row.enabled ? '下架' : '上架' }}
+                </el-button>
+                <el-button text type="success" @click="openStockDialog(scope.row)">调整库存</el-button>
+                <el-button text type="danger" @click="handleDelete(scope.row)">删除</el-button>
+              </div>
+              <div class="action-row sort-actions">
+                <el-button text type="primary" :disabled="sortingProductId !== null"
+                  @click="handleSort(scope.row, 'TOP')">置顶</el-button>
+                <el-button text type="primary" :disabled="sortingProductId !== null"
+                  @click="handleSort(scope.row, 'UP')">上移</el-button>
+                <el-button text type="primary" :disabled="sortingProductId !== null"
+                  @click="handleSort(scope.row, 'DOWN')">下移</el-button>
+              </div>
             </div>
           </template>
         </el-table-column>
@@ -170,7 +180,7 @@ import {
   Plus, Search, Refresh, Download
 } from '@element-plus/icons-vue'
 import { useRouter, useRoute } from 'vue-router'
-import { getConsumablesListApi, getConsumableCategoriesApi, deleteConsumablesApi, exportConsumablesApi, adjustConsumableStockApi, setConsumableEnabledApi } from '@/api/consumables'
+import { getConsumablesListApi, getConsumableCategoriesApi, deleteConsumablesApi, exportConsumablesApi, adjustConsumableStockApi, setConsumableEnabledApi, sortConsumableApi } from '@/api/consumables'
 import { formatDate, formatDateTime } from '@/utils/format'
 
 const router = useRouter()
@@ -192,6 +202,7 @@ const tableLoading = ref(false)
 const exportLoading = ref(false)
 const deleteLoading = ref(false)
 const loadError = ref('')
+const sortingProductId = ref(null)
 
 // 删除相关
 const deleteDialogVisible = ref(false)
@@ -297,6 +308,21 @@ async function toggleEnabled(row) {
   await setConsumableEnabledApi(row.id, !row.enabled)
   ElMessage.success(row.enabled ? '已下架' : '已上架')
   await loadList()
+}
+
+async function handleSort(row, action) {
+  if (sortingProductId.value !== null) return
+  sortingProductId.value = row.id
+  try {
+    const result = await sortConsumableApi(row.id, action)
+    const labels = { TOP: '置顶', UP: '上移', DOWN: '下移' }
+    ElMessage.success(result.moved ? `${labels[action]}成功` : (action === 'DOWN' ? '已经在最底部' : '已经在最顶部'))
+    await loadList()
+  } catch (err) {
+    // 错误已由响应拦截器统一提示
+  } finally {
+    sortingProductId.value = null
+  }
 }
 
 /**
@@ -538,7 +564,9 @@ onMounted(() => {
     }
 
     .business-table { width: 100%; min-width: 1322px; }
-    .table-actions { display: flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap; }
+    .table-actions { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; white-space: nowrap; }
+    .action-row { display: flex; align-items: center; justify-content: center; gap: 8px; }
+    .sort-actions { min-height: 26px; }
     .table-actions :deep(.el-button + .el-button) { margin-left: 0; }
 
     // 行内耗材图片

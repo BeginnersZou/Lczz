@@ -185,9 +185,28 @@ public class OrderService {
         requireAdmin(actor);
         WorkOrderEntity order = requireOrder(id);
         ensureEditable(order);
+        return updateLocked(actor, order, command, false);
+    }
+
+    /** Called by the atomic admin editor; completed orders may be corrected without changing completion. */
+    @Transactional
+    public OrderView updateForAdminEditor(AuthenticatedUser actor, long id, OrderCommand command) {
+        requireAdmin(actor);
+        WorkOrderEntity order = requireOrder(id);
+        if ("CANCELLED".equals(order.getOrderStatus())) {
+            throw new BusinessException(409, "ORDER_NOT_EDITABLE", "已作废订单不能修改");
+        }
+        return updateLocked(actor, order, command, true);
+    }
+
+    private OrderView updateLocked(AuthenticatedUser actor, WorkOrderEntity order, OrderCommand command,
+                                    boolean preserveExistingInstaller) {
+        long id = order.getId();
         boolean pending = "PENDING_ASSIGNMENT".equals(order.getOrderStatus());
+        boolean keepInstaller = preserveExistingInstaller && command.masterIds() != null && command.masterIds().size() == 1
+                && order.getInstallerUserId() != null && java.util.Objects.equals(command.masterIds().getFirst(), order.getInstallerUserId());
         Long installerId = pending && (command.masterIds() == null || command.masterIds().isEmpty())
-                ? null : requireSingleInstaller(command.masterIds());
+                ? null : keepInstaller ? order.getInstallerUserId() : requireSingleInstaller(command.masterIds());
         UserEntity customer = findCustomer(command.customerPhone());
         Long previousInstaller = order.getInstallerUserId();
         Long previousCustomer = order.getCustomerUserId();
@@ -197,6 +216,7 @@ public class OrderService {
             order.setOrderStatus("PENDING_VISIT");
             recordStatus(id, "PENDING_ASSIGNMENT", "PENDING_VISIT", "管理员首次派单", actor.userId());
         }
+        order.setVersion(order.getVersion() + 1);
         orderMapper.updateById(order);
         if (!java.util.Objects.equals(previousCustomer, order.getCustomerUserId())
                 || !java.util.Objects.equals(previousPhone, order.getCustomerPhone())) {
