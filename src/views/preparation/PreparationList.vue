@@ -159,7 +159,7 @@ import {
   getPreparationListApi,
   submitPreparationApi
 } from '@/api/preparation'
-import { formatDateTime } from '@/utils/format'
+import { formatDate, formatDateTime } from '@/utils/format'
 
 const route = useRoute()
 const router = useRouter()
@@ -305,7 +305,7 @@ async function handleBatchExport() {
   exportLoading.value = true
   try {
     const blob = await exportPreparationApi(queryParams(false))
-    downloadBlob(blob, `备货总表_${new Date().toISOString().slice(0, 10).replace(/-/g, '')}.csv`)
+    downloadBlob(blob, `备货总表_${formatDate(new Date()).replace(/-/g, '')}.csv`)
     ElMessage.success('筛选结果导出成功')
   } finally { exportLoading.value = false }
 }
