@@ -8,6 +8,7 @@ import com.lczz.product.service.ProductService.CategoryCommand;
 import com.lczz.product.service.ProductService.CategoryView;
 import com.lczz.product.service.ProductService.ProductCommand;
 import com.lczz.product.service.ProductService.ProductPage;
+import com.lczz.product.service.ProductService.ProductSortResult;
 import com.lczz.product.service.ProductService.ProductView;
 import com.lczz.product.service.ProductService.StockAdjustmentCommand;
 import com.lczz.product.service.ProductSkuService.DimensionCommand;
@@ -136,6 +137,16 @@ public class ProductController {
         return ApiResponse.success(productService.setEnabled(actor, id, body.enabled()), requestId(request));
     }
 
+    @PatchMapping("/{id}/sort")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "管理员置顶、上移或下移耗材")
+    ApiResponse<ProductSortResult> sort(@AuthenticationPrincipal AuthenticatedUser actor,
+                                        @PathVariable @Min(1) long id,
+                                        @Valid @RequestBody SortRequest body,
+                                        HttpServletRequest request) {
+        return ApiResponse.success(productService.sort(actor, id, body.action()), requestId(request));
+    }
+
     @PostMapping("/{id}/stock-adjustment")
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "管理员按原因执行耗材入库或出库")
@@ -218,6 +229,8 @@ public class ProductController {
     }
 
     record EnabledRequest(@NotNull Boolean enabled) { }
+
+    record SortRequest(@NotBlank @Pattern(regexp = "(?i)TOP|UP|DOWN") String action) { }
 
     record StockAdjustmentRequest(
             @Min(1) Long skuId,

@@ -1,6 +1,7 @@
 package com.lczz.product.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.lczz.auth.domain.AuthenticatedUser;
 import com.lczz.auth.domain.RoleCode;
@@ -24,6 +25,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -196,6 +198,52 @@ public class ProductService {
         product.setUpdatedBy(actor.userId());
         productMapper.updateById(product);
         return detail(actor, id);
+    }
+
+    @Transactional
+    public ProductSortResult sort(AuthenticatedUser actor, long id, String rawAction) {
+        String action = rawAction == null ? "" : rawAction.trim().toUpperCase(Locale.ROOT);
+        if (!Set.of("TOP", "UP", "DOWN").contains(action)) {
+            throw new BusinessException("INVALID_PRODUCT_SORT_ACTION", "耗材排序只支持置顶、上移或下移");
+        }
+        List<ProductEntity> products = productMapper.selectList(new LambdaQueryWrapper<ProductEntity>()
+                .orderByAsc(ProductEntity::getSortOrder)
+                .orderByDesc(ProductEntity::getUpdatedAt)
+                .orderByDesc(ProductEntity::getId)
+                .last("FOR UPDATE"));
+        int sourceIndex = -1;
+        for (int index = 0; index < products.size(); index++) {
+            if (Objects.equals(products.get(index).getId(), id)) {
+                sourceIndex = index;
+                break;
+            }
+        }
+        if (sourceIndex < 0) throw notFound("PRODUCT_NOT_FOUND", "产品不存在");
+        int targetIndex = switch (action) {
+            case "TOP" -> 0;
+            case "UP" -> Math.max(0, sourceIndex - 1);
+            case "DOWN" -> Math.min(products.size() - 1, sourceIndex + 1);
+            default -> sourceIndex;
+        };
+        boolean moved = sourceIndex != targetIndex;
+        if (moved) {
+            if ("TOP".equals(action)) {
+                ProductEntity target = products.remove(sourceIndex);
+                products.addFirst(target);
+            } else {
+                Collections.swap(products, sourceIndex, targetIndex);
+            }
+        }
+        // 即使目标已在边界，也统一修复历史重复 sort_order，避免翻页顺序不稳定。
+        for (int index = 0; index < products.size(); index++) {
+            ProductEntity product = products.get(index);
+            if (Objects.equals(product.getSortOrder(), index)) continue;
+            productMapper.update(null, new LambdaUpdateWrapper<ProductEntity>()
+                    .eq(ProductEntity::getId, product.getId())
+                    .set(ProductEntity::getSortOrder, index)
+                    .set(ProductEntity::getUpdatedBy, actor.userId()));
+        }
+        return new ProductSortResult(id, action, moved, targetIndex);
     }
 
     @Transactional
@@ -499,6 +547,8 @@ public class ProductService {
                                  List<DimensionCommand> specDimensions, List<SkuCommand> skus) { }
 
     public record StockAdjustmentCommand(Long skuId, String type, BigDecimal quantity, String reason) { }
+
+    public record ProductSortResult(long id, String action, boolean moved, int position) { }
 
     public record AuditContext(String requestId, String clientIp) { }
 
