@@ -186,7 +186,7 @@ import {
 } from '@element-plus/icons-vue'
 import { useRouter, useRoute } from 'vue-router'
 import { getOrderListApi, cancelOrderApi, exportOrdersApi, getOrderEvaluationApi } from '@/api/orders'
-import { formatDateTime, formatPhone } from '@/utils/format'
+import { formatDate, formatDateTime, formatPhone } from '@/utils/format'
 import OrderOrigin from './OrderOrigin.vue'
 
 const router = useRouter()
@@ -297,7 +297,7 @@ async function handleBatchExport() {
     const url = window.URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `订单列表_${new Date().toLocaleDateString('zh-CN').replace(/\//g, '')}.csv`
+    link.download = `订单列表_${formatDate(new Date()).replace(/-/g, '')}.csv`
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)

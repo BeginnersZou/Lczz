@@ -212,6 +212,7 @@ import {
 } from '@/api/orders'
 import { getRegionTreeApi } from '@/api/regions'
 import { useUnsavedChanges } from '@/composables/useUnsavedChanges'
+import { formatDateTime, formatDateTimeInput, parseDateTime } from '@/utils/format'
 import OrderOrigin from './OrderOrigin.vue'
 
 const orderOrigin = ref({})
@@ -291,7 +292,8 @@ const rules = {
     required: true,
     validator: (rule, value, callback) => {
       if (!form.orderStartTime || !value) callback(new Error('请选择完整的上门时间范围'))
-      else if (new Date(value).getTime() <= new Date(form.orderStartTime).getTime()) callback(new Error('结束时间必须晚于开始时间'))
+      else if (!parseDateTime(value) || !parseDateTime(form.orderStartTime)) callback(new Error('请选择有效的上门时间'))
+      else if (parseDateTime(value).getTime() <= parseDateTime(form.orderStartTime).getTime()) callback(new Error('结束时间必须晚于开始时间'))
       else callback()
     },
     trigger: 'change'
@@ -373,8 +375,8 @@ async function loadEditData() {
       addressArea: res.addressArea || [],
       addressDetail: res.addressDetail || '',
       projectAddress: res.projectAddress || '',
-      orderStartTime: res.orderStartTime || '',
-      orderEndTime: res.orderEndTime || '',
+      orderStartTime: formatDateTimeInput(res.orderStartTime),
+      orderEndTime: formatDateTimeInput(res.orderEndTime),
       customerName: res.customerName || '',
       customerPhone: res.customerPhone || '',
       images: res.images || [],
@@ -413,7 +415,7 @@ function normalizeMaster(master = {}) {
 
 function formatMasterTaskTime(value) {
   if (!value) return '未设置上门时间'
-  return String(value).replace('T', ' ').replace(/Z$/, '').slice(0, 19)
+  return formatDateTime(value, { seconds: true })
 }
 
 // 打开指派师傅弹窗，拉取师傅列表并回显已选

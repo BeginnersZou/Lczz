@@ -3,6 +3,7 @@ package com.lczz.product.service;
 import com.lczz.auth.domain.AuthenticatedUser;
 import com.lczz.auth.domain.RoleCode;
 import com.lczz.common.exception.BusinessException;
+import com.lczz.common.time.BusinessTime;
 import com.lczz.notification.service.SmsNotificationService;
 import java.math.BigDecimal;
 import java.sql.PreparedStatement;
@@ -144,7 +145,7 @@ public class InstallerSelfOrderService {
             }
             ensureWithinStock(row.quantity(), row.stock());
         }
-        String orderNo = "A" + LocalDateTime.now().format(NUMBER_TIME)
+        String orderNo = "A" + LocalDateTime.now(BusinessTime.ZONE).format(NUMBER_TIME)
                 + UUID.randomUUID().toString().replace("-", "").substring(0, 6).toUpperCase(Locale.ROOT);
         long orderId = insertAndGet("""
                 INSERT INTO material_self_order(order_no,order_name,installer_id,request_token,order_status)
@@ -175,7 +176,7 @@ public class InstallerSelfOrderService {
                 WHERE o.installer_id=? GROUP BY o.id,o.order_no,o.order_name,o.order_status,o.created_at
                 ORDER BY o.created_at DESC,o.id DESC LIMIT ? OFFSET ?
                 """, (rs, row) -> new SelfOrderSummary(rs.getLong("id"), rs.getString("order_no"),
-                rs.getString("order_name"), rs.getString("order_status"), rs.getTimestamp("created_at").toLocalDateTime(),
+                rs.getString("order_name"), rs.getString("order_status"), rs.getObject("created_at", LocalDateTime.class),
                 rs.getInt("item_count"), rs.getInt("total_quantity")), actor.userId(), pageSize, offset);
         return new SelfOrderPage(rows, total, page, pageSize, pickupPhone);
     }
@@ -186,7 +187,7 @@ public class InstallerSelfOrderService {
                 SELECT id,order_no,order_name,order_status,created_at FROM material_self_order
                 WHERE id=? AND installer_id=?
                 """, (rs, row) -> new SelfOrderView(rs.getLong("id"), rs.getString("order_no"),
-                rs.getString("order_name"), rs.getString("order_status"), rs.getTimestamp("created_at").toLocalDateTime(),
+                rs.getString("order_name"), rs.getString("order_status"), rs.getObject("created_at", LocalDateTime.class),
                 pickupPhone, new java.util.ArrayList<>()), id, actor.userId());
         if (orders.isEmpty()) throw new BusinessException(404, "SELF_ORDER_NOT_FOUND", "取货订单不存在");
         SelfOrderView order = orders.getFirst();

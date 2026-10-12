@@ -1,6 +1,7 @@
 import request from '@/utils/request'
 import { bindFileApi, getFileId, unbindFileApi, uploadFileApi } from './files'
 import { createCsvBlob } from '@/utils/export'
+import { formatDateTime } from '@/utils/format'
 
 function normalizeFile(file = {}) {
   const value = typeof file === 'string' ? { url: file } : file
@@ -231,7 +232,7 @@ export async function exportOrdersApi(params) {
     { label: '项目地址', value: row => row.projectAddress },
     { label: '安装师傅', value: row => row.assignMaster },
     { label: '状态', value: row => ({ PENDING_VISIT: '待上门', IN_PROGRESS: '处理中', PENDING_REVIEW: '待评价', REVIEWED: '已评价', CANCELLED: '已作废' })[row.status] || row.status },
-    { label: '客户确认时间', value: row => row.customerConfirmedAt },
-    { label: '创建时间', value: row => row.createTime }
+    { label: '客户确认时间', value: row => row.customerConfirmedAt ? formatDateTime(row.customerConfirmedAt, { seconds: true }) : '' },
+    { label: '创建时间', value: row => row.createTime ? formatDateTime(row.createTime, { seconds: true }) : '' }
   ], rows)
 }

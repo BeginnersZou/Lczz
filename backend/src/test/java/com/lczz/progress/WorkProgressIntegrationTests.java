@@ -130,6 +130,28 @@ class WorkProgressIntegrationTests {
     }
 
     @Test
+    void miniProgramAndAdminReturnTheSameZonedProgressWithoutChangingStoredUtc() throws Exception {
+        mockMvc.perform(post("/api/orders/" + orderId + "/progress")
+                        .header("Authorization", "Bearer " + installerToken).contentType("application/json")
+                        .content("{\"description\":\"凌晨施工跨日记录\"}"))
+                .andExpect(status().isOk());
+        jdbcTemplate.update("UPDATE work_order_progress SET submitted_at='2026-10-11 16:15:00' WHERE order_id=?", orderId);
+        jdbcTemplate.update("UPDATE work_order SET created_at='2026-10-12 10:00:00' WHERE id=?", orderId);
+
+        mockMvc.perform(get("/api/v1/orders/" + orderId + "/progress")
+                        .header("Authorization", "Bearer " + installerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].submittedAt").value("2026-10-12T00:15:00+08:00"));
+        mockMvc.perform(get("/api/v1/admin/orders/" + orderId)
+                        .header("Authorization", "Bearer " + token(adminId, RoleCode.ADMIN)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.progress[0].submittedAt").value("2026-10-12T00:15:00+08:00"))
+                .andExpect(jsonPath("$.data.order.createdAt").value("2026-10-12T10:00:00+08:00"));
+        assertThat(jdbcTemplate.queryForObject("SELECT submitted_at FROM work_order_progress WHERE order_id=?",
+                java.time.LocalDateTime.class, orderId)).isEqualTo(java.time.LocalDateTime.of(2026, 10, 11, 16, 15));
+    }
+
+    @Test
     void legacyInstallerCompletionEndpointIsRetiredWithoutChangingOrder() throws Exception {
         for (String prefix : new String[] {"/api", "/api/v1"}) {
             mockMvc.perform(post(prefix + "/orders/" + orderId + "/completion")
