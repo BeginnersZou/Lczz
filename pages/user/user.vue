@@ -67,6 +67,10 @@
 				<view class="func-icon icon-green"><up-icon name="shopping-cart" size="24" color="#fff"></up-icon></view>
 				<text class="func-text">取货订单</text>
 			</view>
+			<view v-if="isAdmin" class="func-item" hover-class="hover-press" :hover-stay-time="80" @click="goToPreparation">
+				<view class="func-icon icon-green"><up-icon name="order" size="24" color="#fff"></up-icon></view>
+				<text class="func-text">订单备货</text>
+			</view>
 			<view class="func-item" hover-class="hover-press" :hover-stay-time="80" @click="goToOfficial">
 				<view class="func-icon icon-orange">
 					<up-icon name="server-fill" size="24" color="#fff"></up-icon>
@@ -152,6 +156,7 @@
 		maskPhone,
 		saveAuthUserInfo
 	} from '@/utils/auth-session.js'
+	import { hasAdminRole } from '@/utils/admin-preparation.js'
 
 	const userInfo = ref({})
 	const isGuest = ref(!getAuthToken())
@@ -230,6 +235,7 @@
 		return getRoleLabel(role)
 	})
 	const isInstaller = computed(() => !isGuest.value && userInfo.value?.role === 'installer')
+	const isAdmin = computed(() => !isGuest.value && hasAdminRole(userInfo.value))
 
 	// 手机号脱敏
 	const formatPhone = (phone) => {
@@ -289,6 +295,7 @@
 	}
 
 	const goToSelfOrders = () => uni.navigateTo({ url: '/packageA/self-order-list/self-order-list' })
+	const goToPreparation = () => uni.navigateTo({ url: '/packageA/preparation/preparation-list' })
 
 	const goLogin = () => {
 		uni.navigateTo({ url: '/pages/login/login' })

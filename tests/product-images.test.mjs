@@ -40,7 +40,9 @@ test('home products start before categories and non-leading images use viewport 
 	const mounted = source.match(/onMounted\(\(\) => \{([\s\S]*?)\n\}\)/)?.[1] || ''
 	assert.ok(mounted.indexOf('fetchList(true)') >= 0)
 	assert.ok(mounted.indexOf('fetchList(true)') < mounted.indexOf('fetchCategories()'))
-	assert.match(source, /:eager="index < 4"/)
+	assert.match(source, /<ProductGrid :items="displayList" :loading="listLoading"/)
+	const grid = readFileSync(new URL('../components/ProductGrid.vue', import.meta.url), 'utf8')
+	assert.match(grid, /:eager="index < 4"/)
 	const component = readFileSync(new URL('../components/LazyProductImage.vue', import.meta.url), 'utf8')
 	assert.match(component, /createIntersectionObserver/)
 	assert.match(component, /relativeToViewport\(\{ top: 200, bottom: 200 \}\)/)
