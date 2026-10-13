@@ -161,10 +161,10 @@
 						<text class="progress-description">{{ record.description }}</text>
 						<view class="progress-admin-actions" v-if="isAdmin">
 							<view class="progress-admin-button"
-								:class="{ disabled: adminProgressBusyId !== null || record.media.length >= 9 }"
+								:class="{ disabled: adminProgressBusyId !== null || progressMediaRemaining(record.media) === 0 }"
 								@click="chooseAdminProgressImages(record)">
 								<up-icon name="plus" size="14" color="#0b63ce"></up-icon>
-								<text>{{ record.media.length >= 9 ? '附件已达9个' : '添加照片' }}</text>
+								<text>{{ progressMediaRemaining(record.media) === 0 ? '图片已达30张' : '添加照片' }}</text>
 							</view>
 						</view>
 						<view class="image-grid" v-if="record.media.length">
@@ -257,15 +257,14 @@
 								<text class="upload-title">施工附件</text>
 								<text class="upload-optional">选填</text>
 							</view>
-							<text class="upload-subtitle">图片与视频合计最多9个，可全选图片或全选视频</text>
+							<text class="upload-subtitle">每条进度最多30张图片、9个视频，可分批添加</text>
 						</view>
 					</view>
-					<text class="upload-count">{{ progressImages.length }}/9</text>
+					<text class="upload-count">图片 {{ progressCounts.images }}/30 · 视频 {{ progressCounts.videos }}/9</text>
 				</view>
 				<view class="upload-limit-row">
 					<text class="upload-limit-pill">图片 ≤ 10MB</text>
 					<text class="upload-limit-pill">视频 ≤ 200MB</text>
-					<text class="upload-limit-pill">最多 9 个</text>
 				</view>
 				<view class="upload-media-grid">
 					<view class="upload-media-item" v-for="(media, index) in progressImages" :key="media.uid || media.id">
@@ -286,10 +285,10 @@
 							<up-icon name="close" size="12" color="#fff"></up-icon>
 						</view>
 					</view>
-					<view class="upload-add-card" v-if="progressImages.length < 9" :class="{ disabled: isUploadingProgressMedia }" @click="chooseProgressMedia">
+					<view class="upload-add-card" :class="{ disabled: isUploadingProgressMedia }" @click="chooseProgressMedia">
 						<view class="upload-add-icon"><up-icon name="plus" size="28" color="#0b63ce"></up-icon></view>
 						<text class="add-text">添加附件</text>
-						<text class="add-remain">还可添加 {{ 9 - progressImages.length }} 个</text>
+						<text class="add-remain">还可加 {{ progressMediaRemaining(progressImages) }} 张图片</text>
 					</view>
 				</view>
 				<view class="upload-summary" v-if="uploadProgress || failedProgressMediaCount">
@@ -411,6 +410,7 @@
 	resolveMediaUrl
 	} from '@/api/api.js'
 	import { requireLogin } from '@/utils/auth-guard.js'
+	import { PROGRESS_PICKER_BATCH, progressMediaCounts, progressMediaRemaining, progressMediaLimitMessage, acceptProgressMedia } from '@/packageA/utils/progress-media.js'
 
 	// ===== 动态计算弹出框高度 =====
 	// #ifdef MP-WEIXIN
@@ -533,9 +533,11 @@ const statusClass = computed(() => {
 	const uploadedProgressMediaCount = computed(() => progressImages.value.filter(media => media.status === 'success' && media.id).length)
 	const failedProgressMediaCount = computed(() => progressImages.value.filter(media => media.status === 'failed').length)
 	const isUploadingProgressMedia = computed(() => progressImages.value.some(media => media.status === 'queued' || media.status === 'uploading'))
+	const progressCounts = computed(() => progressMediaCounts(progressImages.value))
 	const canSubmitProgress = computed(() => {
 		if (!canOperateProgress.value || !progressDescription.value.trim()) return false
 		if (isUploadingProgressMedia.value || failedProgressMediaCount.value > 0) return false
+		if (progressMediaLimitMessage(progressImages.value)) return false
 		return true
 	})
 	const adminProgressBusyId = ref(null)
@@ -548,21 +550,23 @@ const statusClass = computed(() => {
 
 	const chooseAdminProgressImages = (record) => {
 		if (!isAdmin.value || adminProgressBusyId.value !== null) return
-		const remaining = 9 - Number(record.media?.length || 0)
+		const remaining = progressMediaRemaining(record.media)
 		if (remaining <= 0) {
-			uni.showToast({ title: '本条施工记录最多9个附件', icon: 'none' })
+			uni.showToast({ title: '每条施工进度最多30张图片', icon: 'none' })
 			return
 		}
 		uni.chooseImage({
-			count: remaining,
+			count: Math.min(PROGRESS_PICKER_BATCH, remaining),
 			sizeType: ['original', 'compressed'],
 			sourceType: ['album', 'camera'],
 			success: async ({ tempFiles = [], tempFilePaths = [] }) => {
 				const selected = tempFiles.length
 					? tempFiles.map((file, index) => ({ path: file.path || file.tempFilePath || tempFilePaths[index], size: Number(file.size || 0) }))
 					: tempFilePaths.map(path => ({ path, size: 0 }))
-				const valid = selected.filter(file => file.path && file.size <= 10 * 1024 * 1024)
-				const oversized = selected.length - valid.length
+				const sized = selected.filter(file => file.path && file.size <= 10 * 1024 * 1024)
+				const oversized = selected.length - sized.length
+				const { accepted: valid, overflow } = acceptProgressMedia(record.media || [], sized, 'image')
+				if (overflow) uni.showToast({ title: '每条施工进度最多30张图片', icon: 'none' })
 				if (!valid.length) {
 					if (oversized) uni.showToast({ title: '单张图片不能超过10MB', icon: 'none' })
 					return
@@ -734,7 +738,7 @@ const statusClass = computed(() => {
 		uploadProgress.value = ''
 	}
 
-	const openProgressMediaPicker = (source) => {
+	const openProgressMediaPicker = (source, type) => {
 		if (!canOperateProgress.value) return
 		const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 		const MAX_VIDEO_BYTES = 200 * 1024 * 1024
@@ -742,11 +746,14 @@ const statusClass = computed(() => {
 			uni.showToast({ title: '请等待当前附件上传完成', icon: 'none' })
 			return
 		}
-		const remaining = 9 - progressImages.value.length
-		if (remaining <= 0) return
+		const remaining = progressMediaRemaining(progressImages.value, type)
+		if (remaining <= 0) {
+			uni.showToast({ title: type === 'video' ? '每条施工进度最多9个视频' : '每条施工进度最多30张图片', icon: 'none' })
+			return
+		}
 		uni.chooseMedia({
-			count: remaining,
-			mediaType: ['image', 'video'],
+			count: Math.min(PROGRESS_PICKER_BATCH, remaining),
+			mediaType: [type],
 			sourceType: [source],
 			maxDuration: 60,
 			camera: 'back',
@@ -765,10 +772,12 @@ const statusClass = computed(() => {
 					}
 					if (localPath) accepted.push(createProgressMediaDraft(selected))
 				}
-				progressImages.value.push(...accepted)
-				for (let index = 0; index < accepted.length; index++) {
-					uploadProgress.value = `正在上传 ${index + 1}/${accepted.length}`
-					await uploadProgressMedia(accepted[index])
+				const { accepted: drafts, overflow } = acceptProgressMedia(progressImages.value, accepted, type)
+				if (overflow) uni.showToast({ title: type === 'video' ? '每条施工进度最多9个视频' : '每条施工进度最多30张图片', icon: 'none' })
+				progressImages.value.push(...drafts)
+				for (let index = 0; index < drafts.length; index++) {
+					uploadProgress.value = `正在上传 ${index + 1}/${drafts.length}`
+					await uploadProgressMedia(drafts[index])
 				}
 				uploadProgress.value = ''
 				if (oversized) {
@@ -790,14 +799,19 @@ const statusClass = computed(() => {
 	const chooseProgressMedia = () => {
 		if (!canOperateProgress.value) return
 		uni.showActionSheet({
-			itemList: ['从相册选择（支持长视频）', '现场拍摄（视频最长60秒）'],
-			success: ({ tapIndex }) => openProgressMediaPicker(tapIndex === 1 ? 'camera' : 'album')
+			itemList: ['从相册选择图片', '从相册选择视频（支持长视频）', '拍摄照片', '拍摄视频（最长60秒）'],
+			success: ({ tapIndex }) => openProgressMediaPicker(tapIndex >= 2 ? 'camera' : 'album', tapIndex % 2 === 1 ? 'video' : 'image')
 		})
 	}
 
 
 	const handleProgressSubmit = async () => {
 		if (!canOperateProgress.value || submittingProgress.value) return
+		const limitMessage = progressMediaLimitMessage(progressImages.value)
+		if (limitMessage) {
+			uni.showToast({ title: limitMessage, icon: 'none' })
+			return
+		}
 		if (hasMaterialDraft.value) {
 			uni.showToast({ title: '请先保存耗材清单，再提交施工进度', icon: 'none' })
 			return
@@ -1773,6 +1787,7 @@ const statusClass = computed(() => {
 
 	.upload-heading {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
 		justify-content: space-between;
 		gap: 18rpx;
@@ -1795,6 +1810,7 @@ const statusClass = computed(() => {
 	}
 
 	.upload-title-group {
+		width: 100%;
 		min-width: 0;
 		gap: 14rpx;
 	}
