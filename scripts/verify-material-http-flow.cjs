@@ -8,6 +8,8 @@ const { parse, compileScript, compileTemplate } = requireVue('@vue/compiler-sfc'
 const read = file => fs.readFileSync(path.resolve(__dirname, '../frontend/miniprogram', file), 'utf8')
 const baseUrl = 'https://example.test/api/v1'
 const recipient = new Function(read('utils/recipient.js').replace(/export /g, '') + '\nreturn { normalizeRecipient, recipientError }')()
+const progressMedia = new Function(read('packageA/utils/progress-media.js').replace(/export /g, '')
+  + '\nreturn { PROGRESS_PICKER_BATCH, progressMediaCounts, progressMediaRemaining, progressMediaLimitMessage, acceptProgressMedia }')()
 const products = [
   { id: 1, name: 'PVC管', category: ['管材'], skus: [
     { id: 11, specLabel: '25mm', unit: '米', stock: 10, enabled: true },
@@ -67,13 +69,13 @@ function component(file, env) {
     compilerOptions: { bindingMetadata: script.bindings } })
   assert.deepEqual(template.errors, [])
   const imports = { vue: 'vue', '@dcloudio/uni-app': 'hooks', '@/api/api.js': 'api', '@/utils/auth-guard.js': 'guard',
-    '@/utils/auth-session.js': 'auth', '@/utils/recipient.js': 'recipient' }
+    '@/utils/auth-session.js': 'auth', '@/utils/recipient.js': 'recipient', '@/packageA/utils/progress-media.js': 'progressMedia' }
   const code = script.content.replace(/import\s*\{([\s\S]*?)\}\s*from\s*['"]([^'"]+)['"]/g,
     (_, names, name) => `const {${names}} = ${imports[name]};`).replace('export default', 'return')
   const hooks = Object.fromEntries(['onLoad', 'onShow', 'onBackPress', 'onUnload'].map(key => [key, () => {}]))
-  const factory = new Function('vue', 'hooks', 'api', 'guard', 'uni', 'wx', 'auth', 'recipient', code)
+  const factory = new Function('vue', 'hooks', 'api', 'guard', 'uni', 'wx', 'auth', 'recipient', 'progressMedia', code)
   return factory(vue, hooks, env.api, { requireLogin: () => true }, env.uni,
-    { getWindowInfo: env.uni.getSystemInfoSync }, { getAuthToken: () => 'test-token' }, recipient).setup({}, { expose() {} })
+    { getWindowInfo: env.uni.getSystemInfoSync }, { getAuthToken: () => 'test-token' }, recipient, progressMedia).setup({}, { expose() {} })
 }
 
 function orderFixture(material = emptyEnvelope) {

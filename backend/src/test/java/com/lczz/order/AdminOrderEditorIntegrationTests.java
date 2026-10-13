@@ -27,7 +27,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.web.client.RestClient;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -51,6 +53,7 @@ class AdminOrderEditorIntegrationTests {
     @Autowired UserMapper users;
     @Autowired WorkOrderMapper orders;
     @Autowired JwtService jwt;
+    @MockitoBean RestClient restClient;
     long adminId, installerId, customerId, otherInstallerId, dealerId, orderId, productId, skuId, secondSkuId, requestId, progressId;
     String adminToken, installerToken, customerToken;
 
@@ -92,6 +95,33 @@ class AdminOrderEditorIntegrationTests {
         assertThat(view.at("/progress/0/submittedAt").asText()).isEqualTo("2026-10-12T10:36:00+08:00");
         assertThat(view.path("revision").asText()).matches("[a-f0-9]{64}");
         assertThat(view.path("editable").asBoolean()).isTrue();
+    }
+
+    @Test
+    void adminEditorCanSaveThirtyProgressPhotosAndRejectsThirtyFirstAtomically() throws Exception {
+        var images = json.createArrayNode();
+        for (int index = 0; index < 30; index++) images.add(upload(adminToken));
+        ObjectNode command = command(orderId);
+        command.putArray("progress").addObject().put("id", progressId).put("description", "30张施工照片")
+                .set("fileIds", images);
+        JsonNode saved = save(orderId, command);
+        assertThat(saved.at("/progress/0/images").size()).isEqualTo(30);
+        assertThat(saved.at("/progress/0/submittedAt").asText()).isEqualTo("2026-10-12T10:36:00+08:00");
+
+        ObjectNode overflow = command(orderId);
+        var thirtyOne = images.deepCopy().add(upload(adminToken));
+        overflow.putArray("progress").addObject().put("id", progressId).put("description", "应回滚的修改")
+                .set("fileIds", thirtyOne);
+        fail(overflow, 400, "FILE_COUNT_LIMIT");
+        JsonNode unchanged = load(orderId);
+        assertThat(unchanged.at("/progress/0/images").size()).isEqualTo(30);
+        assertThat(unchanged.at("/progress/0/description").asText()).isEqualTo("30张施工照片");
+
+        // Saving the full existing list must still work when an administrator edits only its description.
+        ObjectNode retained = command(orderId);
+        retained.putArray("progress").addObject().put("id", progressId).put("description", "保留全部30张")
+                .set("fileIds", images);
+        assertThat(save(orderId, retained).at("/progress/0/images").size()).isEqualTo(30);
     }
 
     @Test
