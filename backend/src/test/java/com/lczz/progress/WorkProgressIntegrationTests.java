@@ -9,6 +9,8 @@ import com.lczz.auth.persistence.UserMapper;
 import com.lczz.auth.security.JwtService;
 import com.lczz.order.persistence.WorkOrderEntity;
 import com.lczz.order.persistence.WorkOrderMapper;
+import com.lczz.progress.service.WorkProgressService;
+import com.lczz.progress.service.ProgressConfirmationService;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
@@ -51,6 +53,8 @@ class WorkProgressIntegrationTests {
     @Autowired WorkOrderMapper orderMapper;
     @Autowired JwtService jwtService;
     @Autowired ObjectMapper objectMapper;
+    @Autowired WorkProgressService progressService;
+    @Autowired ProgressConfirmationService confirmationService;
     @MockitoBean RestClient restClient;
 
     private long adminId;
@@ -65,6 +69,7 @@ class WorkProgressIntegrationTests {
 
     @BeforeEach
     void resetData() throws Exception {
+        jdbcTemplate.update("DELETE FROM sms_notification");
         jdbcTemplate.update("DELETE FROM business_file_relation");
         jdbcTemplate.update("DELETE FROM file_asset");
         jdbcTemplate.update("DELETE FROM work_order_progress");
@@ -234,6 +239,122 @@ class WorkProgressIntegrationTests {
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM business_file_relation WHERE "
                 + "business_type='PROGRESS' AND business_id=? AND file_id=?", Long.class, progressId, fileId))
                 .isZero();
+    }
+
+    @Test
+    void confirmationIsIndependentAndInstallerCanKeepSubmittingWhilePriorRecordsAreUnconfirmed() throws Exception {
+        JsonNode first = submit("first-progress", "第一次施工", "");
+        long progressId = first.path("id").asLong();
+        String version = first.path("contentVersion").asText();
+        assertThat(first.path("confirmationStatus").asText()).isEqualTo("PENDING");
+        JsonNode second = submit("second-progress", "第二次施工", "");
+        assertThat(second.path("id").asLong()).isNotEqualTo(progressId);
+        Integer orderVersion = jdbcTemplate.queryForObject("SELECT version FROM work_order WHERE id=?", Integer.class, orderId);
+        JsonNode confirmed = confirm(progressId, version, customerToken);
+        assertThat(confirmed.path("customerConfirmed").asBoolean()).isTrue();
+        String time = confirmed.path("customerConfirmedAt").asText();
+        assertThat(OffsetDateTime.parse(time).toInstant()).isCloseTo(Instant.now(), org.assertj.core.api.Assertions.within(5, java.time.temporal.ChronoUnit.SECONDS));
+        assertThat(confirm(progressId, version, customerToken).path("customerConfirmedAt").asText()).isEqualTo(time);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM work_order_progress_confirmation", Integer.class)).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("SELECT version FROM work_order WHERE id=?", Integer.class, orderId)).isEqualTo(orderVersion);
+        assertThat(jdbcTemplate.queryForObject("SELECT order_status FROM work_order WHERE id=?", String.class, orderId)).isEqualTo("IN_PROGRESS");
+        submit("third-progress", "第三次施工", "");
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM sms_notification WHERE event_type='PROGRESS_SUBMITTED'", Integer.class)).isEqualTo(3);
+        assertThat(jdbcTemplate.queryForList("SELECT recipient_phone FROM sms_notification", String.class)).containsOnly("13830000001");
+    }
+
+    @Test
+    void finalCompletionDoesNotRequireProgressConfirmationAndPendingProgressCanBeAcknowledgedAfterCompletion() throws Exception {
+        JsonNode first = submit("finish-before-progress-confirm", "施工记录仍待客户确认", "");
+        mockMvc.perform(post("/api/orders/" + orderId + "/confirm-completion").header("Authorization", "Bearer " + customerToken))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.statusCode").value("PENDING_REVIEW"));
+        confirm(first.path("id").asLong(), first.path("contentVersion").asText(), customerToken);
+        assertThat(jdbcTemplate.queryForObject("SELECT order_status FROM work_order WHERE id=?", String.class, orderId)).isEqualTo("PENDING_REVIEW");
+        assertThat(submit("finish-before-progress-confirm", "施工记录仍待客户确认", "").path("id").asLong()).isEqualTo(first.path("id").asLong());
+        mockMvc.perform(post("/api/orders/" + orderId + "/progress").header("Authorization", "Bearer " + installerToken)
+                        .contentType("application/json").content("{\"description\":\"新的提交\",\"requestId\":\"new-after-finish\"}"))
+                .andExpect(status().isConflict());
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM sms_notification", Integer.class)).isEqualTo(1);
+    }
+
+    @Test
+    void confirmationChecksCustomerOwnershipAndContentVersionAndRetainsBothSnapshots() throws Exception {
+        JsonNode first = submit("ownership-progress", "原施工说明", "");
+        long id = first.path("id").asLong(); String version = first.path("contentVersion").asText();
+        String body = "{\"contentVersion\":\"" + version + "\"}";
+        String path = "/api/orders/" + orderId + "/progress/" + id + "/confirm";
+        for (String caller : java.util.List.of(adminToken, installerToken))
+            mockMvc.perform(post(path).header("Authorization", "Bearer " + caller).contentType("application/json").content(body))
+                    .andExpect(status().isForbidden());
+        mockMvc.perform(post(path).header("Authorization", "Bearer " + token(otherCustomerId, RoleCode.CUSTOMER))
+                        .contentType("application/json").content(body)).andExpect(status().isNotFound());
+        mockMvc.perform(post("/api/orders/" + orderId + "/progress/999999/confirm").header("Authorization", "Bearer " + customerToken)
+                        .contentType("application/json").content(body)).andExpect(status().isNotFound());
+        confirm(id, version, customerToken);
+        progressService.editForAdmin(new AuthenticatedUser(adminId, null, "管理员", null, Set.of(RoleCode.ADMIN)), orderId, id, "管理员修订说明", null);
+        mockMvc.perform(post(path).header("Authorization", "Bearer " + customerToken).contentType("application/json").content(body))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.error").value("PROGRESS_CONTENT_CHANGED"));
+        JsonNode changed = progressList().get(0);
+        assertThat(changed.path("customerConfirmed").asBoolean()).isFalse();
+        assertThat(changed.path("confirmationStatus").asText()).isEqualTo("CHANGED");
+        confirm(id, changed.path("contentVersion").asText(), customerToken);
+        assertThat(jdbcTemplate.queryForList("SELECT content_snapshot FROM work_order_progress_confirmation ORDER BY id", String.class))
+                .hasSize(2).anyMatch(value -> value.contains("原施工说明")).anyMatch(value -> value.contains("管理员修订说明"));
+        assertThat(jdbcTemplate.queryForObject("SELECT order_status FROM work_order WHERE id=?", String.class, orderId)).isEqualTo("IN_PROGRESS");
+    }
+
+    @Test
+    void imageChangeInvalidatesOnlyProgressAcknowledgementAndFailedSubmissionsDoNotNotify() throws Exception {
+        mockMvc.perform(post("/api/orders/" + orderId + "/progress").header("Authorization", "Bearer " + installerToken)
+                        .contentType("application/json").content("{\"description\":\"失败记录\",\"fileIds\":[999999],\"requestId\":\"failed-image\"}"))
+                .andExpect(status().isNotFound());
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM sms_notification", Integer.class)).isZero();
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM work_order_progress", Integer.class)).isZero();
+        long file = uploadImage("confirm-image.png"), second = uploadImage("confirm-image-2.png");
+        JsonNode record = submit("two-images-once", "两张施工照片", ",\"fileIds\":[" + file + "," + second + "]");
+        long id = record.path("id").asLong(); confirm(id, record.path("contentVersion").asText(), customerToken);
+        mockMvc.perform(delete("/api/files/" + file + "/relations").header("Authorization", "Bearer " + adminToken)
+                        .param("businessType", "PROGRESS").param("businessId", String.valueOf(id)).param("usageType", "PROGRESS"))
+                .andExpect(status().isOk());
+        assertThat(progressList().get(0).path("confirmationStatus").asText()).isEqualTo("CHANGED");
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM sms_notification", Integer.class)).isEqualTo(1);
+    }
+
+    @Test
+    void concurrentRetriesCreateOneProgressOneSmsAndOneConfirmation() throws Exception {
+        var installer = new AuthenticatedUser(installerId, null, "师傅", null, Set.of(RoleCode.INSTALLER));
+        var customer = new AuthenticatedUser(customerId, null, "客户", null, Set.of(RoleCode.CUSTOMER));
+        try (var pool = java.util.concurrent.Executors.newFixedThreadPool(2)) {
+            var first = pool.submit(() -> progressService.submitProgress(installer, orderId, new WorkProgressService.ProgressCommand("并发进度", java.util.List.of(), "concurrent-progress")));
+            var second = pool.submit(() -> progressService.submitProgress(installer, orderId, new WorkProgressService.ProgressCommand("并发进度", java.util.List.of(), "concurrent-progress")));
+            var record = first.get(10, java.util.concurrent.TimeUnit.SECONDS);
+            assertThat(second.get(10, java.util.concurrent.TimeUnit.SECONDS).id()).isEqualTo(record.id());
+            var confirmed = pool.submit(() -> confirmationService.confirm(customer, orderId, record.id(), record.contentVersion()));
+            var retry = pool.submit(() -> confirmationService.confirm(customer, orderId, record.id(), record.contentVersion()));
+            assertThat(retry.get(10, java.util.concurrent.TimeUnit.SECONDS).customerConfirmedAt())
+                    .isEqualTo(confirmed.get(10, java.util.concurrent.TimeUnit.SECONDS).customerConfirmedAt());
+        }
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM work_order_progress", Integer.class)).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM sms_notification", Integer.class)).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM work_order_progress_confirmation", Integer.class)).isEqualTo(1);
+    }
+
+    private JsonNode submit(String token, String description, String extra) throws Exception {
+        String response = mockMvc.perform(post("/api/orders/" + orderId + "/progress").header("Authorization", "Bearer " + installerToken)
+                        .contentType("application/json").content("{\"description\":\"" + description + "\",\"requestId\":\"" + token + "\"" + extra + "}"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        return objectMapper.readTree(response).path("data");
+    }
+    private JsonNode confirm(long id, String version, String caller) throws Exception {
+        String response = mockMvc.perform(post("/api/orders/" + orderId + "/progress/" + id + "/confirm").header("Authorization", "Bearer " + caller)
+                        .contentType("application/json").content("{\"contentVersion\":\"" + version + "\"}"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        return objectMapper.readTree(response).path("data");
+    }
+    private JsonNode progressList() throws Exception {
+        String response = mockMvc.perform(get("/api/orders/" + orderId + "/progress").header("Authorization", "Bearer " + customerToken))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        return objectMapper.readTree(response).path("data");
     }
 
     private long uploadImage() throws Exception {

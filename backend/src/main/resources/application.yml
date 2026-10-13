@@ -78,6 +78,7 @@ lczz:
     dealer-appointment-template-code: ${SMS_DEALER_APPOINTMENT_TEMPLATE_CODE:}
     installer-assignment-template-code: ${SMS_INSTALLER_ASSIGNMENT_TEMPLATE_CODE:}
     self-order-created-template-code: ${SMS_SELF_ORDER_CREATED_TEMPLATE_CODE:}
+    progress-submitted-template-code: ${SMS_PROGRESS_SUBMITTED_TEMPLATE_CODE:}
     admin-phones: ${SMS_ADMIN_PHONES:}
     dealer-appointment-admin-phones: ${SMS_DEALER_APPOINTMENT_ADMIN_PHONES:}
     self-order-admin-phones: ${SMS_SELF_ORDER_ADMIN_PHONES:}

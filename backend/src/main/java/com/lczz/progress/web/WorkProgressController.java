@@ -6,6 +6,8 @@ import com.lczz.common.exception.BusinessException;
 import com.lczz.progress.service.WorkProgressService;
 import com.lczz.progress.service.WorkProgressService.ProgressCommand;
 import com.lczz.progress.service.WorkProgressService.ProgressView;
+import com.lczz.progress.service.ProgressConfirmationService;
+import com.lczz.progress.service.ProgressConfirmationService.ConfirmationView;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
@@ -14,6 +16,7 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import jakarta.validation.constraints.Pattern;
 import java.util.List;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -31,9 +34,11 @@ import org.springframework.web.bind.annotation.RestController;
 @Tag(name = "施工进度")
 public class WorkProgressController {
     private final WorkProgressService progressService;
+    private final ProgressConfirmationService confirmations;
 
-    public WorkProgressController(WorkProgressService progressService) {
+    public WorkProgressController(WorkProgressService progressService, ProgressConfirmationService confirmations) {
         this.progressService = progressService;
+        this.confirmations = confirmations;
     }
 
     @GetMapping("/{orderId}/progress")
@@ -64,8 +69,18 @@ public class WorkProgressController {
     }
 
     record ProgressRequest(@NotBlank @Size(max = 2000) String description,
-                           @Size(max = 9) List<@NotNull @Min(1) Long> fileIds) {
-        ProgressCommand toCommand() { return new ProgressCommand(description, fileIds); }
+                           @Size(max = 9) List<@NotNull @Min(1) Long> fileIds, @Size(max = 64) String requestId) {
+        ProgressCommand toCommand() { return new ProgressCommand(description, fileIds, requestId); }
     }
+
+    @PostMapping("/{orderId}/progress/{progressId}/confirm")
+    @Operation(summary = "订单绑定客户确认本条施工内容，不改变订单状态")
+    ApiResponse<ConfirmationView> confirm(@AuthenticationPrincipal AuthenticatedUser actor,
+                                          @PathVariable @Min(1) long orderId, @PathVariable @Min(1) long progressId,
+                                          @Valid @RequestBody ConfirmationRequest body, HttpServletRequest request) {
+        return ApiResponse.success(confirmations.confirm(actor, orderId, progressId, body.contentVersion()), requestId(request));
+    }
+
+    record ConfirmationRequest(@NotBlank @Pattern(regexp = "[a-f0-9]{64}") String contentVersion) { }
 
 }

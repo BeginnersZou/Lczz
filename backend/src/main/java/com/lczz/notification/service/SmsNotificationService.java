@@ -15,6 +15,8 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Service
 public class SmsNotificationService {
@@ -22,6 +24,8 @@ public class SmsNotificationService {
     static final String INSTALLER_ASSIGNED = "INSTALLER_ASSIGNED";
     static final String DEALER_APPOINTMENT_CREATED = "DEALER_APPOINTMENT_CREATED";
     static final String INSTALLER_SELF_ORDER_CREATED = "INSTALLER_SELF_ORDER_CREATED";
+    static final String PROGRESS_SUBMITTED = "PROGRESS_SUBMITTED";
+    private static final Logger log = LoggerFactory.getLogger(SmsNotificationService.class);
 
     private final SmsNotificationMapper mapper;
     private final SmsProperties properties;
@@ -65,8 +69,18 @@ public class SmsNotificationService {
     }
 
     private void queue(NotificationCommand command) {
+        queue(command, false);
+    }
+
+    public void queueProgressSubmitted(long orderId, long progressId, String orderNo, String customerPhone) {
+        queue(new NotificationCommand(PROGRESS_SUBMITTED, "WORK_ORDER_PROGRESS", Long.toString(progressId),
+                Long.toString(orderId), customerPhone, properties.getProgressSubmittedTemplateCode(), Map.of("orderNo", orderNo)), true);
+    }
+
+    private void queue(NotificationCommand command, boolean auditInvalidRecipient) {
         String phone = normalizePhone(command.recipientPhone());
-        if (phone == null) return;
+        if (phone == null && !auditInvalidRecipient) return;
+        if (phone == null) phone = "";
         String eventKey = eventKey(command, phone);
         SmsNotificationEntity existing = mapper.selectOne(new LambdaQueryWrapper<SmsNotificationEntity>()
                 .eq(SmsNotificationEntity::getEventKey, eventKey));
@@ -101,21 +115,28 @@ public class SmsNotificationService {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
-                    dispatcher.dispatchAsync(notificationId);
+                    safeDispatch(notificationId);
                 }
             });
             return;
         }
-        dispatcher.dispatchAsync(notificationId);
+        safeDispatch(notificationId);
+    }
+
+    private void safeDispatch(long notificationId) {
+        try { dispatcher.dispatchAsync(notificationId); }
+        catch (RuntimeException failure) { log.warn("SMS task {} could not start; retained for scheduled retry", notificationId, failure); }
     }
 
     private String initialStatus(SmsNotificationEntity notification) {
-        if (!properties.isEnabled() || !SmsProperties.hasText(notification.getTemplateCode())
+        if (!PHONE_PATTERN.matcher(notification.getRecipientPhone()).matches()
+                || !properties.isEnabled() || !SmsProperties.hasText(notification.getTemplateCode())
                 || !properties.hasProviderCredentials()) return "SKIPPED";
         return "PENDING";
     }
 
     private String initialReason(SmsNotificationEntity notification) {
+        if (!PHONE_PATTERN.matcher(notification.getRecipientPhone()).matches()) return "SMS_RECIPIENT_INVALID";
         if (!properties.isEnabled()) return "SMS_DISABLED";
         if (!SmsProperties.hasText(notification.getTemplateCode())) return "SMS_TEMPLATE_NOT_CONFIGURED";
         if (!properties.hasProviderCredentials()) return "SMS_PROVIDER_NOT_CONFIGURED";

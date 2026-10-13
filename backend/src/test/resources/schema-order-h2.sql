@@ -60,9 +60,24 @@ CREATE TABLE work_order_progress (
   progress_type VARCHAR(32) DEFAULT 'PROGRESS' NOT NULL,
   completion_order_id BIGINT AS (CASE WHEN progress_type = 'COMPLETION' THEN order_id ELSE NULL END),
   description VARCHAR(2000) NOT NULL,
+  request_token VARCHAR(64),
+  submission_hash VARCHAR(64),
+  confirmed_content_hash VARCHAR(64),
+  customer_confirmed_by BIGINT,
+  customer_confirmed_at TIMESTAMP,
   submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
-  UNIQUE(completion_order_id)
+  UNIQUE(completion_order_id),
+  UNIQUE(order_id,installer_user_id,request_token)
+);
+
+CREATE TABLE work_order_progress_confirmation (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  progress_id BIGINT NOT NULL REFERENCES work_order_progress(id) ON DELETE CASCADE,
+  customer_user_id BIGINT NOT NULL,
+  content_hash VARCHAR(64) NOT NULL,
+  content_snapshot VARCHAR(20000) NOT NULL,
+  confirmed_at TIMESTAMP NOT NULL
 );
 
 CREATE TABLE work_order_review (

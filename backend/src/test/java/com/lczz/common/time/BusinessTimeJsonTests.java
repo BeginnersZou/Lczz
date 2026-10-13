@@ -24,12 +24,15 @@ class BusinessTimeJsonTests {
     @Test
     void storedUtcProgressAndBeijingDatabaseTimeDescribeTheSameInstant() throws Exception {
         LocalDateTime utc = LocalDateTime.of(2026, 10, 12, 2, 36);
-        var progress = new ProgressView(1, 2, 3, "PROGRESS", "上午施工", List.of(), utc);
+        var progress = new ProgressView(1, 2, 3, "PROGRESS", "上午施工", List.of(), utc,
+                "version", "CONFIRMED", true, 4L, utc, "version");
         assertThat(mapper.readTree(mapper.writeValueAsString(progress)).path("submittedAt").asText())
                 .isEqualTo("2026-10-12T10:36:00+08:00");
         assertThat(mapper.writeValueAsString(utc.plusHours(8))).isEqualTo("\"2026-10-12T10:36:00+08:00\"");
         // Serialization must not migrate or mutate the existing database value.
         assertThat(progress.submittedAt()).isEqualTo(utc);
+        assertThat(mapper.readTree(mapper.writeValueAsString(progress)).path("customerConfirmedAt").asText())
+                .isEqualTo("2026-10-12T10:36:00+08:00");
     }
 
     @Test
