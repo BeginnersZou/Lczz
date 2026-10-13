@@ -13,6 +13,7 @@ public class SmsProperties {
     private String dealerAppointmentTemplateCode;
     private String installerAssignmentTemplateCode;
     private String selfOrderCreatedTemplateCode;
+    private String progressSubmittedTemplateCode;
     private String adminPhones;
     private String dealerAppointmentAdminPhones;
     private String selfOrderAdminPhones;
@@ -40,6 +41,8 @@ public class SmsProperties {
     public void setSelfOrderCreatedTemplateCode(String selfOrderCreatedTemplateCode) {
         this.selfOrderCreatedTemplateCode = selfOrderCreatedTemplateCode;
     }
+    public String getProgressSubmittedTemplateCode() { return progressSubmittedTemplateCode; }
+    public void setProgressSubmittedTemplateCode(String value) { progressSubmittedTemplateCode = value; }
     public String getAdminPhones() { return adminPhones; }
     public void setAdminPhones(String adminPhones) { this.adminPhones = adminPhones; }
     public String getDealerAppointmentAdminPhones() { return dealerAppointmentAdminPhones; }

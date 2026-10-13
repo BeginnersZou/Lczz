@@ -13,13 +13,14 @@ const pageMethods = pageSource.slice(pageSource.indexOf('\tconst createProgressM
 function page() {
   const calls = { picks: [], toasts: [], submits: [], uploads: [], refresh: 0 }
   const progressImages = ref([]), uploadProgress = ref(''), submittingProgress = ref(false), progressDescription = ref('安装完成')
+  const progressRequest = ref(null)
   let failNext = false
   const canOperateProgress = ref(true)
   const isUploadingProgressMedia = computed(() => progressImages.value.some(item => ['queued', 'uploading'].includes(item.status)))
   const failedProgressMediaCount = computed(() => progressImages.value.filter(item => item.status === 'failed').length)
   const uploadedProgressMediaCount = computed(() => progressImages.value.filter(item => item.status === 'success').length)
   const canSubmitProgress = computed(() => progressDescription.value.trim() && !isUploadingProgressMedia.value && !failedProgressMediaCount.value)
-  const state = { ...helpers, progressImages, uploadProgress, submittingProgress, progressDescription, canOperateProgress,
+  const state = { ...helpers, progressImages, uploadProgress, submittingProgress, progressDescription, progressRequest, canOperateProgress,
     isUploadingProgressMedia, failedProgressMediaCount, uploadedProgressMediaCount, canSubmitProgress,
     hasMaterialDraft: ref(false), orderId: ref(170), resolveMediaUrl: value => value,
     refreshOrderStatus: async () => { calls.refresh++ },
@@ -55,6 +56,7 @@ test('four batches retain all thirty photos and submit IDs in upload order', asy
   assert.equal(view.calls.toasts.at(-1), '每条施工进度最多30张图片')
   await view.handleProgressSubmit()
   assert.deepEqual(view.calls.submits[0].body.fileIds, Array.from({ length: 30 }, (_, index) => index + 1))
+  assert.ok(view.calls.submits[0].body.requestId)
   assert.equal(view.progressImages.value.length, 0)
   assert.equal(view.calls.refresh, 1)
 })

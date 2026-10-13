@@ -17,6 +17,7 @@ import com.lczz.order.persistence.WorkOrderStatusHistoryEntity;
 import com.lczz.order.persistence.WorkOrderStatusHistoryMapper;
 import com.lczz.progress.persistence.WorkOrderProgressEntity;
 import com.lczz.progress.persistence.WorkOrderProgressMapper;
+import com.lczz.notification.service.SmsNotificationService;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -38,35 +39,57 @@ public class WorkProgressService {
     private final WorkOrderStatusHistoryMapper historyMapper;
     private final FileRelationRecordMapper relationMapper;
     private final FileService fileService;
+    private final ProgressConfirmationService confirmations;
+    private final SmsNotificationService notifications;
 
     public WorkProgressService(WorkOrderProgressMapper progressMapper, WorkOrderMapper orderMapper,
                                WorkOrderStatusHistoryMapper historyMapper,
-                               FileRelationRecordMapper relationMapper, FileService fileService) {
+                               FileRelationRecordMapper relationMapper, FileService fileService,
+                               ProgressConfirmationService confirmations, SmsNotificationService notifications) {
         this.progressMapper = progressMapper;
         this.orderMapper = orderMapper;
         this.historyMapper = historyMapper;
         this.relationMapper = relationMapper;
         this.fileService = fileService;
+        this.confirmations = confirmations;
+        this.notifications = notifications;
     }
 
     public List<ProgressView> list(AuthenticatedUser actor, long orderId) {
-        requireAccessibleOrder(actor, orderId);
+        WorkOrderEntity order = requireAccessibleOrder(actor, orderId);
         List<WorkOrderProgressEntity> records = progressMapper.selectList(
                 new LambdaQueryWrapper<WorkOrderProgressEntity>()
                         .eq(WorkOrderProgressEntity::getOrderId, orderId)
                         .orderByAsc(WorkOrderProgressEntity::getSubmittedAt)
                         .orderByAsc(WorkOrderProgressEntity::getId));
-        return toViews(actor, records);
+        return toViews(actor, records, order.getCustomerUserId());
     }
 
     @Transactional
     public ProgressView submitProgress(AuthenticatedUser actor, long orderId, ProgressCommand command) {
         WorkOrderEntity order = requireAssignedOrder(actor, orderId);
+        if (command.description() == null || command.description().isBlank() || command.description().trim().length() > 2000)
+            throw new BusinessException("INVALID_PROGRESS_DESCRIPTION", "请填写 1 至 2000 字的施工说明");
+        List<Long> files = normalizeFiles(command.fileIds());
+        String token = command.requestId() == null || command.requestId().isBlank() ? null : command.requestId().trim();
+        if (token != null && token.length() > 64) throw new BusinessException("INVALID_PROGRESS_REQUEST", "提交标识不合法");
+        String hash = confirmations.submissionFingerprint(command.description().trim(), files);
+        if (token != null) {
+            var existing = progressMapper.selectOne(new LambdaQueryWrapper<WorkOrderProgressEntity>()
+                    .eq(WorkOrderProgressEntity::getOrderId, orderId).eq(WorkOrderProgressEntity::getInstallerUserId, actor.userId())
+                    .eq(WorkOrderProgressEntity::getRequestToken, token));
+            if (existing != null) {
+                if (!Objects.equals(existing.getSubmissionHash(), hash))
+                    throw new BusinessException(409, "PROGRESS_REQUEST_CONFLICT", "本次提交内容与原请求不同，请刷新后重试");
+                return toViews(actor, List.of(existing), order.getCustomerUserId()).getFirst();
+            }
+        }
         ensureActive(order, "ORDER_NOT_ACCEPTING_PROGRESS", "当前订单状态不能提交施工进度");
-        WorkOrderProgressEntity progress = insert(actor, orderId, "PROGRESS", command.description());
-        bindFiles(actor, progress.getId(), "PROGRESS", normalizeFiles(command.fileIds()));
+        WorkOrderProgressEntity progress = insert(actor, orderId, "PROGRESS", command.description(), token, hash);
+        bindFiles(actor, progress.getId(), "PROGRESS", files);
         transitionToInProgress(order, actor.userId(), "安装师傅提交施工进度");
-        return toViews(actor, List.of(progress)).getFirst();
+        notifications.queueProgressSubmitted(orderId, progress.getId(), order.getOrderNo(), order.getCustomerPhone());
+        return toViews(actor, List.of(progress), order.getCustomerUserId()).getFirst();
     }
 
     @Transactional
@@ -100,13 +123,15 @@ public class WorkProgressService {
         }
     }
 
-    private WorkOrderProgressEntity insert(AuthenticatedUser actor, long orderId, String type, String description) {
+    private WorkOrderProgressEntity insert(AuthenticatedUser actor, long orderId, String type, String description, String token, String hash) {
         WorkOrderProgressEntity record = new WorkOrderProgressEntity();
         record.setOrderId(orderId);
         record.setInstallerUserId(actor.userId());
         record.setProgressType(type);
         record.setDescription(description.trim());
         record.setSubmittedAt(LocalDateTime.now(ZoneOffset.UTC));
+        record.setRequestToken(token);
+        record.setSubmissionHash(hash);
         progressMapper.insert(record);
         return progressMapper.selectById(record.getId());
     }
@@ -189,7 +214,7 @@ public class WorkProgressService {
         historyMapper.insert(history);
     }
 
-    private List<ProgressView> toViews(AuthenticatedUser actor, List<WorkOrderProgressEntity> records) {
+    private List<ProgressView> toViews(AuthenticatedUser actor, List<WorkOrderProgressEntity> records, Long customerId) {
         if (records.isEmpty()) return List.of();
         List<Long> progressIds = records.stream().map(WorkOrderProgressEntity::getId).toList();
         List<FileRelationRecord> links = relationMapper.selectList(new LambdaQueryWrapper<FileRelationRecord>()
@@ -209,15 +234,23 @@ public class WorkProgressService {
                                         file.thumbnailUrl(), file.displayUrl(), file.originalUrl(), file.createdAt()));
                     }
                 });
-        return records.stream().map(record -> new ProgressView(record.getId(), record.getOrderId(),
-                record.getInstallerUserId(), record.getProgressType(), record.getDescription(),
-                grouped.getOrDefault(record.getId(), List.of()), record.getSubmittedAt())).toList();
+        return records.stream().map(record -> {
+            var state = confirmations.inspect(record, links, customerId);
+            return new ProgressView(record.getId(), record.getOrderId(), record.getInstallerUserId(), record.getProgressType(),
+                    record.getDescription(), grouped.getOrDefault(record.getId(), List.of()), record.getSubmittedAt(),
+                    state.contentVersion(), state.confirmationStatus(), state.customerConfirmed(), state.customerConfirmedBy(),
+                    state.customerConfirmedAt(), state.confirmedContentVersion());
+        }).toList();
     }
 
-    public record ProgressCommand(String description, List<Long> fileIds) { }
+    public record ProgressCommand(String description, List<Long> fileIds, String requestId) {
+        public ProgressCommand(String description, List<Long> fileIds) { this(description, fileIds, null); }
+    }
     public record ProgressFileView(long id, String originalName, String mimeType, String url,
                                    String thumbnailUrl, String displayUrl, String originalUrl,
                                    LocalDateTime uploadedAt) { }
     public record ProgressView(long id, long orderId, long installerUserId, String type, String description,
-                               List<ProgressFileView> images, @UtcTime LocalDateTime submittedAt) { }
+                               List<ProgressFileView> images, @UtcTime LocalDateTime submittedAt,
+                               String contentVersion, String confirmationStatus, boolean customerConfirmed,
+                               Long customerConfirmedBy, @UtcTime LocalDateTime customerConfirmedAt, String confirmedContentVersion) { }
 }

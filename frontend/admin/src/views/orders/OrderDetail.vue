@@ -65,6 +65,8 @@
               {{ progress.type === 'COMPLETION' ? '完工记录' : '施工进度' }}
             </el-tag>
             <p class="text-content">{{ progress.description || '未填写说明' }}</p>
+            <p class="muted"><el-tag size="small" :type="progress.customerConfirmed ? 'success' : 'warning'">{{ progress.customerConfirmed ? '客户已确认' : progress.confirmationStatus === 'CHANGED' ? '待重新确认' : '客户待确认' }}</el-tag>
+              <span v-if="progress.customerConfirmedAt">　{{ progress.customerConfirmed ? '确认时间' : '上次确认' }}：{{ formatDateTime(progress.customerConfirmedAt) }}</span></p>
             <OrderDetailMedia v-if="progress.images?.length" :files="progress.images" />
             <span v-else class="muted">未上传现场图片</span>
           </el-timeline-item>

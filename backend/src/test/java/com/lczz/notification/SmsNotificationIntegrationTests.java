@@ -30,6 +30,7 @@ class SmsNotificationIntegrationTests {
         smsProperties.setInstallerAssignmentTemplateCode(null);
         smsProperties.setDealerAppointmentTemplateCode(null);
         smsProperties.setSelfOrderCreatedTemplateCode(null);
+        smsProperties.setProgressSubmittedTemplateCode(null);
         smsProperties.setAdminPhones(null);
         smsProperties.setDealerAppointmentAdminPhones(null);
         smsProperties.setSelfOrderAdminPhones(null);
@@ -152,6 +153,20 @@ class SmsNotificationIntegrationTests {
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM sms_notification", Long.class)).isEqualTo(2L);
         assertThat(recipients("INSTALLER_SELF_ORDER_CREATED")).containsExactly("13900000003", "13900000004");
         assertThat(recipients("DEALER_APPOINTMENT_CREATED")).isEmpty();
+    }
+
+    @Test
+    void progressNotificationIsPerSubmissionAndAuditsMissingTemplateAndInvalidRecipient() {
+        smsProperties.setEnabled(true);
+        smsNotificationService.queueProgressSubmitted(1, 11, "WO-PROGRESS", "13830000001");
+        smsNotificationService.queueProgressSubmitted(1, 11, "WO-PROGRESS", "13830000001");
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM sms_notification", Integer.class)).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("SELECT last_error FROM sms_notification", String.class)).isEqualTo("SMS_TEMPLATE_NOT_CONFIGURED");
+        smsNotificationService.queueProgressSubmitted(1, 12, "WO-PROGRESS", "invalid");
+        assertThat(jdbcTemplate.queryForObject("SELECT last_error FROM sms_notification WHERE business_id='12'", String.class))
+                .isEqualTo("SMS_RECIPIENT_INVALID");
+        assertThat(jdbcTemplate.queryForObject("SELECT template_params_json FROM sms_notification WHERE business_id='11'", String.class))
+                .contains("orderNo", "WO-PROGRESS");
     }
 
     private List<String> recipients(String eventType) {

@@ -15,6 +15,11 @@ public class WorkOrderProgressEntity {
     private String description;
     private LocalDateTime submittedAt;
     private LocalDateTime createdAt;
+    private String requestToken;
+    private String submissionHash;
+    private String confirmedContentHash;
+    private Long customerConfirmedBy;
+    private LocalDateTime customerConfirmedAt;
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
@@ -30,4 +35,14 @@ public class WorkOrderProgressEntity {
     public void setSubmittedAt(LocalDateTime submittedAt) { this.submittedAt = submittedAt; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
+    public String getRequestToken() { return requestToken; }
+    public void setRequestToken(String value) { requestToken = value; }
+    public String getSubmissionHash() { return submissionHash; }
+    public void setSubmissionHash(String value) { submissionHash = value; }
+    public String getConfirmedContentHash() { return confirmedContentHash; }
+    public void setConfirmedContentHash(String value) { confirmedContentHash = value; }
+    public Long getCustomerConfirmedBy() { return customerConfirmedBy; }
+    public void setCustomerConfirmedBy(Long value) { customerConfirmedBy = value; }
+    public LocalDateTime getCustomerConfirmedAt() { return customerConfirmedAt; }
+    public void setCustomerConfirmedAt(LocalDateTime value) { customerConfirmedAt = value; }
 }
