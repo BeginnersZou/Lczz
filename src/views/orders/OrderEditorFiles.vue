@@ -1,6 +1,6 @@
 <template>
   <div class="editor-files">
-    <p class="upload-tip">jpg/png/gif/webp，每张最多 10 MB，最多 9 个附件；图片变更将在确认提交后保存。</p>
+    <p class="upload-tip">jpg/png/gif/webp，每张最多 10 MB，{{ progress ? '施工图片最多30张，视频最多9个' : '最多9个附件' }}；图片变更将在确认提交后保存。</p>
     <div class="file-grid">
       <div v-for="(file, index) in modelValue" :key="file.uid || file.id" class="file-tile">
         <video v-if="isVideo(file)" :src="file.url || file.originalUrl" controls preload="metadata" />
@@ -22,7 +22,7 @@
         </div>
         <span v-if="isVideo(file)" class="muted">已有视频</span>
       </div>
-      <el-button v-if="!disabled && modelValue.length < 9" class="upload-add" @click="chooseFiles">添加图片</el-button>
+      <el-button v-if="!disabled" class="upload-add" @click="chooseFiles">添加图片</el-button>
     </div>
     <input ref="input" type="file" hidden :multiple="replacementIndex === null"
       accept="image/jpeg,image/png,image/gif,image/webp" @change="selectFiles" />
@@ -34,7 +34,7 @@ import { computed, onBeforeUnmount, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { uploadFileApi } from '@/api/files'
 
-const props = defineProps({ modelValue: { type: Array, default: () => [] }, disabled: Boolean })
+const props = defineProps({ modelValue: { type: Array, default: () => [] }, disabled: Boolean, progress: Boolean })
 const emit = defineEmits(['update:modelValue'])
 const input = ref(null)
 const replacementIndex = ref(null)
@@ -44,7 +44,13 @@ let disposed = false
 const isVideo = file => String(file.mimeType || '').startsWith('video/')
 const previewUrls = computed(() => props.modelValue.filter(file => !isVideo(file)).map(file => file.url || file.originalUrl || file.previewUrl))
 const imageIndex = index => props.modelValue.slice(0, index).filter(file => !isVideo(file)).length
-const chooseFiles = () => { replacementIndex.value = null; input.value?.click() }
+const imageRemaining = computed(() => props.progress ? 30 - props.modelValue.filter(file => !isVideo(file)).length : 9 - props.modelValue.length)
+const limitMessage = computed(() => props.progress ? '每条施工进度最多30张图片' : '每组附件最多9个')
+const chooseFiles = () => {
+  if (imageRemaining.value <= 0) { ElMessage.warning(limitMessage.value); return }
+  replacementIndex.value = null
+  input.value?.click()
+}
 const chooseReplacement = index => { replacementIndex.value = index; input.value?.click() }
 
 function release(file) {
@@ -75,7 +81,7 @@ async function selectFiles(event) {
   event.target.value = ''
   if (props.disabled) return
   const replacing = replacementIndex.value
-  const remaining = replacing === null ? 9 - props.modelValue.length : 1
+  const remaining = replacing === null ? Math.max(0, imageRemaining.value) : 1
   const valid = []
   for (const file of files) {
     if (!['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(file.type)) {
@@ -83,7 +89,7 @@ async function selectFiles(event) {
     } else if (file.size > 10 * 1024 * 1024) {
       ElMessage.warning(`${file.name} 超过 10 MB`)
     } else if (valid.length < remaining) valid.push(file)
-    else ElMessage.warning('每组附件最多 9 个')
+    else ElMessage.warning(limitMessage.value)
   }
   if (!valid.length) return
   const drafts = valid.map(file => {
