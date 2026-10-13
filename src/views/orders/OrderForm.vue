@@ -113,13 +113,15 @@
 
       <el-card v-if="isEdit" class="form-card" shadow="never">
         <template #header><span class="card-title">施工进度</span></template>
-        <p class="edit-tip">保留原施工师傅和提交时间，修改内容与图片将在确认提交后一起保存。</p>
+        <p class="edit-tip">保留原施工师傅和提交时间，修改内容与图片将在确认提交后一起保存。已确认内容发生变化后需客户重新确认，订单状态不受影响。</p>
         <el-empty v-if="!progressEntries.length" description="师傅尚未提交施工记录" :image-size="60" />
         <section v-for="entry in progressEntries" :key="entry.id" class="progress-editor">
           <div class="progress-meta">
             <el-tag>{{ entry.type === 'COMPLETION' ? '历史完工记录' : '施工记录' }}</el-tag>
             <span>提交时间：{{ formatDateTime(entry.submittedAt, { seconds: true }) }}</span>
             <span>原师傅编号：{{ entry.installerUserId }}</span>
+            <span>{{ entry.customerConfirmed ? '客户已确认' : entry.confirmationStatus === 'CHANGED' ? '待重新确认' : '客户待确认' }}</span>
+            <span v-if="entry.customerConfirmedAt">{{ entry.customerConfirmed ? '确认时间' : '上次确认' }}：{{ formatDateTime(entry.customerConfirmedAt, { seconds: true }) }}</span>
           </div>
           <el-input v-model="entry.description" type="textarea" :rows="3" maxlength="2000" show-word-limit placeholder="施工说明" />
           <OrderEditorFiles v-model="entry.files" progress :disabled="submitLoading || !editable" />
