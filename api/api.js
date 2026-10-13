@@ -134,6 +134,8 @@ const normalizeProgress = (item = {}) => {
 		...item,
 		typeLabel: item.type === 'COMPLETION' ? '完工记录' : '施工进度',
 		submittedAt: formatDateTime(item.submittedAt || item.createTime || item.createdAt),
+		customerConfirmedAt: item.customerConfirmedAt ? formatDateTime(item.customerConfirmedAt) : '',
+		confirmationLabel: item.customerConfirmed ? '已确认' : item.confirmationStatus === 'CHANGED' ? '待重新确认' : '待确认',
 		media,
 		images: media.filter(file => !file.mimeType || file.mimeType.startsWith('image/')),
 		videos: media.filter(file => file.mimeType.startsWith('video/'))
@@ -209,6 +211,11 @@ export const orderApi = {
 		return res
 	},
 	submitProgress: (id, data) => http.post(`/orders/${id}/progress`, data),
+	confirmProgress: async (id, progressId, contentVersion) => {
+		const res = await http.post(`/orders/${id}/progress/${progressId}/confirm`, { contentVersion })
+		if (res.code === 200 && res.data?.customerConfirmedAt) res.data.customerConfirmedAt = formatDateTime(res.data.customerConfirmedAt)
+		return res
+	},
 	confirmCompletion: async (id) => {
 		const res = await http.post(`/orders/${id}/confirm-completion`)
 		if (res.code === 200 && res.data?.customerConfirmedAt) res.data.customerConfirmedAt = formatDateTime(res.data.customerConfirmedAt)
