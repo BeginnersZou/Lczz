@@ -159,6 +159,11 @@
 							<text class="progress-time">{{ record.submittedAt }}</text>
 						</view>
 						<text class="progress-description">{{ record.description }}</text>
+						<view class="progress-confirmation">
+							<text class="confirmation-tag" :class="{ confirmed: record.customerConfirmed }">{{ record.confirmationLabel || '待确认' }}</text>
+							<text v-if="record.customerConfirmedAt" class="confirmation-time">{{ record.customerConfirmed ? '确认时间' : '上次确认' }}：{{ record.customerConfirmedAt }}</text>
+							<view v-if="canConfirmProgress(record)" class="confirmation-button" :class="{ disabled: confirmingProgressId !== null }" @click="handleConfirmProgress(record)">{{ confirmingProgressId === record.id ? '确认中…' : '确认本次进度' }}</view>
+						</view>
 						<view class="progress-admin-actions" v-if="isAdmin">
 							<view class="progress-admin-button"
 								:class="{ disabled: adminProgressBusyId !== null || progressMediaRemaining(record.media) === 0 }"
@@ -245,7 +250,7 @@
 			<view class="textarea-wrap">
 				<textarea class="complete-textarea" v-model="progressDescription"
 					placeholder="必填：填写本次施工进度"
-					placeholder-class="placeholder-style" maxlength="2000"></textarea>
+					placeholder-class="placeholder-style" maxlength="2000" :disabled="submittingProgress || progressRequest !== null"></textarea>
 				<text class="text-count">{{ progressDescription.length }}/2000</text>
 			</view>
 			<view class="upload-panel">
@@ -300,8 +305,9 @@
 				</view>
 			</view>
 			<view class="inline-submit" :class="{ disabled: !canSubmitProgress || submittingProgress }" @click="handleProgressSubmit">
-				<text>{{ submittingProgress ? '提交中...' : '提交进度' }}</text>
+				<text>{{ submittingProgress ? '提交中...' : progressRequest ? '重试本次提交' : '提交进度' }}</text>
 			</view>
+			<text v-if="progressRequest && !submittingProgress" class="progress-retry-tip">提交结果尚未确认，请重试本次提交，避免重复记录和通知。</text>
 		</view>
 
 		<view class="bottom-space"></view>
@@ -448,12 +454,35 @@
 	const userRole = ref('')
 	const currentUserId = ref(null)
 	const confirmingCompletion = ref(false)
+	const confirmingProgressId = ref(null)
 	const isAdmin = computed(() => userRole.value === 'admin')
 	const isInstaller = computed(() => userRole.value === 'installer')
 	const isReviewer = computed(() => userRole.value === 'customer')
 	const isBoundCustomer = computed(() => isReviewer.value && currentUserId.value != null &&
 		String(orderInfo.value.customerUserId) === String(currentUserId.value))
 	const canConfirmCompletion = computed(() => isBoundCustomer.value && orderInfo.value.statusCode === 'IN_PROGRESS')
+	const canConfirmProgress = record => isBoundCustomer.value && orderInfo.value.statusCode !== 'CANCELLED'
+		&& !record.customerConfirmed && /^[a-f0-9]{64}$/.test(record.contentVersion || '')
+	const handleConfirmProgress = async record => {
+		if (!canConfirmProgress(record) || confirmingProgressId.value !== null) return
+		const version = record.contentVersion, id = record.id
+		confirmingProgressId.value = id
+		try {
+			const choice = await new Promise((resolve, reject) => uni.showModal({
+				title: '确认本次进度',
+				content: '请核对本条施工说明和照片。确认仅记录您认可本次进度，不代表订单完成。',
+				confirmText: '确认本次进度', success: resolve, fail: reject
+			}))
+			if (!choice.confirm || !isBoundCustomer.value || orderInfo.value.statusCode === 'CANCELLED') return
+			const res = await orderApi.confirmProgress(orderId.value, id, version)
+			if (res.code === 200 && res.data?.customerConfirmed === true && String(res.data.id) === String(id) && res.data.contentVersion === version) {
+				progressRecords.value = progressRecords.value.map(item => item.id === id ? { ...item, ...res.data, confirmationLabel: '已确认' } : item)
+				uni.showToast({ title: '本次进度已确认', icon: 'success' })
+			} else uni.showToast({ title: res.msg || '确认失败，请重新查看进度', icon: 'none' })
+			await refreshOrderStatus()
+		} catch { uni.showToast({ title: '确认失败，请刷新后重试', icon: 'none' }) }
+		finally { confirmingProgressId.value = null }
+	}
 	const canReview = computed(() => isBoundCustomer.value && orderInfo.value.statusCode === 'PENDING_REVIEW')
 	const hasReviewed = computed(() => isBoundCustomer.value && orderInfo.value.statusCode === 'REVIEWED')
 	const materialReadonly = computed(() => !isInstaller.value
@@ -525,6 +554,7 @@ const statusClass = computed(() => {
 	const progressImages = ref([])
 	const uploadProgress = ref('')
 	const submittingProgress = ref(false)
+	const progressRequest = ref(null)
 	let progressMediaUid = 0
 	const allowLeave = ref(false)
 	const canOperateProgress = computed(() => isInstaller.value && ['PENDING_VISIT', 'IN_PROGRESS'].includes(orderInfo.value.statusCode))
@@ -652,7 +682,7 @@ const statusClass = computed(() => {
 		confirmingCompletion.value = true
 		try {
 			const result = await new Promise((resolve, reject) => uni.showModal({
-				title: '确认订单完成', content: '是否确认订单已完成', success: resolve, fail: reject
+				title: '确认订单完成', content: '是否确认订单已完成？确认后施工进度将封存，您可继续评价本次服务。', success: resolve, fail: reject
 			}))
 			if (!result.confirm || !canConfirmCompletion.value) return
 			const response = await orderApi.confirmCompletion(orderId.value)
@@ -677,6 +707,7 @@ const statusClass = computed(() => {
 	}
 
 	const deleteProgressImage = (index) => {
+		if (submittingProgress.value || progressRequest.value) return
 		const [removed] = progressImages.value.splice(index, 1)
 		if (removed?.id) uploadApi.deleteTemporary(removed.id, { loading: false, silent: true })
 	}
@@ -732,14 +763,14 @@ const statusClass = computed(() => {
 	}
 
 	const retryProgressMedia = async (media) => {
-		if (!canOperateProgress.value || isUploadingProgressMedia.value || media.status !== 'failed') return
+		if (!canOperateProgress.value || submittingProgress.value || progressRequest.value || isUploadingProgressMedia.value || media.status !== 'failed') return
 		uploadProgress.value = '正在重新上传附件'
 		await uploadProgressMedia(media)
 		uploadProgress.value = ''
 	}
 
 	const openProgressMediaPicker = (source, type) => {
-		if (!canOperateProgress.value) return
+		if (!canOperateProgress.value || submittingProgress.value || progressRequest.value) return
 		const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 		const MAX_VIDEO_BYTES = 200 * 1024 * 1024
 		if (isUploadingProgressMedia.value) {
@@ -758,7 +789,7 @@ const statusClass = computed(() => {
 			maxDuration: 60,
 			camera: 'back',
 			success: async (res) => {
-				if (!canOperateProgress.value) return
+				if (!canOperateProgress.value || submittingProgress.value || progressRequest.value) return
 				const files = res.tempFiles || []
 				let oversized = 0
 				const accepted = []
@@ -797,7 +828,7 @@ const statusClass = computed(() => {
 	}
 
 	const chooseProgressMedia = () => {
-		if (!canOperateProgress.value) return
+		if (!canOperateProgress.value || submittingProgress.value || progressRequest.value) return
 		uni.showActionSheet({
 			itemList: ['从相册选择图片', '从相册选择视频（支持长视频）', '拍摄照片', '拍摄视频（最长60秒）'],
 			success: ({ tapIndex }) => openProgressMediaPicker(tapIndex >= 2 ? 'camera' : 'album', tapIndex % 2 === 1 ? 'video' : 'image')
@@ -834,15 +865,18 @@ const statusClass = computed(() => {
 				title: '确认提交进度', content: '提交后客户可在订单详情查看本条进度。', success: resolve, fail: reject
 			}))
 			if (!result.confirm || !canOperateProgress.value) return
-			const response = await orderApi.submitProgress(orderId.value, {
+			if (!progressRequest.value) progressRequest.value = {
+				requestId: `${Date.now()}-${Math.random().toString(36).slice(2, 14)}`,
 				description: progressDescription.value.trim(),
 				fileIds: progressImages.value.filter(media => media.status === 'success' && media.id).map(media => media.id)
-			})
+			}
+			const response = await orderApi.submitProgress(orderId.value, { ...progressRequest.value, fileIds: [...progressRequest.value.fileIds] })
 			if (response.code === 200) {
+				progressRequest.value = null
 				progressDescription.value = ''
 				progressImages.value = []
 				uni.showToast({ title: '提交成功', icon: 'success' })
-			}
+			} else if (response.code >= 400 && response.code < 500 && ![408, 429].includes(response.code)) progressRequest.value = null
 			await refreshOrderStatus()
 		} catch {
 			uni.showToast({ title: '提交失败，请刷新订单后重试', icon: 'none' })
@@ -1722,6 +1756,13 @@ const statusClass = computed(() => {
 		line-height: 1.6;
 	}
 
+	.progress-confirmation { display: flex; flex-wrap: wrap; align-items: center; gap: 14rpx; margin: 16rpx 0; }
+	.confirmation-tag { padding: 6rpx 14rpx; border-radius: 12rpx; background: #fff3df; color: #b45309; font-size: 22rpx; }
+	.confirmation-tag.confirmed { background: #e8f8ef; color: #159455; }
+	.confirmation-time { color: #8291a3; font-size: 22rpx; }
+	.confirmation-button { padding: 14rpx 20rpx; border-radius: 14rpx; background: #e7f1ff; color: #0b63ce; font-size: 24rpx; }
+	.confirmation-button.disabled { opacity: .5; }
+	.progress-retry-tip { display: block; margin-top: 16rpx; font-size: 23rpx; color: #b45309; line-height: 1.6; }
 	.progress-list {
 		display: flex;
 		flex-direction: column;
