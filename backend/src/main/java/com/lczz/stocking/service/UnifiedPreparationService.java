@@ -49,7 +49,7 @@ public class UnifiedPreparationService {
         Query query = query(keyword, status, source);
         String exportSql = """
                 SELECT b.order_no,b.order_name,b.source_label,b.customer_name,b.submitter_name,b.source_type,
-                       b.status_code,b.created_at,
+                       b.status_code,b.created_at,so.recipient_name,so.recipient_phone,so.recipient_address,
                        CASE WHEN b.source_type='W' THEN wi.product_name_snapshot ELSE ai.product_name_snapshot END material_name,
                        CASE WHEN b.source_type='W' THEN COALESCE(wi.sku_code_snapshot,wi.product_code_snapshot) ELSE ai.sku_code_snapshot END sku_code,
                        CASE WHEN b.source_type='W' THEN COALESCE(NULLIF(wi.sku_spec_snapshot,''),wi.model_spec_snapshot) ELSE ai.spec_snapshot END spec,
@@ -61,6 +61,7 @@ public class UnifiedPreparationService {
                 ) b
                 LEFT JOIN material_request_item wi ON b.source_type='W' AND wi.request_id=b.source_id
                 LEFT JOIN material_self_order_item ai ON b.source_type='A' AND ai.self_order_id=b.source_id
+                LEFT JOIN material_self_order so ON b.source_type='A' AND so.id=b.source_id
                 """;
         long total = jdbc.queryForObject("SELECT COUNT(*) FROM (" + exportSql + ") unified_export_count",
                 Long.class, query.args().toArray());
@@ -75,11 +76,13 @@ public class UnifiedPreparationService {
                         nullToEmpty(rs.getString("sku_code")), nullToEmpty(rs.getString("spec")),
                         nullToEmpty(rs.getString("unit_name")), plain(rs.getBigDecimal("quantity")),
                         rs.getObject("created_at", LocalDateTime.class).format(CSV_TIME),
-                        statusLabel(rs.getString("source_type"), rs.getString("status_code"))),
+                        statusLabel(rs.getString("source_type"), rs.getString("status_code")),
+                        nullToEmpty(rs.getString("recipient_name")), nullToEmpty(rs.getString("recipient_phone")),
+                        nullToEmpty(rs.getString("recipient_address"))),
                 query.args().toArray());
         return csv("备货总表_" + LocalDateTime.now(BusinessTime.ZONE).format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss")) + ".csv",
                 List.of("订单编号", "订单名称", "来源", "客户", "下单人/师傅", "耗材名称", "SKU编码", "规格",
-                        "单位", "数量", "创建时间", "状态"), rows);
+                        "单位", "数量", "创建时间", "状态", "收货人", "收货联系电话", "收货地址"), rows);
     }
 
     public ExportFile exportDetail(String source, long id) {
@@ -89,7 +92,7 @@ public class UnifiedPreparationService {
                 : view.materials().stream().map(item -> exportRow(view, item)).toList();
         return csv("备货明细_" + safeFilename(view.orderNo()) + ".csv",
                 List.of("订单编号", "订单名称", "来源", "客户", "下单人/师傅", "耗材名称", "SKU编码", "规格",
-                        "单位", "数量", "创建时间", "状态"), rows);
+                        "单位", "数量", "创建时间", "状态", "收货人", "收货联系电话", "收货地址"), rows);
     }
 
     private Query query(String keyword, String status, String source) {
@@ -175,7 +178,7 @@ public class UnifiedPreparationService {
                 rs.getString("order_no"), rs.getString("order_name"), "工程订单耗材", rs.getString("customer_name"),
                 rs.getLong("installer_user_id"), rs.getString("submitter_name"), rs.getString("submitter_phone"), rs.getString("request_status"),
                 statusLabel("W", rs.getString("request_status")), BusinessTime.fromUtc(rs.getObject("submitted_at", LocalDateTime.class)),
-                rs.getObject("order_id", Long.class), rs.getString("remark"), new ArrayList<>()), id);
+                rs.getObject("order_id", Long.class), rs.getString("remark"), null, null, null, new ArrayList<>()), id);
         if (rows.isEmpty()) throw new BusinessException(404, "PREPARATION_NOT_FOUND", "备货记录不存在");
         PreparationView view = rows.getFirst();
         view.materials().addAll(jdbc.query("""
@@ -199,13 +202,14 @@ public class UnifiedPreparationService {
         List<PreparationView> rows = jdbc.query("""
                 SELECT o.id,o.order_no,o.order_status,o.created_at,o.installer_id,
                        COALESCE(NULLIF(u.real_name,''),NULLIF(u.nickname,''),NULLIF(u.username,''),'安装师傅') submitter_name,
-                       u.phone submitter_phone
+                       u.phone submitter_phone,o.recipient_name,o.recipient_phone,o.recipient_address
                 FROM material_self_order o LEFT JOIN sys_user u ON u.id=o.installer_id WHERE o.id=?
                 """, (rs, row) -> new PreparationView(rs.getLong("id"), "A", rs.getString("order_no"),
                 rs.getString("order_no"), "客户下单", "师傅自助下单", null,
                 rs.getLong("installer_id"), rs.getString("submitter_name"), rs.getString("submitter_phone"), rs.getString("order_status"),
                 statusLabel("A", rs.getString("order_status")), rs.getObject("created_at", LocalDateTime.class),
-                null, null, new ArrayList<>()), id);
+                null, null, rs.getString("recipient_name"), rs.getString("recipient_phone"), rs.getString("recipient_address"),
+                new ArrayList<>()), id);
         if (rows.isEmpty()) throw new BusinessException(404, "PREPARATION_NOT_FOUND", "备货记录不存在");
         PreparationView view = rows.getFirst();
         view.materials().addAll(jdbc.query("""
@@ -234,7 +238,8 @@ public class UnifiedPreparationService {
         return List.of(view.orderNo(), view.productName(), view.sourceLabel(), nullToEmpty(view.customerName()),
                 view.submitterName(), item == null ? "" : item.name(), item == null ? "" : item.skuCode(),
                 item == null ? "" : nullToEmpty(item.spec()), item == null ? "" : item.unit(),
-                item == null ? "" : plain(item.quantity()), view.createTime().format(CSV_TIME), view.statusLabel());
+                item == null ? "" : plain(item.quantity()), view.createTime().format(CSV_TIME), view.statusLabel(),
+                nullToEmpty(view.recipientName()), nullToEmpty(view.recipientPhone()), nullToEmpty(view.recipientAddress()));
     }
 
     private ExportFile csv(String filename, List<String> headers, List<List<String>> rows) {
@@ -308,6 +313,7 @@ public class UnifiedPreparationService {
                                   String sourceLabel, String customerName, long submitterId,
                                   String submitterName, String submitterPhone, String statusCode, String statusLabel,
                                   LocalDateTime createTime, Long orderId, String remark,
+                                  String recipientName, String recipientPhone, String recipientAddress,
                                   List<MaterialLine> materials) { }
     public record MaterialLine(long id, Long productId, Long skuId, String skuCode, String name, String spec,
                                String unit, BigDecimal count, BigDecimal preparedQuantity,

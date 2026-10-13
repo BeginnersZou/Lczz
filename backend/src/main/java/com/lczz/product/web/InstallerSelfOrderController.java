@@ -6,6 +6,7 @@ import com.lczz.product.service.InstallerSelfOrderService;
 import com.lczz.product.service.InstallerSelfOrderService.CartView;
 import com.lczz.product.service.InstallerSelfOrderService.SelfOrderPage;
 import com.lczz.product.service.InstallerSelfOrderService.SelfOrderView;
+import com.lczz.product.service.RecipientInfo;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
@@ -66,7 +67,8 @@ public class InstallerSelfOrderController {
     @PostMapping("/self-orders")
     ApiResponse<SelfOrderView> submit(@AuthenticationPrincipal AuthenticatedUser actor,
                                       @Valid @RequestBody SubmitRequest body, HttpServletRequest request) {
-        return ApiResponse.success(service.submit(actor, body.requestId()), requestId(request));
+        return ApiResponse.success(service.submit(actor, body.requestId(),
+                new RecipientInfo(body.recipientName(), body.recipientPhone(), body.recipientAddress())), requestId(request));
     }
 
     @GetMapping("/self-orders")
@@ -92,5 +94,8 @@ public class InstallerSelfOrderController {
         int resolvedQuantity() { return quantity == null ? 1 : quantity; }
     }
     record QuantityRequest(@NotNull @Min(1) Integer quantity) { }
-    record SubmitRequest(@NotBlank @Size(max = 64) String requestId) { }
+    record SubmitRequest(@NotBlank @Size(max = 64) String requestId,
+                         @NotBlank @Size(max = 64) String recipientName,
+                         @NotBlank @Size(max = 32) String recipientPhone,
+                         @NotBlank @Size(max = 500) String recipientAddress) { }
 }

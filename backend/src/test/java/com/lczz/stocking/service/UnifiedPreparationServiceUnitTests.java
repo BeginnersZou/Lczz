@@ -26,7 +26,7 @@ class UnifiedPreparationServiceUnitTests {
         jdbc.execute("CREATE TABLE product(id BIGINT PRIMARY KEY,display_stock DECIMAL(12,3))");
         jdbc.execute("CREATE TABLE product_sku(id BIGINT PRIMARY KEY,stock DECIMAL(12,3))");
         jdbc.execute("CREATE TABLE material_request_item(id BIGINT PRIMARY KEY,request_id BIGINT,product_id BIGINT,sku_id BIGINT,product_code_snapshot VARCHAR(64),sku_code_snapshot VARCHAR(96),product_name_snapshot VARCHAR(255),sku_spec_snapshot VARCHAR(1000),model_spec_snapshot VARCHAR(255),unit_snapshot VARCHAR(32),requested_quantity DECIMAL(12,3),prepared_quantity DECIMAL(12,3),item_status VARCHAR(32))");
-        jdbc.execute("CREATE TABLE material_self_order(id BIGINT PRIMARY KEY,order_no VARCHAR(64),order_name VARCHAR(64),installer_id BIGINT,order_status VARCHAR(32),created_at TIMESTAMP)");
+        jdbc.execute("CREATE TABLE material_self_order(id BIGINT PRIMARY KEY,order_no VARCHAR(64),order_name VARCHAR(64),installer_id BIGINT,order_status VARCHAR(32),created_at TIMESTAMP,recipient_name VARCHAR(64),recipient_phone VARCHAR(32),recipient_address VARCHAR(500))");
         jdbc.execute("CREATE TABLE material_self_order_item(id BIGINT PRIMARY KEY,self_order_id BIGINT,sku_id BIGINT,product_id BIGINT,product_name_snapshot VARCHAR(255),sku_code_snapshot VARCHAR(96),spec_snapshot VARCHAR(1000),unit_snapshot VARCHAR(32),quantity INT)");
         service = new UnifiedPreparationService(jdbc);
         seed();
@@ -64,6 +64,19 @@ class UnifiedPreparationServiceUnitTests {
 
         assertThat(detail.submitterName()).isEqualTo("张师傅");
         assertThat(detail.submitterPhone()).isEqualTo("13810000001");
+    }
+
+    @Test
+    void recipientSnapshotAppearsInDetailAndBothExportsIncludingCsvEscaping() {
+        jdbc.update("UPDATE material_self_order SET recipient_name=?,recipient_phone=?,recipient_address=? WHERE id=20",
+                "王收货", "13800000088", "武汉,测试\"路\"8号");
+        assertThat(service.detail("A", 20).recipientName()).isEqualTo("王收货");
+        assertThat(service.detail("A", 20).recipientAddress()).isEqualTo("武汉,测试\"路\"8号");
+        assertThat(service.detail("W", 11).recipientName()).isNull();
+        for (var export : java.util.List.of(service.exportList(null, null, null), service.exportDetail("A", 20))) {
+            assertThat(new String(export.content(), StandardCharsets.UTF_8))
+                    .contains("收货人", "收货联系电话", "收货地址", "王收货", "13800000088", "\"武汉,测试\"\"路\"\"8号\"");
+        }
     }
 
     @Test
@@ -132,7 +145,7 @@ class UnifiedPreparationServiceUnitTests {
         jdbc.update("INSERT INTO product VALUES (100,8)");
         jdbc.update("INSERT INTO material_request_item(id,request_id,product_id,sku_id,product_code_snapshot,sku_code_snapshot,product_name_snapshot,sku_spec_snapshot,model_spec_snapshot,unit_snapshot,requested_quantity,prepared_quantity,item_status) "
                 + "VALUES (12,11,100,NULL,'COPPER',NULL,'铜管',NULL,'φ6×0.8mm','米',2,0,'PENDING')");
-        jdbc.update("INSERT INTO material_self_order VALUES (20,'A202609040001','客户下单',1,'ORDERED',CURRENT_TIMESTAMP)");
+        jdbc.update("INSERT INTO material_self_order(id,order_no,order_name,installer_id,order_status,created_at) VALUES (20,'A202609040001','客户下单',1,'ORDERED',CURRENT_TIMESTAMP)");
         jdbc.update("INSERT INTO material_self_order_item VALUES (21,20,200,101,'PVC弯头管','PVC-25-2M','口径：25mm / 长度：2米','根',3)");
     }
 }

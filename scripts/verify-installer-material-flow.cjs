@@ -6,6 +6,8 @@ const { createRequire } = require('node:module')
 const requireVue = createRequire(path.resolve(__dirname, '../frontend/admin/package.json'))
 const { parse, compileScript, compileTemplate } = requireVue('@vue/compiler-sfc')
 const vue = requireVue('vue')
+const recipientSource = fs.readFileSync(path.resolve(__dirname, '../frontend/miniprogram/utils/recipient.js'), 'utf8')
+const recipient = new Function(recipientSource.replace(/export /g, '') + '; return { normalizeRecipient, recipientError }')()
 const cartSource = fs.readFileSync(path.resolve(__dirname,
   '../frontend/miniprogram/packageA/material-cart/material-cart.vue'), 'utf8')
 const orderDetailSource = fs.readFileSync(path.resolve(__dirname,
@@ -25,12 +27,14 @@ function compileCart() {
   const imports = {
     vue: 'vue',
     '@dcloudio/uni-app': 'hooks',
-    '@/api/api.js': 'api'
+    '@/api/api.js': 'api',
+    '@/utils/recipient.js': 'recipient',
+    '@/utils/auth-session.js': 'auth'
   }
   let code = script.content.replace(/import\s*\{([\s\S]*?)\}\s*from\s*['"]([^'"]+)['"]/g,
     (_, names, name) => `const {${names}} = ${imports[name]};`)
   code = code.replace('export default', 'return')
-  return new Function('vue', 'hooks', 'api', 'uni', code)
+  return new Function('vue', 'hooks', 'api', 'uni', 'recipient', 'auth', code)
 }
 
 function fixture(responses) {
@@ -46,14 +50,16 @@ function fixture(responses) {
         calls.requests.push(requestId)
         return responses.shift()
       }
-    }
+    },
+    recipientAddressApi: { list: async () => ({ code: 200, data: [{ id: 1, isDefault: true,
+      recipientName: '王收货', recipientPhone: '13800000088', recipientAddress: '武汉市测试路8号' }] }) }
   }
   const uni = {
     showModal: options => calls.modals.push(options),
     showToast: options => calls.toasts.push(options),
     switchTab: options => calls.tabs.push(options)
   }
-  const component = compileCart()(vue, { onShow: fn => { hooks.onShow = fn } }, api, uni)
+  const component = compileCart()(vue, { onShow: fn => { hooks.onShow = fn } }, api, uni, recipient, { getAuthToken: () => 'installer-session' })
   return { view: component.setup({}, { expose() {} }), hooks, calls }
 }
 
@@ -97,7 +103,8 @@ async function main() {
 
   await submit(test.view, test.calls)
   assert.equal(test.calls.requests.length, 2)
-  assert.equal(test.calls.requests[0], test.calls.requests[1])
+  assert.deepEqual(test.calls.requests[0], test.calls.requests[1])
+  assert.equal(test.calls.requests[0].recipientPhone, '13800000088')
   assert.equal(test.view.items.value.length, 0)
   assert.deepEqual(test.calls.tabs, [{ url: '/pages/index/index' }])
   assert.equal(test.calls.toasts.at(-1).title, '取货申请已提交')

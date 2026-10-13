@@ -106,6 +106,9 @@
             <div><span>订单名称</span><strong>{{ currentRow.productName }}</strong></div>
             <div><span>下单人/师傅</span><strong>{{ currentRow.submitterName || '-' }}</strong></div>
             <div v-if="currentRow.source === 'A'"><span>师傅手机号</span><strong>{{ currentRow.submitterPhone || '-' }}</strong></div>
+            <div v-if="currentRow.source === 'A'"><span>收货人</span><strong>{{ currentRow.recipientName || '未填写' }}</strong></div>
+            <div v-if="currentRow.source === 'A'"><span>收货联系电话</span><strong>{{ currentRow.recipientPhone || '未填写' }}</strong></div>
+            <div v-if="currentRow.source === 'A'" class="recipient-address"><span>收货地址</span><strong>{{ currentRow.recipientAddress || '未填写' }}</strong></div>
             <div><span>客户</span><strong>{{ currentRow.customerName || '不关联工程客户' }}</strong></div>
             <div><span>创建时间</span><strong>{{ formatDateTime(currentRow.createTime) }}</strong></div>
             <div v-if="currentRow.remark"><span>申请备注</span><strong>{{ currentRow.remark }}</strong></div>
@@ -360,6 +363,7 @@ onMounted(loadList)
 .summary-grid > div { display: grid; grid-template-columns: 100px minmax(0, 1fr); align-items: center; min-height: 28px; }
 .summary-grid span { color: #667085; font-size: 13px; }
 .summary-grid strong { overflow-wrap: anywhere; color: #344054; font-size: 14px; font-weight: 600; }
+.summary-grid .recipient-address { grid-column: 1 / -1; }
 .section-title { display: flex; align-items: baseline; justify-content: space-between; margin: 24px 0 12px; color: #1d2939; font-size: 16px; font-weight: 600; }
 .section-title small { color: #98a2b3; font-size: 12px; font-weight: 400; }
 .readonly-tip { margin-top: 16px; }

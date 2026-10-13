@@ -67,6 +67,10 @@
 				<view class="func-icon icon-green"><up-icon name="shopping-cart" size="24" color="#fff"></up-icon></view>
 				<text class="func-text">取货订单</text>
 			</view>
+			<view v-if="isInstaller" class="func-item" hover-class="hover-press" @click="goToAddresses">
+				<view class="func-icon icon-green"><up-icon name="map-fill" size="24" color="#fff"></up-icon></view>
+				<text class="func-text">常用地址</text>
+			</view>
 			<view class="func-item" hover-class="hover-press" :hover-stay-time="80" @click="goToOfficial">
 				<view class="func-icon icon-orange">
 					<up-icon name="server-fill" size="24" color="#fff"></up-icon>
@@ -289,6 +293,7 @@
 	}
 
 	const goToSelfOrders = () => uni.navigateTo({ url: '/packageA/self-order-list/self-order-list' })
+	const goToAddresses = () => uni.navigateTo({ url: '/packageA/recipient-addresses/recipient-addresses' })
 
 	const goLogin = () => {
 		uni.navigateTo({ url: '/pages/login/login' })
