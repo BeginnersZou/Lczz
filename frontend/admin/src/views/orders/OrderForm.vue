@@ -124,7 +124,7 @@
             <span v-if="entry.customerConfirmedAt">{{ entry.customerConfirmed ? '确认时间' : '上次确认' }}：{{ formatDateTime(entry.customerConfirmedAt, { seconds: true }) }}</span>
           </div>
           <el-input v-model="entry.description" type="textarea" :rows="3" maxlength="2000" show-word-limit placeholder="施工说明" />
-          <OrderEditorFiles v-model="entry.files" :disabled="submitLoading || !editable" />
+          <OrderEditorFiles v-model="entry.files" progress :disabled="submitLoading || !editable" />
         </section>
       </el-card>
 

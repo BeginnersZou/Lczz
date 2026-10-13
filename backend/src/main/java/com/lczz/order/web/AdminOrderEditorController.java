@@ -1,5 +1,7 @@
 package com.lczz.order.web;
 
+import com.lczz.file.service.ProgressMediaLimits;
+
 import com.lczz.auth.domain.AuthenticatedUser;
 import com.lczz.common.api.ApiResponse;
 import com.lczz.order.service.AdminOrderEditorService;
@@ -72,7 +74,8 @@ public class AdminOrderEditorController {
                        @Size(max = 1000) List<@NotNull @Valid ProgressRequest> progress,
                        @Valid MaterialRequest materials) { }
     record ProgressRequest(@NotNull @Min(1) Long id, @NotBlank @Size(max = 2000) String description,
-                           @Size(max = 9) List<@NotNull @Min(1) Long> fileIds) { }
+                           @Size(max = ProgressMediaLimits.TOTAL_LIMIT,
+                                   message = "每条施工进度最多30张图片和9个视频") List<@NotNull @Min(1) Long> fileIds) { }
     record MaterialRequest(@NotNull @Size(max = 100) List<@NotNull @Valid MaterialItem> items,
                            @Size(max = 500) String remark) { }
     record MaterialItem(@NotNull @Min(1) Long productId, @Min(1) Long skuId,

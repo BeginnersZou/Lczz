@@ -16,6 +16,11 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.Comparator;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -146,6 +151,118 @@ class WorkProgressIntegrationTests {
                 .andExpect(jsonPath("$.data[0].images.length()").value(3))
                 .andExpect(jsonPath("$.data[0].images[0].id").value(firstFileId))
                 .andExpect(jsonPath("$.data[0].images[2].id").value(thirdFileId));
+    }
+
+    @Test
+    void thirtyPhotosSubmitReadBackAndAdminAppendRespectsTheSameLimit() throws Exception {
+        List<Long> ids = uploadImages(30);
+        JsonNode created = submitFiles(ids, 200);
+        long progressId = created.at("/data/id").asLong();
+        assertThat(created.at("/data/images").size()).isEqualTo(30);
+        for (int index = 0; index < 30; index++) {
+            assertThat(created.at("/data/images/" + index + "/id").asLong()).isEqualTo(ids.get(index));
+        }
+        for (String caller : new String[] {installerToken, customerToken, adminToken}) {
+            mockMvc.perform(get("/api/v1/orders/" + orderId + "/progress")
+                            .header("Authorization", "Bearer " + caller))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.data[0].images.length()").value(30));
+        }
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM sms_notification WHERE event_type='PROGRESS_SUBMITTED'", Integer.class)).isEqualTo(1);
+        confirm(progressId, created.at("/data/contentVersion").asText(), customerToken);
+        assertThat(progressList().get(0).path("customerConfirmed").asBoolean()).isTrue();
+        jdbcTemplate.update("UPDATE work_order SET order_status='REVIEWED' WHERE id=?", orderId);
+        mockMvc.perform(multipart("/api/v1/files/upload")
+                        .file(new MockMultipartFile("file", "extra.png", "image/png", PNG))
+                        .param("businessType", "PROGRESS").param("businessId", String.valueOf(progressId))
+                        .param("usageType", "PROGRESS").header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error").value("FILE_COUNT_LIMIT"))
+                .andExpect(jsonPath("$.message").value("每条施工进度最多30张图片"));
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM business_file_relation WHERE business_id=?",
+                Long.class, progressId)).isEqualTo(30L);
+        mockMvc.perform(delete("/api/v1/files/" + ids.getFirst() + "/relations")
+                        .param("businessType", "PROGRESS").param("businessId", String.valueOf(progressId))
+                        .param("usageType", "PROGRESS").header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk());
+        mockMvc.perform(multipart("/api/v1/files/upload")
+                        .file(new MockMultipartFile("file", "replacement.png", "image/png", PNG))
+                        .param("businessType", "PROGRESS").param("businessId", String.valueOf(progressId))
+                        .param("usageType", "PROGRESS").header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/v1/orders/" + orderId + "/progress")
+                        .header("Authorization", "Bearer " + customerToken))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data[0].images.length()").value(30));
+        assertThat(progressList().get(0).path("confirmationStatus").asText()).isEqualTo("CHANGED");
+        assertThat(jdbcTemplate.queryForObject("SELECT order_status FROM work_order WHERE id=?", String.class, orderId)).isEqualTo("REVIEWED");
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM sms_notification WHERE event_type='PROGRESS_SUBMITTED'", Integer.class)).isEqualTo(1);
+    }
+
+    @Test
+    void thirtyFirstPhotoRejectsAndRollsBackTheEntireProgressSubmission() throws Exception {
+        JsonNode response = submitFiles(uploadImages(31), 400);
+        assertThat(response.path("error").asText()).isEqualTo("FILE_COUNT_LIMIT");
+        assertThat(response.path("message").asText()).isEqualTo("每条施工进度最多30张图片");
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM work_order_progress", Long.class)).isZero();
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM business_file_relation", Long.class)).isZero();
+        assertThat(orderMapper.selectById(orderId).getOrderStatus()).isEqualTo("PENDING_VISIT");
+    }
+
+    @Test
+    void videoLimitRemainsNineAndIsIndependentOfThirtyPhotos() throws Exception {
+        List<Long> videos = new ArrayList<>();
+        byte[] mp4 = new byte[] {0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70,
+                0x69, 0x73, 0x6f, 0x6d, 0, 0, 0, 0, 0x69, 0x73, 0x6f, 0x6d, 0x6d, 0x70, 0x34, 0x32};
+        for (int index = 0; index < 10; index++) {
+            String response = mockMvc.perform(multipart("/api/v1/files/upload")
+                            .file(new MockMultipartFile("file", "video-" + index + ".mp4", "video/mp4", mp4))
+                            .header("Authorization", "Bearer " + installerToken))
+                    .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+            videos.add(objectMapper.readTree(response).at("/data/id").asLong());
+        }
+        JsonNode rejected = submitFiles(videos, 400);
+        assertThat(rejected.path("error").asText()).isEqualTo("FILE_COUNT_LIMIT");
+        assertThat(rejected.path("message").asText()).isEqualTo("每条施工进度最多9个视频");
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM work_order_progress", Long.class)).isZero();
+        List<Long> mixed = uploadImages(30);
+        mixed.addAll(videos.subList(0, 9));
+        JsonNode accepted = submitFiles(mixed, 200);
+        assertThat(accepted.at("/data/images").size()).isEqualTo(39);
+    }
+
+    @Test
+    void concurrentAppendsCannotBothClaimTheThirtiethPhotoSlot() throws Exception {
+        long progressId = submitFiles(uploadImages(29), 200).at("/data/id").asLong();
+        long first = uploadImage("concurrent-first.png"), second = uploadImage("concurrent-second.png");
+        CountDownLatch start = new CountDownLatch(1);
+        try (var pool = Executors.newFixedThreadPool(2)) {
+            var one = pool.submit(() -> appendAfterStart(start, progressId, first));
+            var two = pool.submit(() -> appendAfterStart(start, progressId, second));
+            start.countDown();
+            assertThat(List.of(one.get(10, TimeUnit.SECONDS), two.get(10, TimeUnit.SECONDS)))
+                    .containsExactlyInAnyOrder(200, 400);
+        }
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM business_file_relation WHERE business_id=?",
+                Long.class, progressId)).isEqualTo(30L);
+    }
+
+    private int appendAfterStart(CountDownLatch start, long progressId, long fileId) throws Exception {
+        start.await(5, TimeUnit.SECONDS);
+        return mockMvc.perform(post("/api/v1/files/" + fileId + "/relations")
+                        .header("Authorization", "Bearer " + adminToken).contentType("application/json")
+                        .content("{\"businessType\":\"PROGRESS\",\"businessId\":" + progressId + ",\"usageType\":\"PROGRESS\"}"))
+                .andReturn().getResponse().getStatus();
+    }
+
+    private List<Long> uploadImages(int count) throws Exception {
+        List<Long> result = new ArrayList<>();
+        for (int index = 0; index < count; index++) result.add(uploadImage("site-" + index + ".png"));
+        return result;
+    }
+
+    private JsonNode submitFiles(List<Long> ids, int expected) throws Exception {
+        String body = objectMapper.writeValueAsString(java.util.Map.of("description", "施工附件数量边界", "fileIds", ids));
+        return objectMapper.readTree(mockMvc.perform(post("/api/v1/orders/" + orderId + "/progress")
+                        .header("Authorization", "Bearer " + installerToken).contentType("application/json").content(body))
+                .andExpect(status().is(expected)).andReturn().getResponse().getContentAsString());
     }
 
     @Test

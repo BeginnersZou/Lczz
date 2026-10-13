@@ -1,5 +1,8 @@
 package com.lczz.file;
 
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.web.client.RestClient;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lczz.auth.domain.AuthenticatedUser;
@@ -42,6 +45,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "lczz.file.max-image-bytes=32"
 })
 class FileIntegrationTests {
+    @MockitoBean RestClient restClient;
     private static final byte[] PNG = new byte[] {
             (byte) 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
             0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52

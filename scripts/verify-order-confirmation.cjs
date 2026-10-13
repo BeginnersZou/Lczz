@@ -7,6 +7,8 @@ const requireVue = createRequire(path.resolve(__dirname, '../frontend/admin/pack
 const { parse, compileScript, compileTemplate } = requireVue('@vue/compiler-sfc')
 const vue = requireVue('vue')
 const source = fs.readFileSync(path.resolve(__dirname, '../frontend/miniprogram/packageA/order-detail/order-detail.vue'), 'utf8')
+const progressMedia = new Function(fs.readFileSync(path.resolve(__dirname, '../frontend/miniprogram/packageA/utils/progress-media.js'), 'utf8').replace(/export /g, '')
+  + '\nreturn { PROGRESS_PICKER_BATCH, progressMediaCounts, progressMediaRemaining, progressMediaLimitMessage, acceptProgressMedia }')()
 function compiled(weixin) {
   const prepared = source.replace(/\/\/ #ifdef MP-WEIXIN([\s\S]*?)\/\/ #endif/g, (_, code) => weixin ? code : '')
     .replace(/\/\/ #ifndef MP-WEIXIN([\s\S]*?)\/\/ #endif/g, (_, code) => weixin ? '' : code)
@@ -15,11 +17,12 @@ function compiled(weixin) {
   const script = compileScript(descriptor, { id: 'issue99' })
   const template = compileTemplate({ source: descriptor.template.content, filename: 'order-detail.vue', id: 'issue99', compilerOptions: { bindingMetadata: script.bindings } })
   assert.deepEqual(template.errors, [])
-  const imports = { 'vue': 'vue', '@dcloudio/uni-app': 'hooks', '@/api/api.js': 'api', '@/utils/auth-guard.js': 'guard' }
+  const imports = { 'vue': 'vue', '@dcloudio/uni-app': 'hooks', '@/api/api.js': 'api', '@/utils/auth-guard.js': 'guard',
+    '@/packageA/utils/progress-media.js': 'progressMedia' }
   let code = script.content.replace(/import\s*\{([\s\S]*?)\}\s*from\s*['"]([^'"]+)['"]/g,
     (_, names, name) => `const {${names}} = ${imports[name]};`)
   code = code.replace('export default', 'return')
-  return new Function('vue', 'hooks', 'api', 'guard', 'uni', 'wx', code)
+  return new Function('vue', 'hooks', 'api', 'guard', 'uni', 'wx', 'progressMedia', code)
 }
 const componentFactory = compiled(true)
 compiled(false)
@@ -58,7 +61,7 @@ function fixture(role = 'customer', statusCode = 'IN_PROGRESS', customerUserId =
   }
   const hooks = Object.fromEntries(['onLoad', 'onShow', 'onBackPress', 'onUnload'].map(name => [name, fn => { hook[name] = fn }]))
   const uni = { getSystemInfoSync: () => ({ windowHeight: 844 }), showModal: options => calls.modals.push(options), showToast: options => calls.toast.push(options) }
-  const component = componentFactory(vue, hooks, api, { requireLogin: () => true }, uni, { getWindowInfo: uni.getSystemInfoSync })
+  const component = componentFactory(vue, hooks, api, { requireLogin: () => true }, uni, { getWindowInfo: uni.getSystemInfoSync }, progressMedia)
   const view = component.setup({}, { expose() {} })
   view.orderId.value = '99'
   return { view, calls, state, hook, load: () => view.loadOrderDetails(), setConfirm: fn => { confirmReply = fn }, setProgress: fn => { progressReply = fn }, setDetail: response => { detailReply = response },

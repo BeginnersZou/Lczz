@@ -3,6 +3,7 @@ package com.lczz.progress.web;
 import com.lczz.auth.domain.AuthenticatedUser;
 import com.lczz.common.api.ApiResponse;
 import com.lczz.common.exception.BusinessException;
+import com.lczz.file.service.ProgressMediaLimits;
 import com.lczz.progress.service.WorkProgressService;
 import com.lczz.progress.service.WorkProgressService.ProgressCommand;
 import com.lczz.progress.service.WorkProgressService.ProgressView;
@@ -69,7 +70,8 @@ public class WorkProgressController {
     }
 
     record ProgressRequest(@NotBlank @Size(max = 2000) String description,
-                           @Size(max = 9) List<@NotNull @Min(1) Long> fileIds, @Size(max = 64) String requestId) {
+                           @Size(max = ProgressMediaLimits.TOTAL_LIMIT, message = "每条施工进度最多30张图片和9个视频") List<@NotNull @Min(1) Long> fileIds,
+                           @Size(max = 64) String requestId) {
         ProgressCommand toCommand() { return new ProgressCommand(description, fileIds, requestId); }
     }
 

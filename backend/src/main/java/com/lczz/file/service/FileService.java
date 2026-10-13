@@ -65,7 +65,7 @@ public class FileService {
             "SERVICE_PAGE", Set.of("COMPANY_DISPLAY"));
     private static final Map<String, Integer> USAGE_LIMITS = Map.of(
             "COVER", 1, "DETAIL", 9, "ATTACHMENT", 9,
-            "PROGRESS", 9, "COMPLETION", 9, "REVIEW", 9, "CASE", Integer.MAX_VALUE,
+            "PROGRESS", ProgressMediaLimits.TOTAL_LIMIT, "COMPLETION", 9, "REVIEW", 9, "CASE", Integer.MAX_VALUE,
             "COMPANY_DISPLAY", 20);
 
     private final FileAssetRecordMapper fileMapper;
@@ -225,12 +225,16 @@ public class FileService {
                 "SELECT COUNT(*) FROM work_order_progress WHERE id=? AND order_id=? AND progress_type=?",
                 target.businessId(), orderId, target.usageType()) == 1;
         if (!belongs) throw new BusinessException("PROGRESS_ORDER_MISMATCH", "施工记录不属于该订单");
+        if ("PROGRESS".equals(target.businessType())) {
+            jdbcTemplate.queryForList("SELECT id FROM work_order_progress WHERE id=? FOR UPDATE", target.businessId());
+        }
         if (fileIds == null || fileIds.stream().anyMatch(id -> id == null || id < 1)
                 || fileIds.stream().distinct().count() != fileIds.size()) {
             throw new BusinessException("INVALID_EDITOR_FILES", "附件标识无效或重复");
         }
         if (fileIds.size() > USAGE_LIMITS.get(target.usageType())) {
-            throw new BusinessException("FILE_COUNT_LIMIT", "每组附件最多 9 个");
+            throw new BusinessException("FILE_COUNT_LIMIT", "PROGRESS".equals(target.usageType())
+                    ? "每条施工进度最多30张图片和9个视频" : "每组附件最多 9 个");
         }
         List<FileRelationRecord> current = relationMapper.selectList(new LambdaQueryWrapper<FileRelationRecord>()
                 .eq(FileRelationRecord::getBusinessType, target.businessType())
@@ -239,12 +243,14 @@ public class FileService {
                 .orderByAsc(FileRelationRecord::getSortOrder).orderByAsc(FileRelationRecord::getId));
         if (current.stream().map(FileRelationRecord::getFileId).toList().equals(fileIds)) return;
         Set<Long> retainedIds = current.stream().map(FileRelationRecord::getFileId).collect(Collectors.toSet());
+        List<String> selectedMimeTypes = new java.util.ArrayList<>();
         for (long id : fileIds.stream().sorted().toList()) {
             FileAssetRecord file = fileMapper.selectOne(new LambdaQueryWrapper<FileAssetRecord>()
                     .eq(FileAssetRecord::getId, id).last("FOR UPDATE"));
             if (file == null || Boolean.TRUE.equals(file.getDeleted())) {
                 throw new BusinessException(404, "FILE_NOT_FOUND", "图片不存在或已删除");
             }
+            selectedMimeTypes.add(file.getMimeType());
             if (retainedIds.contains(id)) continue;
             if (!Objects.equals(file.getUploadedBy(), actor.userId()) || !jdbcTemplate.queryForList(
                     "SELECT id FROM business_file_relation WHERE file_id=? FOR UPDATE", id).isEmpty()) {
@@ -257,6 +263,7 @@ public class FileService {
                 throw new BusinessException(413, "FILE_TOO_LARGE", "图片超过上传大小限制");
             }
         }
+        if ("PROGRESS".equals(target.usageType())) ProgressMediaLimits.validate(selectedMimeTypes);
         // Remove links only; assets may still be referenced by other records.
         for (FileRelationRecord link : current) {
             if (!fileIds.contains(link.getFileId())) relationMapper.deleteById(link.getId());
@@ -369,15 +376,34 @@ public class FileService {
     }
 
     private void addRelation(AuthenticatedUser actor, long fileId, RelationCommand relation) {
+        // Serialize additions to a record so concurrent uploads cannot both take the final slot.
+        if ("PROGRESS".equals(relation.businessType())) {
+            jdbcTemplate.queryForList("SELECT id FROM work_order_progress WHERE id=? FOR UPDATE", relation.businessId());
+        }
         if ("CASE".equals(relation.businessType())) validateCaseImage(fileId);
         if ("SERVICE_PAGE".equals(relation.businessType())) validateServicePageImage(fileId);
-        Long duplicate = relationMapper.selectCount(new LambdaQueryWrapper<FileRelationRecord>()
+        Long duplicate = "PROGRESS".equals(relation.businessType())
+                ? (long) jdbcTemplate.queryForList("""
+                    SELECT id FROM business_file_relation
+                    WHERE business_type=? AND business_id=? AND usage_type=? AND file_id=? FOR UPDATE
+                    """, Long.class, relation.businessType(), relation.businessId(), relation.usageType(), fileId).size()
+                : relationMapper.selectCount(new LambdaQueryWrapper<FileRelationRecord>()
                 .eq(FileRelationRecord::getBusinessType, relation.businessType())
                 .eq(FileRelationRecord::getBusinessId, relation.businessId())
                 .eq(FileRelationRecord::getUsageType, relation.usageType())
                 .eq(FileRelationRecord::getFileId, fileId));
         if (duplicate > 0) return;
-        Long count = relationMapper.selectCount(new LambdaQueryWrapper<FileRelationRecord>()
+        Long progressCount = null;
+        if ("PROGRESS".equals(relation.usageType())) {
+            List<String> mimeTypes = new java.util.ArrayList<>(jdbcTemplate.queryForList("""
+                    SELECT f.mime_type FROM business_file_relation r JOIN file_asset f ON f.id=r.file_id
+                    WHERE r.business_type=? AND r.business_id=? AND r.usage_type=? FOR UPDATE
+                    """, String.class, relation.businessType(), relation.businessId(), relation.usageType()));
+            mimeTypes.add(requireFile(fileId).getMimeType());
+            ProgressMediaLimits.validate(mimeTypes);
+            progressCount = (long) mimeTypes.size() - 1;
+        }
+        Long count = progressCount != null ? progressCount : relationMapper.selectCount(new LambdaQueryWrapper<FileRelationRecord>()
                 .eq(FileRelationRecord::getBusinessType, relation.businessType())
                 .eq(FileRelationRecord::getBusinessId, relation.businessId())
                 .eq(FileRelationRecord::getUsageType, relation.usageType()));
