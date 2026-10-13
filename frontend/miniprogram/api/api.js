@@ -312,6 +312,15 @@ export const recipientAddressApi = {
 	remove: (id, options = {}) => http.delete(`/installer/addresses/${id}`, {}, options)
 }
 
+// ====================== 管理员移动端订单备货 ======================
+// 与 PC 管理端复用同一套后端状态机和数据，避免两端产生不同的备货结果。
+export const preparationApi = {
+	getList: (params = {}, options = {}) => http.get('/preparation/list', params, options),
+	getDetail: (id, source = 'W', options = {}) => http.get(`/preparation/detail/${id}`, { source }, options),
+	prepare: (id, materials, options = {}) => http.post(`/preparation/${id}/prepare`, { materials }, options),
+	finish: (id, options = {}) => http.post(`/preparation/${id}/finish`, {}, options)
+}
+
 // ====================== 仪表盘 / 工作台概览 ======================
 export const dashboardApi = {
 	// 角色可见的待办列表与订单统计

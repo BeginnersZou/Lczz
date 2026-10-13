@@ -181,6 +181,26 @@
 					}
 				},
 				{
+					"path": "preparation/preparation-list",
+					"style": {
+						"navigationBarTitleText": "订单备货",
+						"navigationBarTextStyle": "black",
+						"enablePullDownRefresh": true,
+						"backgroundColorTop": "#f4f7fb",
+						"backgroundColorBottom": "#f4f7fb"
+					}
+				},
+				{
+					"path": "preparation/preparation-detail",
+					"style": {
+						"navigationBarTitleText": "备货详情",
+						"navigationBarTextStyle": "black",
+						"enablePullDownRefresh": true,
+						"backgroundColorTop": "#f4f7fb",
+						"backgroundColorBottom": "#f4f7fb"
+					}
+				},
+				{
 					"path": "settings/settings",
 					"style": {
 						"navigationBarTitleText": "设置",

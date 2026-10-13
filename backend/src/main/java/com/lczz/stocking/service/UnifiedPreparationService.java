@@ -1,5 +1,7 @@
 package com.lczz.stocking.service;
 
+import com.lczz.auth.domain.AuthenticatedUser;
+import com.lczz.auth.domain.RoleCode;
 import com.lczz.common.exception.BusinessException;
 import com.lczz.common.time.BusinessTime;
 import java.math.BigDecimal;
@@ -27,7 +29,28 @@ public class UnifiedPreparationService {
         this.jdbc = jdbc;
     }
 
-    public PreparationPage list(int page, int pageSize, String keyword, String status, String source) {
+    public PreparationPage listForAdmin(AuthenticatedUser actor, int page, int pageSize, String keyword,
+                                        String status, String source) {
+        requireAdmin(actor);
+        return list(page, pageSize, keyword, status, source);
+    }
+
+    public PreparationView detailForAdmin(AuthenticatedUser actor, String source, long id) {
+        requireAdmin(actor);
+        return detail(source, id);
+    }
+
+    public ExportFile exportListForAdmin(AuthenticatedUser actor, String keyword, String status, String source) {
+        requireAdmin(actor);
+        return exportList(keyword, status, source);
+    }
+
+    public ExportFile exportDetailForAdmin(AuthenticatedUser actor, String source, long id) {
+        requireAdmin(actor);
+        return exportDetail(source, id);
+    }
+
+    PreparationPage list(int page, int pageSize, String keyword, String status, String source) {
         Query query = query(keyword, status, source);
         long total = jdbc.queryForObject("SELECT COUNT(*) FROM (" + query.sql() + ") unified_count",
                 Long.class, query.args().toArray());
@@ -40,12 +63,12 @@ public class UnifiedPreparationService {
         return new PreparationPage(rows, total, page, pageSize);
     }
 
-    public PreparationView detail(String source, long id) {
+    PreparationView detail(String source, long id) {
         String normalized = normalizeSource(source, false);
         return "A".equals(normalized) ? selfOrderDetail(id) : workRequestDetail(id);
     }
 
-    public ExportFile exportList(String keyword, String status, String source) {
+    ExportFile exportList(String keyword, String status, String source) {
         Query query = query(keyword, status, source);
         String exportSql = """
                 SELECT b.order_no,b.order_name,b.source_label,b.customer_name,b.submitter_name,b.source_type,
@@ -85,7 +108,7 @@ public class UnifiedPreparationService {
                         "单位", "数量", "创建时间", "状态", "收货人", "收货联系电话", "收货地址"), rows);
     }
 
-    public ExportFile exportDetail(String source, long id) {
+    ExportFile exportDetail(String source, long id) {
         PreparationView view = detail(source, id);
         List<List<String>> rows = view.materials().isEmpty()
                 ? List.of(exportRow(view, null))
@@ -298,6 +321,11 @@ public class UnifiedPreparationService {
         return value == null ? "" : value.stripTrailingZeros().toPlainString();
     }
     private static String nullToEmpty(String value) { return value == null ? "" : value; }
+    private static void requireAdmin(AuthenticatedUser actor) {
+        if (actor == null || !actor.hasRole(RoleCode.ADMIN)) {
+            throw new BusinessException(403, "MATERIAL_REQUEST_ADMIN_FORBIDDEN", "仅管理员可处理订单备货");
+        }
+    }
     private static String safeFilename(String value) {
         return (value == null ? "备货记录" : value).replaceAll("[\\\\/:*?\"<>|\\r\\n]", "_");
     }
