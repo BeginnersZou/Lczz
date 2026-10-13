@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lczz.auth.security.JwtService;
 import com.lczz.auth.service.AdminBootstrapService;
 import com.lczz.auth.service.UserAccountService;
+import com.lczz.product.service.RecipientAddressService;
+import com.lczz.product.service.RecipientInfo;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,6 +21,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -32,10 +35,12 @@ class ProductIntegrationTests {
     @Autowired UserAccountService userAccountService;
     @Autowired JwtService jwtService;
     @Autowired ObjectMapper objectMapper;
+    @Autowired RecipientAddressService recipientAddressService;
     @MockitoBean RestClient restClient;
 
     @BeforeEach
     void resetData() {
+        jdbcTemplate.update("DELETE FROM installer_recipient_address");
         jdbcTemplate.update("DELETE FROM material_self_order_item");
         jdbcTemplate.update("DELETE FROM material_self_order");
         jdbcTemplate.update("DELETE FROM installer_cart_item");
@@ -141,7 +146,8 @@ class ProductIntegrationTests {
                 .andExpect(jsonPath("$.data.items[0].specLabel").value("口径：25mm"))
                 .andExpect(jsonPath("$.data.items[0].quantity").value(3));
 
-        String requestBody = "{\"requestId\":\"flow-submit-once\"}";
+        long addressId = createAddress(installer, "王收货", true);
+        String requestBody = "{\"requestId\":\"flow-submit-once\",\"recipientName\":\"王收货\",\"recipientPhone\":\"13800000088\",\"recipientAddress\":\"武汉市测试路8号\"}";
         String orderResponse = mockMvc.perform(post("/api/v1/installer/self-orders")
                         .header("Authorization", bearer(installer)).contentType("application/json").content(requestBody))
                 .andExpect(status().isOk())
@@ -149,6 +155,16 @@ class ProductIntegrationTests {
                 .andExpect(jsonPath("$.data.items[0].quantity").value(3))
                 .andReturn().getResponse().getContentAsString();
         long orderId = objectMapper.readTree(orderResponse).at("/data/id").asLong();
+
+        mockMvc.perform(put("/api/v1/installer/addresses/{id}", addressId).header("Authorization", bearer(installer))
+                        .contentType("application/json").content(addressBody("另一收货人", true)))
+                .andExpect(status().isOk());
+        mockMvc.perform(delete("/api/v1/installer/addresses/{id}", addressId).header("Authorization", bearer(installer)))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/v1/installer/self-orders/{id}", orderId).header("Authorization", bearer(installer)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.recipientName").value("王收货"))
+                .andExpect(jsonPath("$.data.recipientPhone").value("13800000088"))
+                .andExpect(jsonPath("$.data.recipientAddress").value("武汉市测试路8号"));
 
         mockMvc.perform(post("/api/v1/installer/self-orders")
                         .header("Authorization", bearer(installer)).contentType("application/json").content(requestBody))
@@ -160,7 +176,11 @@ class ProductIntegrationTests {
         mockMvc.perform(get("/api/preparation/detail/{id}", orderId)
                         .header("Authorization", bearer(admin)).param("source", "A"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.materials[0].spec").value("口径：25mm"));
+                .andExpect(jsonPath("$.data.materials[0].spec").value("口径：25mm"))
+                .andExpect(jsonPath("$.data.recipientName").value("王收货"));
+        String export = mockMvc.perform(get("/api/preparation/A/{id}/export", orderId).header("Authorization", bearer(admin)))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        org.assertj.core.api.Assertions.assertThat(export).contains("收货人", "王收货", "13800000088", "武汉市测试路8号");
         org.assertj.core.api.Assertions.assertThat(jdbcTemplate.queryForObject(
                 "SELECT stock FROM product_sku WHERE id=?", java.math.BigDecimal.class, skuId))
                 .isEqualByComparingTo("10");
@@ -510,6 +530,92 @@ class ProductIntegrationTests {
                 .andExpect(status().isBadRequest());
     }
 
+    @Test
+    void addressesSupportMultipleDefaultsDeletionAndStrictOwnerIsolation() throws Exception {
+        String owner = installerToken(), other = installerToken("13800138002");
+        long first = createAddress(owner, "王收货", true), second = createAddress(owner, "李收货", false);
+        createAddress(other, "另一账户", true);
+        mockMvc.perform(get("/api/v1/installer/addresses").header("Authorization", bearer(owner)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.length()").value(2))
+                .andExpect(jsonPath("$.data[0].id").value(first)).andExpect(jsonPath("$.data[0].isDefault").value(true));
+        mockMvc.perform(patch("/api/v1/installer/addresses/{id}/default", second).header("Authorization", bearer(owner)))
+                .andExpect(status().isOk());
+        mockMvc.perform(patch("/api/v1/installer/addresses/{id}/default", first).header("Authorization", bearer(other)))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(put("/api/v1/installer/addresses/{id}", first).header("Authorization", bearer(other))
+                        .contentType("application/json").content(addressBody("越权修改", true)))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(delete("/api/v1/installer/addresses/{id}", first).header("Authorization", bearer(other)))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/v1/installer/addresses").header("Authorization", bearer(owner)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data[0].id").value(second))
+                .andExpect(jsonPath("$.data[1].isDefault").value(false));
+        mockMvc.perform(delete("/api/v1/installer/addresses/{id}", second).header("Authorization", bearer(owner)))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/v1/installer/addresses").header("Authorization", bearer(owner)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].isDefault").value(false));
+        mockMvc.perform(get("/api/v1/installer/addresses").header("Authorization", bearer(customerToken())))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/v1/installer/addresses").header("Authorization", bearer(adminToken())))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void rejectsMissingOrInvalidRecipientFieldsAndKeepsHistoricalOrdersReadable() throws Exception {
+        String installer = installerToken();
+        mockMvc.perform(post("/api/v1/installer/self-orders").header("Authorization", bearer(installer))
+                        .contentType("application/json").content("{\"requestId\":\"missing-info\"}"))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(post("/api/v1/installer/addresses").header("Authorization", bearer(installer))
+                        .contentType("application/json").content(addressBody("收货人", false).replace("13800000088", "invalid")))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error").value("INVALID_RECIPIENT_PHONE"));
+        mockMvc.perform(post("/api/v1/installer/addresses").header("Authorization", bearer(installer))
+                        .contentType("application/json").content(addressBody(" ", false)))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(post("/api/v1/installer/addresses").header("Authorization", bearer(installer))
+                        .contentType("application/json").content(addressBody("收货人", false).replace("武汉市测试路8号", "x".repeat(501))))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(post("/api/v1/installer/addresses").header("Authorization", bearer(installer))
+                        .contentType("application/json").content(addressBody(" 固定电话收货人 ", false).replace("13800000088", "027-82710326")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.recipientName").value("固定电话收货人"));
+        Long owner = jdbcTemplate.queryForObject("SELECT id FROM sys_user WHERE phone='13800138001'", Long.class);
+        jdbcTemplate.update("INSERT INTO material_self_order(order_no,installer_id,request_token) VALUES ('A-LEGACY',?,'legacy')", owner);
+        Long order = jdbcTemplate.queryForObject("SELECT id FROM material_self_order WHERE order_no='A-LEGACY'", Long.class);
+        mockMvc.perform(get("/api/v1/installer/self-orders/{id}", order).header("Authorization", bearer(installer)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.orderNo").value("A-LEGACY"));
+        mockMvc.perform(get("/api/preparation/detail/{id}", order).param("source", "A").header("Authorization", bearer(adminToken())))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.materials.length()").value(0));
+    }
+
+    @Test
+    void concurrentAddressCreationKeepsOnlyOneDefaultForAnInstaller() throws Exception {
+        installerToken();
+        Long owner = jdbcTemplate.queryForObject("SELECT id FROM sys_user WHERE phone='13800138001'", Long.class);
+        var actor = userAccountService.requireActive(owner);
+        try (var executor = java.util.concurrent.Executors.newFixedThreadPool(2)) {
+            var start = new java.util.concurrent.CountDownLatch(1);
+            var first = executor.submit(() -> { start.await(); return recipientAddressService.create(actor, new RecipientInfo("甲", "13800000088", "武汉甲地址"), true); });
+            var second = executor.submit(() -> { start.await(); return recipientAddressService.create(actor, new RecipientInfo("乙", "13800000099", "武汉乙地址"), true); });
+            start.countDown();
+            first.get(10, java.util.concurrent.TimeUnit.SECONDS); second.get(10, java.util.concurrent.TimeUnit.SECONDS);
+        }
+        org.assertj.core.api.Assertions.assertThat(recipientAddressService.list(actor)).hasSize(2)
+                .filteredOn(RecipientAddressService.AddressView::isDefault).hasSize(1);
+    }
+
+    private String addressBody(String name, boolean isDefault) throws Exception {
+        return objectMapper.writeValueAsString(java.util.Map.of("recipientName", name, "recipientPhone", "13800000088",
+                "recipientAddress", "武汉市测试路8号", "isDefault", isDefault));
+    }
+
+    private long createAddress(String token, String name, boolean isDefault) throws Exception {
+        String response = mockMvc.perform(post("/api/v1/installer/addresses").header("Authorization", bearer(token))
+                        .contentType("application/json").content(addressBody(name, isDefault)))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        return objectMapper.readTree(response).at("/data/id").asLong();
+    }
+
     private void insertSku(long productId, String code, int stock, boolean enabled, boolean deleted) {
         jdbcTemplate.update("""
                 INSERT INTO product_sku(product_id, sku_code, spec_signature_hash, unit, stock, enabled, deleted)
@@ -557,11 +663,15 @@ class ProductIntegrationTests {
     }
 
     private String installerToken() {
+        return installerToken("13800138001");
+    }
+
+    private String installerToken(String phone) {
         jdbcTemplate.update("""
                 INSERT INTO sys_user(nickname, phone, account_status, audit_status, blacklist, deleted)
-                VALUES ('安装师傅', '13800138001', 'ENABLED', 'APPROVED', FALSE, FALSE)
-                """);
-        Long userId = jdbcTemplate.queryForObject("SELECT id FROM sys_user WHERE phone = '13800138001'", Long.class);
+                VALUES ('安装师傅', ?, 'ENABLED', 'APPROVED', FALSE, FALSE)
+                """, phone);
+        Long userId = jdbcTemplate.queryForObject("SELECT id FROM sys_user WHERE phone = ?", Long.class, phone);
         jdbcTemplate.update("""
                 INSERT INTO sys_user_role(user_id, role_id)
                 SELECT ?, id FROM sys_role WHERE role_code = 'INSTALLER'

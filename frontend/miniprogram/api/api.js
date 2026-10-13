@@ -299,9 +299,17 @@ export const installerMaterialApi = {
 	updateCartItem: (id, quantity) => http.patch(`/installer/cart/items/${id}`, { quantity }),
 	removeCartItem: (id) => http.delete(`/installer/cart/items/${id}`),
 	clearCart: () => http.delete('/installer/cart'),
-	submitOrder: (requestId, options = {}) => http.post('/installer/self-orders', { requestId }, options),
+	submitOrder: (data, options = {}) => http.post('/installer/self-orders', data, options),
 	getOrders: (params = {}) => http.get('/installer/self-orders', params),
 	getOrderDetail: (id) => http.get(`/installer/self-orders/${id}`)
+}
+
+export const recipientAddressApi = {
+	list: (options = {}) => http.get('/installer/addresses', {}, options),
+	create: (data, options = {}) => http.post('/installer/addresses', data, options),
+	update: (id, data, options = {}) => http.put(`/installer/addresses/${id}`, data, options),
+	setDefault: (id, options = {}) => http.patch(`/installer/addresses/${id}/default`, {}, options),
+	remove: (id, options = {}) => http.delete(`/installer/addresses/${id}`, {}, options)
 }
 
 // ====================== 管理员移动端订单备货 ======================

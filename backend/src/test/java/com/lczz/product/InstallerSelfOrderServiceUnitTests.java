@@ -5,6 +5,7 @@ import com.lczz.auth.domain.RoleCode;
 import com.lczz.common.exception.BusinessException;
 import com.lczz.notification.service.SmsNotificationService;
 import com.lczz.product.service.InstallerSelfOrderService;
+import com.lczz.product.service.RecipientInfo;
 import java.util.Set;
 import org.h2.jdbcx.JdbcDataSource;
 import org.junit.jupiter.api.BeforeEach;
@@ -24,15 +25,18 @@ class InstallerSelfOrderServiceUnitTests {
     final AuthenticatedUser installer = new AuthenticatedUser(11, "installer-a", "师傅甲", "13800000011", Set.of(RoleCode.INSTALLER));
     final AuthenticatedUser otherInstaller = new AuthenticatedUser(12, "installer-b", "师傅乙", "13800000012", Set.of(RoleCode.INSTALLER));
     final AuthenticatedUser customer = new AuthenticatedUser(21, "customer", "客户", "13800000021", Set.of(RoleCode.CUSTOMER));
+    final RecipientInfo recipient = new RecipientInfo("王收货", "13800000088", "武汉市江岸区测试路8号");
 
     @BeforeEach
     void setUp() {
         JdbcDataSource source = new JdbcDataSource(); source.setURL("jdbc:h2:mem:cart_" + System.nanoTime() + ";MODE=MySQL;DB_CLOSE_DELAY=-1");
         jdbc = new JdbcTemplate(source);
+        jdbc.execute("CREATE TABLE sys_user(id BIGINT PRIMARY KEY)");
+        jdbc.update("INSERT INTO sys_user VALUES (11),(12),(21)");
         jdbc.execute("CREATE TABLE product(id BIGINT PRIMARY KEY,product_name VARCHAR(255),enabled BOOLEAN,deleted BOOLEAN)");
         jdbc.execute("CREATE TABLE product_sku(id BIGINT PRIMARY KEY,product_id BIGINT,sku_code VARCHAR(200),spec_label VARCHAR(1000),unit VARCHAR(32),stock DECIMAL(12,3),enabled BOOLEAN,deleted BOOLEAN)");
         jdbc.execute("CREATE TABLE installer_cart_item(id BIGINT AUTO_INCREMENT PRIMARY KEY,installer_id BIGINT,sku_id BIGINT,quantity INT,created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,UNIQUE(installer_id,sku_id))");
-        jdbc.execute("CREATE TABLE material_self_order(id BIGINT AUTO_INCREMENT PRIMARY KEY,order_no VARCHAR(64),order_name VARCHAR(64),installer_id BIGINT,request_token VARCHAR(64),order_status VARCHAR(32),created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,UNIQUE(installer_id,request_token))");
+        jdbc.execute("CREATE TABLE material_self_order(id BIGINT AUTO_INCREMENT PRIMARY KEY,order_no VARCHAR(64),order_name VARCHAR(64),installer_id BIGINT,request_token VARCHAR(64),order_status VARCHAR(32),recipient_name VARCHAR(64),recipient_phone VARCHAR(32),recipient_address VARCHAR(500),created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,UNIQUE(installer_id,request_token))");
         jdbc.execute("CREATE TABLE material_self_order_item(id BIGINT AUTO_INCREMENT PRIMARY KEY,self_order_id BIGINT,sku_id BIGINT,product_id BIGINT,product_name_snapshot VARCHAR(255),sku_code_snapshot VARCHAR(200),spec_snapshot VARCHAR(1000),unit_snapshot VARCHAR(32),quantity INT,created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)");
         jdbc.update("INSERT INTO product VALUES (1,'通用管材',TRUE,FALSE)");
         jdbc.update("INSERT INTO product_sku VALUES (101,1,'PIPE-WHITE-2M','颜色=白 / 长度=2米','根',10,TRUE,FALSE)");
@@ -48,7 +52,10 @@ class InstallerSelfOrderServiceUnitTests {
         long cartId = cart.items().getFirst().id();
         service.update(installer, cartId, 4);
 
-        var order = service.submit(installer, "submit-once");
+        var order = service.submit(installer, "submit-once", recipient);
+        assertThat(order.recipientName()).isEqualTo(recipient.recipientName());
+        assertThat(order.recipientPhone()).isEqualTo(recipient.recipientPhone());
+        assertThat(order.recipientAddress()).isEqualTo(recipient.recipientAddress());
         assertThat(order.orderNo()).startsWith("A");
         assertThat(order.orderName()).isEqualTo("客户下单");
         assertThat(order.pickupPhone()).isEqualTo("027-82710326");
@@ -61,7 +68,8 @@ class InstallerSelfOrderServiceUnitTests {
         assertThat(service.list(installer, 1, 10).list()).hasSize(1);
         assertThat(service.list(otherInstaller, 1, 10).list()).isEmpty();
         assertThatThrownBy(() -> service.detail(otherInstaller, order.id())).isInstanceOf(BusinessException.class);
-        assertThat(service.submit(installer, "submit-once").id()).isEqualTo(order.id());
+        assertThat(service.submit(installer, "submit-once", new RecipientInfo("其它人", "13800000099", "另一地址")).id()).isEqualTo(order.id());
+        assertThat(service.detail(installer, order.id()).recipientName()).isEqualTo(recipient.recipientName());
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM material_self_order", Integer.class)).isEqualTo(1);
         verify(notifications, times(1)).queueInstallerSelfOrderCreated(order.id(), order.orderNo());
     }
@@ -78,11 +86,21 @@ class InstallerSelfOrderServiceUnitTests {
         InstallerSelfOrderService serviceWithoutPhone = new InstallerSelfOrderService(jdbc, "", notifications);
         serviceWithoutPhone.add(installer, 101, 2);
 
-        var order = serviceWithoutPhone.submit(installer, "submit-without-phone");
+        var order = serviceWithoutPhone.submit(installer, "submit-without-phone", recipient);
 
         assertThat(order.pickupPhone()).isEmpty();
         assertThat(order.items()).singleElement().satisfies(item -> assertThat(item.quantity()).isEqualTo(2));
         assertThat(serviceWithoutPhone.cart(installer).items()).isEmpty();
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM material_self_order", Integer.class)).isEqualTo(1);
+    }
+
+    @Test
+    void invalidRecipientDoesNotClearCartOrCreateAnOrder() {
+        service.add(installer, 101, 2);
+        assertThatThrownBy(() -> service.submit(installer, "invalid-recipient", null)).hasMessageContaining("收货人");
+        assertThatThrownBy(() -> service.submit(installer, "invalid-recipient", new RecipientInfo("收货人", "abc", "武汉")))
+                .hasMessageContaining("电话");
+        assertThat(service.cart(installer).items()).hasSize(1);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM material_self_order", Integer.class)).isZero();
     }
 }

@@ -141,6 +141,9 @@ CREATE TABLE material_self_order (
   installer_id BIGINT NOT NULL,
   request_token VARCHAR(64) NOT NULL,
   order_status VARCHAR(32) DEFAULT 'ORDERED' NOT NULL,
+  recipient_name VARCHAR(64),
+  recipient_phone VARCHAR(32),
+  recipient_address VARCHAR(500),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
   UNIQUE(installer_id, request_token)
@@ -158,6 +161,17 @@ CREATE TABLE material_self_order_item (
   quantity INT NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
   CHECK(quantity > 0)
+);
+
+CREATE TABLE installer_recipient_address (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  installer_id BIGINT NOT NULL,
+  recipient_name VARCHAR(64) NOT NULL,
+  recipient_phone VARCHAR(32) NOT NULL,
+  recipient_address VARCHAR(500) NOT NULL,
+  is_default BOOLEAN DEFAULT FALSE NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
 CREATE TABLE service_page_config (

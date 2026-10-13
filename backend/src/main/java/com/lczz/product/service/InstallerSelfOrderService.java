@@ -116,12 +116,16 @@ public class InstallerSelfOrderService {
     }
 
     @Transactional
-    public SelfOrderView submit(AuthenticatedUser actor, String requestToken) {
+    public SelfOrderView submit(AuthenticatedUser actor, String requestToken, RecipientInfo recipient) {
         requireInstaller(actor);
         String normalizedToken = requestToken == null ? "" : requestToken.trim();
         if (normalizedToken.isBlank() || normalizedToken.length() > 64) {
             throw new BusinessException("INVALID_REQUEST_TOKEN", "提交标识不合法，请刷新页面后重试");
         }
+        jdbc.queryForObject("SELECT id FROM sys_user WHERE id=? FOR UPDATE", Long.class, actor.userId());
+        SelfOrderView submitted = findByRequestToken(actor, normalizedToken);
+        if (submitted != null) return submitted;
+        RecipientInfo info = RecipientInfo.validated(recipient);
         List<SubmitRow> rows = jdbc.query("""
                 SELECT c.id cart_id,c.sku_id,c.quantity,p.id product_id,p.product_name,
                        p.enabled product_enabled,p.deleted product_deleted,s.sku_code,s.spec_label,
@@ -135,8 +139,6 @@ public class InstallerSelfOrderService {
                 rs.getBoolean("product_enabled"), rs.getBoolean("product_deleted"), rs.getString("sku_code"),
                 rs.getString("spec_label"), rs.getString("unit"), rs.getBigDecimal("stock"),
                 rs.getBoolean("sku_enabled"), rs.getBoolean("sku_deleted")), actor.userId());
-        SelfOrderView submitted = findByRequestToken(actor, normalizedToken);
-        if (submitted != null) return submitted;
         if (rows.isEmpty()) throw new BusinessException("EMPTY_CART", "购物车为空，无法提交");
         for (SubmitRow row : rows) {
             validateQuantity(row.quantity());
@@ -148,9 +150,10 @@ public class InstallerSelfOrderService {
         String orderNo = "A" + LocalDateTime.now(BusinessTime.ZONE).format(NUMBER_TIME)
                 + UUID.randomUUID().toString().replace("-", "").substring(0, 6).toUpperCase(Locale.ROOT);
         long orderId = insertAndGet("""
-                INSERT INTO material_self_order(order_no,order_name,installer_id,request_token,order_status)
-                VALUES (?,'客户下单',?,?,'ORDERED')
-                """, orderNo, actor.userId(), normalizedToken);
+                INSERT INTO material_self_order(order_no,order_name,installer_id,request_token,order_status,
+                                                recipient_name,recipient_phone,recipient_address)
+                VALUES (?,'客户下单',?,?,'ORDERED',?,?,?)
+                """, orderNo, actor.userId(), normalizedToken, info.recipientName(), info.recipientPhone(), info.recipientAddress());
         for (SubmitRow row : rows) {
             jdbc.update("""
                     INSERT INTO material_self_order_item(self_order_id,sku_id,product_id,product_name_snapshot,
@@ -184,11 +187,12 @@ public class InstallerSelfOrderService {
     public SelfOrderView detail(AuthenticatedUser actor, long id) {
         requireInstaller(actor);
         List<SelfOrderView> orders = jdbc.query("""
-                SELECT id,order_no,order_name,order_status,created_at FROM material_self_order
+                SELECT id,order_no,order_name,order_status,created_at,recipient_name,recipient_phone,recipient_address FROM material_self_order
                 WHERE id=? AND installer_id=?
                 """, (rs, row) -> new SelfOrderView(rs.getLong("id"), rs.getString("order_no"),
                 rs.getString("order_name"), rs.getString("order_status"), rs.getObject("created_at", LocalDateTime.class),
-                pickupPhone, new java.util.ArrayList<>()), id, actor.userId());
+                pickupPhone, rs.getString("recipient_name"), rs.getString("recipient_phone"), rs.getString("recipient_address"),
+                new java.util.ArrayList<>()), id, actor.userId());
         if (orders.isEmpty()) throw new BusinessException(404, "SELF_ORDER_NOT_FOUND", "取货订单不存在");
         SelfOrderView order = orders.getFirst();
         order.items().addAll(jdbc.query("""
@@ -262,7 +266,7 @@ public class InstallerSelfOrderService {
     public record SelfOrderSummary(long id, String orderNo, String orderName, String status,
                                    LocalDateTime createdAt, int itemCount, int totalQuantity) { }
     public record SelfOrderView(long id, String orderNo, String orderName, String status,
-                                LocalDateTime createdAt, String pickupPhone,
+                                LocalDateTime createdAt, String pickupPhone, String recipientName, String recipientPhone, String recipientAddress,
                                 List<SelfOrderItemView> items) { }
     public record SelfOrderItemView(long id, Long skuId, Long productId, String productName,
                                     String skuCode, String specLabel, String unit, int quantity) { }

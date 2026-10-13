@@ -7,6 +7,7 @@ const vue = requireVue('vue')
 const { parse, compileScript, compileTemplate } = requireVue('@vue/compiler-sfc')
 const read = file => fs.readFileSync(path.resolve(__dirname, '../frontend/miniprogram', file), 'utf8')
 const baseUrl = 'https://example.test/api/v1'
+const recipient = new Function(read('utils/recipient.js').replace(/export /g, '') + '\nreturn { normalizeRecipient, recipientError }')()
 const products = [
   { id: 1, name: 'PVC管', category: ['管材'], skus: [
     { id: 11, specLabel: '25mm', unit: '米', stock: 10, enabled: true },
@@ -65,13 +66,14 @@ function component(file, env) {
   const template = compileTemplate({ source: descriptor.template.content, filename: file, id: 'material-http',
     compilerOptions: { bindingMetadata: script.bindings } })
   assert.deepEqual(template.errors, [])
-  const imports = { vue: 'vue', '@dcloudio/uni-app': 'hooks', '@/api/api.js': 'api', '@/utils/auth-guard.js': 'guard' }
+  const imports = { vue: 'vue', '@dcloudio/uni-app': 'hooks', '@/api/api.js': 'api', '@/utils/auth-guard.js': 'guard',
+    '@/utils/auth-session.js': 'auth', '@/utils/recipient.js': 'recipient' }
   const code = script.content.replace(/import\s*\{([\s\S]*?)\}\s*from\s*['"]([^'"]+)['"]/g,
     (_, names, name) => `const {${names}} = ${imports[name]};`).replace('export default', 'return')
   const hooks = Object.fromEntries(['onLoad', 'onShow', 'onBackPress', 'onUnload'].map(key => [key, () => {}]))
-  const factory = new Function('vue', 'hooks', 'api', 'guard', 'uni', 'wx', code)
+  const factory = new Function('vue', 'hooks', 'api', 'guard', 'uni', 'wx', 'auth', 'recipient', code)
   return factory(vue, hooks, env.api, { requireLogin: () => true }, env.uni,
-    { getWindowInfo: env.uni.getSystemInfoSync }).setup({}, { expose() {} })
+    { getWindowInfo: env.uni.getSystemInfoSync }, { getAuthToken: () => 'test-token' }, recipient).setup({}, { expose() {} })
 }
 
 function orderFixture(material = emptyEnvelope) {
@@ -176,12 +178,17 @@ const cases = {
   async 'real 503 cart response retains items and message; retry sends same token and succeeds'() {
     const replies = [pickupFailure, { code: 200, data: { id: 12, orderNo: 'A-12' } }]
     const env = transport((url, options) => {
+      if (url.pathname === '/api/v1/installer/addresses') return { code: 200, data: [{ id: 1, isDefault: true,
+        recipientName: '王收货', recipientPhone: '13800000088', recipientAddress: '武汉市测试路8号' }] }
       if (url.pathname === '/api/v1/installer/cart') return { code: 200, data: { items: [
         { id: 3, productName: 'PVC管', quantity: 2, stock: 10, available: true }
       ] } }
       assert.equal(url.pathname, '/api/v1/installer/self-orders')
       assert.equal(options.method, 'POST')
       assert.ok(options.data.requestId)
+      assert.equal(options.data.recipientName, '王收货')
+      assert.equal(options.data.recipientPhone, '13800000088')
+      assert.equal(options.data.recipientAddress, '武汉市测试路8号')
       assert.equal(options.header.Authorization, 'Bearer test-token')
       return replies.shift()
     })
@@ -199,6 +206,7 @@ const cases = {
     await action
     const submitted = env.calls.requests.filter(request => request.method === 'POST')
     assert.equal(submitted[0].data.requestId, submitted[1].data.requestId)
+    assert.deepEqual(submitted[0].data, submitted[1].data)
     assert.equal(view.items.value.length, 0)
     assert.deepEqual(env.calls.tabs, [{ url: '/pages/index/index' }])
   }

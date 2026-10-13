@@ -164,6 +164,14 @@
 					}
 				},
 				{
+					"path": "recipient-addresses/recipient-addresses",
+					"style": {
+						"navigationBarTitleText": "收货信息与常用地址",
+						"navigationBarTextStyle": "black",
+						"backgroundColorTop": "#f4f7fb"
+					}
+				},
+				{
 					"path": "self-order-detail/self-order-detail",
 					"style": {
 						"navigationBarTitleText": "取货订单详情",
