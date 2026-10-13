@@ -122,7 +122,7 @@
             <span>原师傅编号：{{ entry.installerUserId }}</span>
           </div>
           <el-input v-model="entry.description" type="textarea" :rows="3" maxlength="2000" show-word-limit placeholder="施工说明" />
-          <OrderEditorFiles v-model="entry.files" :disabled="submitLoading || !editable" />
+          <OrderEditorFiles v-model="entry.files" progress :disabled="submitLoading || !editable" />
         </section>
       </el-card>
 

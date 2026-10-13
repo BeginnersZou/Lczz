@@ -10,6 +10,7 @@ import com.lczz.file.persistence.FileRelationRecord;
 import com.lczz.file.persistence.FileRelationRecordMapper;
 import com.lczz.file.service.FileService;
 import com.lczz.file.service.FileService.FileView;
+import com.lczz.file.service.ProgressMediaLimits;
 import com.lczz.order.persistence.WorkOrderEntity;
 import com.lczz.order.persistence.WorkOrderMapper;
 import com.lczz.order.persistence.WorkOrderStatusHistoryEntity;
@@ -142,7 +143,9 @@ public class WorkProgressService {
             if (id == null || id < 1) throw new BusinessException("INVALID_PROGRESS_FILE", "图片 ID 不合法");
             if (!unique.add(id)) throw new BusinessException("DUPLICATE_PROGRESS_FILE", "施工图片不能重复");
         }
-        if (unique.size() > 9) throw new BusinessException("FILE_COUNT_LIMIT", "施工图片最多 9 张");
+        if (unique.size() > ProgressMediaLimits.TOTAL_LIMIT) {
+            throw new BusinessException("FILE_COUNT_LIMIT", "每条施工进度最多30张图片和9个视频");
+        }
         return List.copyOf(unique);
     }
 
