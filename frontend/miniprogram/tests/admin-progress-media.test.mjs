@@ -2,7 +2,9 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { ref } from 'vue'
+
+// CI installs the Vue verification toolchain under frontend/admin.
+const { ref } = createRequire(new URL('../../admin/package.json', import.meta.url))('vue')
 
 const apiSource = readFileSync(new URL('../api/api.js', import.meta.url), 'utf8')
 const pageUrl = new URL('../packageA/order-detail/order-detail.vue', import.meta.url)
