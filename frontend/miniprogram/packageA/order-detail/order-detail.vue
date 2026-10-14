@@ -158,32 +158,52 @@
 							<text class="progress-type">{{ record.typeLabel }}</text>
 							<text class="progress-time">{{ record.submittedAt }}</text>
 						</view>
-						<text class="progress-description">{{ record.description }}</text>
+						<text v-if="adminEditingProgressId !== record.id" class="progress-description">{{ record.description }}</text>
 						<view class="progress-confirmation">
-							<text class="confirmation-tag" :class="{ confirmed: record.customerConfirmed }">{{ record.confirmationLabel || '待确认' }}</text>
+							<text class="confirmation-tag" :class="{ confirmed: record.customerConfirmed || record.confirmationStatus === 'ADMIN_EDITED' }">{{ record.confirmationLabel || '待确认' }}</text>
 							<text v-if="record.customerConfirmedAt" class="confirmation-time">{{ record.customerConfirmed ? '确认时间' : '上次确认' }}：{{ record.customerConfirmedAt }}</text>
+							<text v-if="record.adminEditedAt" class="confirmation-time">管理员修订：{{ record.adminEditedAt }}</text>
 							<view v-if="canConfirmProgress(record)" class="confirmation-button" :class="{ disabled: confirmingProgressId !== null }" @click="handleConfirmProgress(record)">{{ confirmingProgressId === record.id ? '确认中…' : '确认本次进度' }}</view>
 						</view>
-						<view class="progress-admin-actions" v-if="isAdmin">
-							<view class="progress-admin-button"
-								:class="{ disabled: adminProgressBusyId !== null || progressMediaRemaining(record.media) === 0 }"
-								@click="chooseAdminProgressImages(record)">
-								<up-icon name="plus" size="14" color="#0b63ce"></up-icon>
-								<text>{{ progressMediaRemaining(record.media) === 0 ? '图片已达30张' : '添加照片' }}</text>
+						<view class="progress-admin-actions" v-if="isAdmin && orderInfo.statusCode !== 'CANCELLED'">
+							<view class="progress-admin-button" :class="{ disabled: adminProgressBusyId !== null || adminEditingProgressId !== null }"
+								@click="beginAdminProgressEdit(record)">
+								<up-icon name="edit-pen" size="14" color="#0b63ce"></up-icon>
+								<text>修改本次进度</text>
 							</view>
 						</view>
-						<view class="image-grid" v-if="record.media.length">
+						<view v-if="isAdmin && adminEditingProgressId === record.id" class="admin-progress-editor">
+							<textarea v-model="adminDraftDescription" class="admin-progress-textarea" maxlength="2000"
+								placeholder="填写本次施工说明" auto-height></textarea>
+							<text class="admin-progress-counter">{{ adminDraftDescription.length }}/2000</text>
+							<view class="image-grid" v-if="adminDraftMedia.length">
+								<view class="image-item" v-for="media in adminDraftMedia" :key="media.id">
+									<video v-if="media.mimeType?.startsWith('video/')" class="preview-img" :src="media.url" controls object-fit="cover"></video>
+									<image v-else class="preview-img" :src="media.thumbnailUrl || media.displayUrl || media.url" mode="aspectFill"></image>
+									<view class="record-media-delete" :class="{ disabled: adminProgressBusyId !== null }"
+										@click.stop="removeAdminProgressImage(record, media)"><up-icon name="close" size="13" color="#fff"></up-icon></view>
+								</view>
+							</view>
+							<view class="admin-progress-picker-row">
+								<view class="progress-admin-button" :class="{ disabled: adminProgressBusyId !== null || progressMediaRemaining(adminDraftMedia) === 0 }"
+									@click="chooseAdminProgressImages(record)">添加照片（{{ progressMediaRemaining(adminDraftMedia) }}）</view>
+								<view class="progress-admin-button" :class="{ disabled: adminProgressBusyId !== null || progressMediaRemaining(adminDraftMedia, 'video') === 0 }"
+									@click="chooseAdminProgressVideos(record)">添加视频（{{ progressMediaRemaining(adminDraftMedia, 'video') }}）</view>
+							</view>
+							<text class="admin-progress-hint">只覆盖本次记录，照片最多30张、视频最多9个；保存后由管理员直接生效。</text>
+							<view class="admin-progress-footer">
+								<view class="progress-admin-button" :class="{ disabled: adminProgressBusyId !== null }" @click="cancelAdminProgressEdit">取消</view>
+								<view class="progress-admin-button primary" :class="{ disabled: adminProgressBusyId !== null || !adminDraftDescription.trim() }"
+									@click="saveAdminProgressEdit(record)">{{ adminProgressBusyId === record.id ? '保存中…' : '保存修改' }}</view>
+							</view>
+						</view>
+						<view class="image-grid" v-if="record.media.length && adminEditingProgressId !== record.id">
 							<view class="image-item" v-for="(media, mediaIndex) in record.media" :key="media.id">
 								<video v-if="media.mimeType?.startsWith('video/')" class="preview-img" :src="media.url"
 									controls object-fit="cover" :show-center-play-btn="true"></video>
 								<image v-else class="preview-img" :src="media.thumbnailUrl || media.displayUrl || media.url"
 									mode="aspectFill" lazy-load
 									@click="previewRecordImages(record.images, record.images.findIndex(item => item.id === media.id))"></image>
-								<view class="record-media-delete" v-if="isAdmin && !media.mimeType?.startsWith('video/')"
-									:class="{ disabled: adminProgressBusyId !== null }"
-									@click.stop="removeAdminProgressImage(record, media)">
-									<up-icon name="close" size="13" color="#fff"></up-icon>
-								</view>
 								<text class="record-media-time" v-if="media.uploadedAt">{{ media.uploadedAt }}</text>
 							</view>
 						</view>
@@ -462,6 +482,7 @@
 		String(orderInfo.value.customerUserId) === String(currentUserId.value))
 	const canConfirmCompletion = computed(() => isBoundCustomer.value && orderInfo.value.statusCode === 'IN_PROGRESS')
 	const canConfirmProgress = record => isBoundCustomer.value && orderInfo.value.statusCode !== 'CANCELLED'
+		&& record.confirmationStatus !== 'ADMIN_EDITED'
 		&& !record.customerConfirmed && /^[a-f0-9]{64}$/.test(record.contentVersion || '')
 	const handleConfirmProgress = async record => {
 		if (!canConfirmProgress(record) || confirmingProgressId.value !== null) return
@@ -571,6 +592,41 @@ const statusClass = computed(() => {
 		return true
 	})
 	const adminProgressBusyId = ref(null)
+	const adminEditingProgressId = ref(null)
+	const adminDraftDescription = ref('')
+	const adminDraftMedia = ref([])
+	const adminDraftVersion = ref('')
+	const adminTemporaryIds = ref([])
+
+	const beginAdminProgressEdit = (record) => {
+		if (!isAdmin.value || orderInfo.value.statusCode === 'CANCELLED' || adminProgressBusyId.value !== null || adminEditingProgressId.value !== null) return
+		adminEditingProgressId.value = record.id
+		adminDraftDescription.value = record.description || ''
+		adminDraftMedia.value = [...(record.media || [])]
+		adminDraftVersion.value = record.contentVersion || ''
+		adminTemporaryIds.value = []
+	}
+
+	const clearAdminProgressEdit = () => {
+		adminEditingProgressId.value = null
+		adminDraftDescription.value = ''
+		adminDraftMedia.value = []
+		adminDraftVersion.value = ''
+		adminTemporaryIds.value = []
+	}
+
+	const cleanupAdminTemporary = (keepIds = []) => {
+		const keep = new Set(keepIds.map(Number))
+		for (const id of adminTemporaryIds.value) {
+			if (!keep.has(Number(id))) uploadApi.deleteTemporary(id, { loading: false, silent: true })
+		}
+	}
+
+	const cancelAdminProgressEdit = () => {
+		if (adminProgressBusyId.value !== null) return
+		cleanupAdminTemporary()
+		clearAdminProgressEdit()
+	}
 
 	const previewRecordImages = (images, index) => {
 		if (index < 0 || images.length === 0) return
@@ -578,77 +634,88 @@ const statusClass = computed(() => {
 		uni.previewImage({ current: urls[index], urls })
 	}
 
-	const chooseAdminProgressImages = (record) => {
-		if (!isAdmin.value || adminProgressBusyId.value !== null) return
-		const remaining = progressMediaRemaining(record.media)
+	const openAdminProgressPicker = (record, type) => {
+		if (!isAdmin.value || adminEditingProgressId.value !== record.id || adminProgressBusyId.value !== null) return
+		const remaining = progressMediaRemaining(adminDraftMedia.value, type)
 		if (remaining <= 0) {
-			uni.showToast({ title: '每条施工进度最多30张图片', icon: 'none' })
+			uni.showToast({ title: type === 'video' ? '每条施工进度最多9个视频' : '每条施工进度最多30张图片', icon: 'none' })
 			return
 		}
-		uni.chooseImage({
+		uni.chooseMedia({
 			count: Math.min(PROGRESS_PICKER_BATCH, remaining),
-			sizeType: ['original', 'compressed'],
+			mediaType: [type],
 			sourceType: ['album', 'camera'],
-			success: async ({ tempFiles = [], tempFilePaths = [] }) => {
-				const selected = tempFiles.length
-					? tempFiles.map((file, index) => ({ path: file.path || file.tempFilePath || tempFilePaths[index], size: Number(file.size || 0) }))
-					: tempFilePaths.map(path => ({ path, size: 0 }))
-				const sized = selected.filter(file => file.path && file.size <= 10 * 1024 * 1024)
+			maxDuration: 60,
+			success: async ({ tempFiles = [] }) => {
+				if (adminEditingProgressId.value !== record.id) return
+				const maxBytes = type === 'video' ? 200 * 1024 * 1024 : 10 * 1024 * 1024
+				const selected = tempFiles.map(file => ({ path: file.tempFilePath || file.path, size: Number(file.size || 0), fileType: file.fileType || type }))
+				const sized = selected.filter(file => file.path && file.size <= maxBytes)
 				const oversized = selected.length - sized.length
-				const { accepted: valid, overflow } = acceptProgressMedia(record.media || [], sized, 'image')
-				if (overflow) uni.showToast({ title: '每条施工进度最多30张图片', icon: 'none' })
+				const { accepted: valid, overflow } = acceptProgressMedia(adminDraftMedia.value, sized, type)
+				if (overflow) uni.showToast({ title: type === 'video' ? '每条施工进度最多9个视频' : '每条施工进度最多30张图片', icon: 'none' })
 				if (!valid.length) {
-					if (oversized) uni.showToast({ title: '单张图片不能超过10MB', icon: 'none' })
+					if (oversized) uni.showToast({ title: type === 'video' ? '单个视频不能超过200MB' : '单张图片不能超过10MB', icon: 'none' })
 					return
 				}
 				adminProgressBusyId.value = record.id
 				let successCount = 0
 				try {
 					for (let index = 0; index < valid.length; index++) {
-						const response = await uploadApi.uploadImage(valid[index].path, {
-							businessType: 'PROGRESS',
-							businessId: String(record.id),
-							usageType: 'PROGRESS',
-							sortOrder: String(Number(record.media?.length || 0) + successCount)
-						}, { loading: false, showError: false })
-						if (response.code === 200) successCount++
+						const response = await uploadApi.uploadImage(valid[index].path, {}, { loading: false, showError: false })
+						if (response.code === 200 && response.data?.id) {
+							adminDraftMedia.value.push(response.data)
+							adminTemporaryIds.value.push(response.data.id)
+							successCount++
+						}
 					}
-					await refreshOrderStatus()
 					const failed = valid.length - successCount
-					const title = failed ? `成功${successCount}张，失败${failed}张` : `已添加${successCount}张照片`
+					const title = failed ? `成功${successCount}个，失败${failed}个` : `已添加${successCount}个附件，保存后生效`
 					uni.showToast({ title, icon: failed ? 'none' : 'success' })
-					if (oversized) setTimeout(() => uni.showToast({ title: `${oversized}张图片超过10MB已忽略`, icon: 'none' }), 1200)
+					if (oversized) setTimeout(() => uni.showToast({ title: `${oversized}个文件超过大小限制已忽略`, icon: 'none' }), 1200)
 				} finally {
 					adminProgressBusyId.value = null
 				}
 			},
 			fail: (error) => {
 				if (!String(error?.errMsg || '').includes('cancel')) {
-					uni.showToast({ title: '选择图片失败，请重试', icon: 'none' })
+					uni.showToast({ title: '选择附件失败，请重试', icon: 'none' })
 				}
 			}
 		})
 	}
+	const chooseAdminProgressImages = record => openAdminProgressPicker(record, 'image')
+	const chooseAdminProgressVideos = record => openAdminProgressPicker(record, 'video')
 
 	const removeAdminProgressImage = (record, media) => {
-		if (!isAdmin.value || adminProgressBusyId.value !== null || !media?.id) return
-		uni.showModal({
-			title: '删除施工照片',
-			content: '仅解除这张照片与当前施工记录的关联，确定继续吗？',
-			success: async ({ confirm }) => {
-				if (!confirm || adminProgressBusyId.value !== null) return
-				adminProgressBusyId.value = record.id
-				try {
-					const response = await uploadApi.unbindProgressMedia(media.id, record.id, { loading: false })
-					if (response.code === 200) {
-						await refreshOrderStatus()
-						uni.showToast({ title: '照片已删除', icon: 'success' })
-					}
-				} finally {
-					adminProgressBusyId.value = null
-				}
-			}
-		})
+		if (!isAdmin.value || adminEditingProgressId.value !== record.id || adminProgressBusyId.value !== null) return
+		adminDraftMedia.value = adminDraftMedia.value.filter(item => item.id !== media.id)
+	}
+
+	const saveAdminProgressEdit = async record => {
+		if (!isAdmin.value || adminEditingProgressId.value !== record.id || adminProgressBusyId.value !== null) return
+		const description = adminDraftDescription.value.trim()
+		if (!description || description.length > 2000) {
+			uni.showToast({ title: '请填写1至2000字的施工说明', icon: 'none' })
+			return
+		}
+		const fileIds = adminDraftMedia.value.map(file => Number(file.id))
+		if (fileIds.some(id => !Number.isSafeInteger(id) || id < 1) || new Set(fileIds).size !== fileIds.length || progressMediaLimitMessage(adminDraftMedia.value)) {
+			uni.showToast({ title: progressMediaLimitMessage(adminDraftMedia.value) || '施工附件无效，请重新选择', icon: 'none' })
+			return
+		}
+		adminProgressBusyId.value = record.id
+		try {
+			const res = await orderApi.replaceProgressForAdmin(orderId.value, record.id,
+				{ description, fileIds, contentVersion: adminDraftVersion.value }, { loading: false })
+			if (res.code !== 200) return
+			cleanupAdminTemporary(fileIds)
+			clearAdminProgressEdit()
+			progressRecords.value = progressRecords.value.map(item => item.id === record.id ? res.data : item)
+			uni.showToast({ title: '本次进度已更新', icon: 'success' })
+		} finally {
+			adminProgressBusyId.value = null
+		}
 	}
 
 	const goEvaluate = () => {
@@ -905,6 +972,7 @@ const statusClass = computed(() => {
 	})
 
 	onUnload(() => {
+		cleanupAdminTemporary()
 		progressImages.value.filter(media => media.id).forEach(media => {
 			uploadApi.deleteTemporary(media.id, { loading: false, silent: true })
 		})
@@ -2147,7 +2215,15 @@ const statusClass = computed(() => {
 		font-weight: 600;
 
 		&.disabled { opacity: 0.45; }
+		&.primary { color: #fff; background: $primary; }
 	}
+
+	.admin-progress-editor { margin: 16rpx 0; padding: 20rpx; border-radius: 14rpx; background: #f5f8fc; }
+	.admin-progress-textarea { box-sizing: border-box; width: 100%; min-height: 160rpx; padding: 16rpx; border-radius: 10rpx; background: #fff; font-size: 26rpx; color: $text-main; }
+	.admin-progress-counter { display: block; margin: 6rpx 0 16rpx; text-align: right; color: $text-sub; font-size: 20rpx; }
+	.admin-progress-picker-row, .admin-progress-footer { display: flex; flex-wrap: wrap; gap: 16rpx; margin-top: 18rpx; }
+	.admin-progress-footer { justify-content: flex-end; }
+	.admin-progress-hint { display: block; margin-top: 12rpx; color: $text-sub; font-size: 21rpx; line-height: 1.5; }
 
 	.image-item {
 		position: relative;

@@ -135,7 +135,8 @@ const normalizeProgress = (item = {}) => {
 		typeLabel: item.type === 'COMPLETION' ? '完工记录' : '施工进度',
 		submittedAt: formatDateTime(item.submittedAt || item.createTime || item.createdAt),
 		customerConfirmedAt: item.customerConfirmedAt ? formatDateTime(item.customerConfirmedAt) : '',
-		confirmationLabel: item.customerConfirmed ? '已确认' : item.confirmationStatus === 'CHANGED' ? '待重新确认' : '待确认',
+		confirmationLabel: item.confirmationStatus === 'ADMIN_EDITED' ? '管理员已修订' : item.customerConfirmed ? '已确认' : item.confirmationStatus === 'CHANGED' ? '待重新确认' : '待确认',
+		adminEditedAt: item.adminEditedAt ? formatDateTime(item.adminEditedAt) : '',
 		media,
 		images: media.filter(file => !file.mimeType || file.mimeType.startsWith('image/')),
 		videos: media.filter(file => file.mimeType.startsWith('video/'))
@@ -211,6 +212,11 @@ export const orderApi = {
 		return res
 	},
 	submitProgress: (id, data) => http.post(`/orders/${id}/progress`, data),
+	replaceProgressForAdmin: async (id, progressId, data, options = {}) => {
+		const res = await http.put(`/orders/${id}/progress/${progressId}`, data, options)
+		if (res.code === 200 && res.data) res.data = normalizeProgress(res.data)
+		return res
+	},
 	confirmProgress: async (id, progressId, contentVersion) => {
 		const res = await http.post(`/orders/${id}/progress/${progressId}/confirm`, { contentVersion })
 		if (res.code === 200 && res.data?.customerConfirmedAt) res.data.customerConfirmedAt = formatDateTime(res.data.customerConfirmedAt)

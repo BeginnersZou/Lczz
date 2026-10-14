@@ -42,11 +42,38 @@ public class ProgressConfirmationService {
 
     public ConfirmationView inspect(WorkOrderProgressEntity record, List<FileRelationRecord> links, Long customerId) {
         String version = fingerprint(content(record, links));
-        boolean confirmed = Objects.equals(version, record.getConfirmedContentHash()) && customerId != null
+        boolean adminApproved = Objects.equals(version, record.getAdminApprovedContentHash());
+        boolean confirmed = !adminApproved && Objects.equals(version, record.getConfirmedContentHash()) && customerId != null
                 && Objects.equals(customerId, record.getCustomerConfirmedBy());
-        return new ConfirmationView(record.getId(), version, confirmed ? "CONFIRMED"
+        return new ConfirmationView(record.getId(), version, adminApproved ? "ADMIN_EDITED" : confirmed ? "CONFIRMED"
                 : record.getConfirmedContentHash() == null ? "PENDING" : "CHANGED", confirmed,
                 record.getCustomerConfirmedBy(), record.getCustomerConfirmedAt(), record.getConfirmedContentHash());
+    }
+
+    /** An administrator approves exactly the amended version, without impersonating a customer confirmation. */
+    public void approveAdminCorrection(WorkOrderProgressEntity record, List<FileRelationRecord> links, long adminId) {
+        String version = inspect(record, links, null).contentVersion();
+        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC).truncatedTo(ChronoUnit.MILLIS);
+        progress.update(null, new LambdaUpdateWrapper<WorkOrderProgressEntity>()
+                .eq(WorkOrderProgressEntity::getId, record.getId())
+                .set(WorkOrderProgressEntity::getAdminApprovedContentHash, version)
+                .set(WorkOrderProgressEntity::getAdminEditedBy, adminId)
+                .set(WorkOrderProgressEntity::getAdminEditedAt, now));
+    }
+
+    public void approveAdminCorrection(long progressId, long adminId) {
+        WorkOrderProgressEntity record = progress.selectById(progressId);
+        if (record == null) throw new BusinessException(404, "PROGRESS_NOT_FOUND", "施工进度不存在");
+        List<FileRelationRecord> links = relations.selectList(new LambdaQueryWrapper<FileRelationRecord>()
+                .eq(FileRelationRecord::getBusinessType, "PROGRESS")
+                .eq(FileRelationRecord::getBusinessId, progressId));
+        approveAdminCorrection(record, links, adminId);
+    }
+
+    public void invalidateAdminApproval(long progressId) {
+        progress.update(null, new LambdaUpdateWrapper<WorkOrderProgressEntity>()
+                .eq(WorkOrderProgressEntity::getId, progressId)
+                .set(WorkOrderProgressEntity::getAdminApprovedContentHash, null));
     }
 
     @Transactional
@@ -68,6 +95,8 @@ public class ProgressConfirmationService {
         ConfirmationView state = inspect(record, links, order.getCustomerUserId());
         if (!Objects.equals(expectedVersion, state.contentVersion()))
             throw new BusinessException(409, "PROGRESS_CONTENT_CHANGED", "本条施工内容已变更，请重新查看后确认");
+        if ("ADMIN_EDITED".equals(state.confirmationStatus()))
+            throw new BusinessException(409, "PROGRESS_ADMIN_APPROVED", "管理员已修订本条进度，无需客户确认");
         if (state.customerConfirmed()) return state;
         LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC).truncatedTo(ChronoUnit.MILLIS);
         progress.update(null, new LambdaUpdateWrapper<WorkOrderProgressEntity>()

@@ -25,6 +25,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -74,6 +75,23 @@ public class WorkProgressController {
                            @Size(max = 64) String requestId) {
         ProgressCommand toCommand() { return new ProgressCommand(description, fileIds, requestId); }
     }
+
+    @PutMapping("/{orderId}/progress/{progressId}")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "管理员覆盖指定一次施工记录的文字与图片/视频")
+    ApiResponse<ProgressView> replaceForAdmin(@AuthenticationPrincipal AuthenticatedUser actor,
+                                              @PathVariable @Min(1) long orderId,
+                                              @PathVariable @Min(1) long progressId,
+                                              @Valid @RequestBody AdminProgressRequest body,
+                                              HttpServletRequest request) {
+        return ApiResponse.success(progressService.replaceForAdmin(actor, orderId, progressId,
+                body.contentVersion(), body.description(), body.fileIds()), requestId(request));
+    }
+
+    record AdminProgressRequest(@NotBlank @Pattern(regexp = "[a-f0-9]{64}") String contentVersion,
+                                @NotBlank @Size(max = 2000) String description,
+                                @NotNull @Size(max = ProgressMediaLimits.TOTAL_LIMIT)
+                                List<@NotNull @Min(1) Long> fileIds) { }
 
     @PostMapping("/{orderId}/progress/{progressId}/confirm")
     @Operation(summary = "订单绑定客户确认本条施工内容，不改变订单状态")

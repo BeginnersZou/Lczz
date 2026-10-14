@@ -180,8 +180,10 @@ class OrderConfirmationIntegrationTests {
                         .param("businessId", String.valueOf(progressId)).param("usageType", "PROGRESS"))
                 .andExpect(status().isConflict()).andExpect(jsonPath("$.error").value("PROGRESS_SEALED"));
         mvc.perform(put("/api/orders/" + orderId + "/progress/" + progressId).header("Authorization", "Bearer " + installer)
-                        .contentType("application/json").content("{\"description\":\"修改封存说明\"}"))
-                .andExpect(status().isNotFound());
+                        .contentType("application/json")
+                        .content("{\"contentVersion\":\"" + progress.path("contentVersion").asText()
+                                + "\",\"description\":\"修改封存说明\",\"fileIds\":[" + image + "]}"))
+                .andExpect(status().isForbidden());
         JsonNode sealed = data(get("/api/orders/" + orderId + "/progress"), customer);
         assertThat(sealed).hasSize(1);
         assertThat(sealed.get(0).path("description").asText()).isEqualTo("封存前的施工记录");
