@@ -61,7 +61,7 @@ function fixture(name, props = {}, modules = {}, globals = {}) {
 }
 function editorFixture(options = {}) {
   let fail = null
-  const saves = [], binds = []
+  const saves = [], binds = [], masterLoads = []
   const data = {
     revision: 'a'.repeat(64), editable: options.editable !== false,
     order: { id: 42, orderNo: 'WO42', statusCode: options.status || 'IN_PROGRESS', taskType: '空调安装', description: '原描述',
@@ -78,10 +78,10 @@ function editorFixture(options = {}) {
     '@/api/orders': { getAdminOrderEditorApi: async () => structuredClone(data), saveAdminOrderEditorApi: async (id, body) => {
       saves.push(structuredClone(body)); if (fail) throw fail; return {} },
       addOrderApi: async () => ({ id: 43 }), bindOrderFileApi: async (...args) => binds.push(args),
-      getMasterListApi: async () => [], cancelOrderApi: async () => {} }
+      getMasterListApi: async () => { masterLoads.push(true); return [{ id: 8, masterName: '新师傅' }] }, cancelOrderApi: async () => {} }
   })
   result.view.orderFormRef.value = { validate: async () => true }
-  return { ...result, saves, binds, data, fail: error => { fail = error } }
+  return { ...result, saves, binds, masterLoads, data, fail: error => { fail = error } }
 }
 
 async function main() {
@@ -180,6 +180,52 @@ async function main() {
   assert.equal(conflict.view.formIsDirty.value, false)
   conflict.stop()
   console.log('PASS: cancelled orders are read-only and conflicts are visible with explicit reload')
+
+  for (const status of ['IN_PROGRESS', 'PENDING_REVIEW', 'REVIEWED', 'CANCELLED']) {
+    const locked = editorFixture({ status, editable: status !== 'CANCELLED' })
+    await locked.mount()
+    assert.equal(locked.view.canChangeInstaller.value, false)
+    await locked.view.openMasterDialog()
+    locked.view.removeSelectedMaster(0)
+    locked.view.tempSelectMaster.value = [{ id: 8 }]
+    await locked.view.confirmSelectMaster()
+    assert.deepEqual([...locked.view.selectedMasterList.value.map(master => master.id)], [7])
+    assert.equal(locked.masterLoads.length, 0)
+    assert.equal(locked.saves.length, 0)
+    locked.stop()
+  }
+  for (const status of ['PENDING_ASSIGNMENT', 'PENDING_VISIT']) {
+    const allowed = editorFixture({ status })
+    await allowed.mount()
+    assert.equal(allowed.view.canChangeInstaller.value, true)
+    await allowed.view.openMasterDialog()
+    allowed.view.removeSelectedMaster(0)
+    assert.equal(allowed.view.selectedMasterList.value.length, 0)
+    allowed.view.handleMasterSelection([{ id: 8 }])
+    await allowed.view.confirmSelectMaster()
+    assert.equal(allowed.masterLoads.length, 1)
+    assert.equal(allowed.saves.length, 0, 'selecting a different installer only changes the draft')
+    await allowed.view.handleSubmit()
+    assert.deepEqual([...allowed.saves[0].order.masterIds], [8])
+    allowed.stop()
+  }
+  const changedState = editorFixture({ status: 'PENDING_VISIT' })
+  await changedState.mount()
+  await changedState.view.openMasterDialog()
+  changedState.view.handleMasterSelection([{ id: 8 }])
+  await changedState.view.confirmSelectMaster()
+  changedState.data.order.statusCode = 'IN_PROGRESS'
+  changedState.fail({ response: { status: 409, data: { error: 'ORDER_INSTALLER_CHANGE_FORBIDDEN', message: '不能修改安装师傅' } } })
+  await changedState.view.handleSubmit()
+  assert.equal(changedState.view.saveConflict.value, true)
+  assert.equal(changedState.navigations.length, 0)
+  await changedState.view.reloadAfterConflict()
+  assert.equal(changedState.view.canChangeInstaller.value, false)
+  assert.equal(changedState.view.masterDialogVisible.value, false)
+  assert.deepEqual([...changedState.view.selectedMasterList.value.map(master => master.id)], [7])
+  assert.equal(changedState.view.formIsDirty.value, false)
+  changedState.stop()
+  console.log('PASS: installer selection follows order state; rejected stale changes reload the current installer without saving early')
 
   const materialProps = vue.reactive({ modelValue: { items: [{ productId: 5, skuId: 9, quantity: 2, stock: 8 }], remark: '' },
     request: { materials: [{ skuId: 9, count: 2 }] }, disabled: false })

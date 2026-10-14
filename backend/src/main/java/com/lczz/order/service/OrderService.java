@@ -202,6 +202,7 @@ public class OrderService {
     private OrderView updateLocked(AuthenticatedUser actor, WorkOrderEntity order, OrderCommand command,
                                     boolean preserveExistingInstaller) {
         long id = order.getId();
+        ensureInstallerChangeAllowed(order, command.masterIds());
         boolean pending = "PENDING_ASSIGNMENT".equals(order.getOrderStatus());
         boolean keepInstaller = preserveExistingInstaller && command.masterIds() != null && command.masterIds().size() == 1
                 && order.getInstallerUserId() != null && java.util.Objects.equals(command.masterIds().getFirst(), order.getInstallerUserId());
@@ -236,6 +237,7 @@ public class OrderService {
         requireAdmin(actor);
         WorkOrderEntity order = requireOrder(id);
         ensureEditable(order);
+        ensureInstallerChangeAllowed(order, masterIds);
         long installerId = requireSingleInstaller(masterIds);
         if ("PENDING_ASSIGNMENT".equals(order.getOrderStatus())) {
             if (order.getRequiredStartAt() == null || order.getExpectedEndAt() == null
@@ -531,6 +533,15 @@ public class OrderService {
     private void ensureEditable(WorkOrderEntity order) {
         if ("CANCELLED".equals(order.getOrderStatus()) || "REVIEWED".equals(order.getOrderStatus())) {
             throw new BusinessException(409, "ORDER_NOT_EDITABLE", "已结束的订单不能编辑或重新指派");
+        }
+    }
+
+    private void ensureInstallerChangeAllowed(WorkOrderEntity order, List<Long> masterIds) {
+        boolean unchanged = masterIds != null && masterIds.size() == 1
+                && java.util.Objects.equals(order.getInstallerUserId(), masterIds.getFirst());
+        if (!unchanged && !Set.of("PENDING_ASSIGNMENT", "PENDING_VISIT").contains(order.getOrderStatus())) {
+            throw new BusinessException(409, "ORDER_INSTALLER_CHANGE_FORBIDDEN",
+                    "订单已进入处理中或已结束，不能修改安装师傅，请重新加载订单");
         }
     }
 
