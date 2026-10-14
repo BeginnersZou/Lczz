@@ -563,7 +563,7 @@ onMounted(() => {
       overflow-x: auto;
     }
 
-    .business-table { width: 100%; min-width: 1322px; }
+    .business-table { width: 100%; min-width: 0; }
     .table-actions { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; white-space: nowrap; }
     .action-row { display: flex; align-items: center; justify-content: center; gap: 8px; }
     .sort-actions { min-height: 26px; }

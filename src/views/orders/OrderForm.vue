@@ -86,8 +86,9 @@
         <!-- 指派师傅区域 -->
         <el-form-item label="指派师傅" required>
           <div class="master-select-wrap">
-            <el-button plain @click="openMasterDialog">添加</el-button>
+            <el-button plain :disabled="!canChangeInstaller || submitLoading || pageLoading" @click="openMasterDialog">添加</el-button>
           </div>
+          <p v-if="isEdit && !canChangeInstaller" class="edit-tip">当前订单已进入处理中或已结束，不能修改安装师傅。</p>
           <!-- 已选师傅表格 -->
           <el-table v-if="selectedMasterList.length > 0" :data="selectedMasterList" border size="small"
             style="width: 100%;margin-top:10px">
@@ -97,7 +98,8 @@
             <el-table-column label="手机号" prop="masterPhone" align="center" />
             <el-table-column label="操作" align="center" width="100">
               <template #default="scope">
-                <el-button text type="danger" @click="removeSelectedMaster(scope.$index)">移除</el-button>
+                <el-button v-if="canChangeInstaller" text type="danger" @click="removeSelectedMaster(scope.$index)">移除</el-button>
+                <span v-else>不可修改</span>
               </template>
             </el-table-column>
           </el-table>
@@ -190,7 +192,7 @@
       <template #footer>
         <div class="dialog-footer">
           <el-button @click="masterDialogVisible = false">取消</el-button>
-          <el-button type="primary" @click="confirmSelectMaster">确认选择</el-button>
+          <el-button type="primary" :disabled="!canChangeInstaller || submitLoading || pageLoading" @click="confirmSelectMaster">确认选择</el-button>
         </div>
       </template>
     </el-dialog>
@@ -247,6 +249,8 @@ const orderId = ref('')
 const submitLoading = ref(false)
 const pageLoading = ref(false)
 const loadError = ref('')
+const canChangeInstaller = computed(() => editable.value && (!isEdit.value
+  || ['PENDING_ASSIGNMENT', 'PENDING_VISIT'].includes(orderOrigin.value.statusCode)))
 
 const masterDialogVisible = ref(false)
 const leaveDialogVisible = ref(false)
@@ -373,6 +377,8 @@ async function loadRegions() {
  */
 async function loadEditData() {
   pageLoading.value = true
+  masterDialogVisible.value = false
+  tempSelectMaster.value = []
   loadError.value = ''
   try {
     const result = await getAdminOrderEditorApi(orderId.value)
@@ -448,6 +454,7 @@ function formatMasterTaskTime(value) {
 
 // 打开指派师傅弹窗，拉取师傅列表并回显已选
 async function openMasterDialog() {
+  if (!canChangeInstaller.value || submitLoading.value || pageLoading.value) return
   masterDialogVisible.value = true
   masterPage.currentPage = 1
   masterSearch.value = ''
@@ -484,7 +491,7 @@ function restoreMasterSelection() {
 // 弹窗中勾选变化：仅更新临时选择，不直接改 selectedMasterList
 function handleMasterSelection(selection) {
   // 回显期间不处理，避免 clearSelection 把临时选择清空
-  if (isRestoring.value) return
+  if (isRestoring.value || !canChangeInstaller.value || submitLoading.value || pageLoading.value) return
   if (selection.length > 1) {
     const selected = selection[selection.length - 1]
     tempSelectMaster.value = [selected]
@@ -500,8 +507,9 @@ function handleMasterSelection(selection) {
   tempSelectMaster.value = selection.slice(0, 1)
 }
 
-// 确认选择：临时选择覆盖已选（去重保序），关闭弹窗；编辑态立即调指派接口持久化
+// 确认选择仅修改草稿；提交订单后才持久化。
 async function confirmSelectMaster() {
+  if (!canChangeInstaller.value || submitLoading.value || pageLoading.value) return
   const result = tempSelectMaster.value.slice(0, 1)
   selectedMasterList.value = result
   masterDialogVisible.value = false
@@ -523,6 +531,7 @@ function handleMasterSearch() {
 
 // 从已选师傅表格移除某行
 function removeSelectedMaster(index) {
+  if (!canChangeInstaller.value || submitLoading.value || pageLoading.value) return
   selectedMasterList.value.splice(index, 1)
   formIsDirty.value = true
   ElMessage.success('已移除该师傅')
@@ -620,6 +629,7 @@ async function handleSubmit() {
   } catch (error) {
     if (error === 'cancel' || error === 'close') return
     saveConflict.value = error.response?.data?.error === 'ORDER_EDIT_CONFLICT'
+      || error.response?.data?.error === 'ORDER_INSTALLER_CHANGE_FORBIDDEN'
       || error.response?.status === 409 && /已被修改|重新加载/.test(error.response?.data?.message || error.message || '')
     submitError.value = error.response?.data?.message || error.message || '保存失败，请检查后重试。'
   } finally {

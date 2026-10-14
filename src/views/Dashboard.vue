@@ -224,6 +224,11 @@ onMounted(() => {
   initChart()
   initOrderChart()
   window.addEventListener('resize', handleResize)
+  if (typeof ResizeObserver !== 'undefined') {
+    chartResizeObserver = new ResizeObserver(handleResize)
+    if (chartRef.value) chartResizeObserver.observe(chartRef.value)
+    if (orderChartRef.value) chartResizeObserver.observe(orderChartRef.value)
+  }
   // 并行加载首屏数据
   loadOverview()
   loadTrend()
@@ -231,6 +236,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  chartResizeObserver?.disconnect()
   window.removeEventListener('resize', handleResize)
   if (chartInstance) {
     chartInstance.dispose()
@@ -457,6 +463,8 @@ function handleResize() {
     orderChartInstance.resize()
   }
 }
+
+let chartResizeObserver
 </script>
 
 <style lang="scss" scoped>
@@ -486,7 +494,7 @@ function handleResize() {
 
     .stats-grid {
       display: grid;
-      grid-template-columns: repeat(6, 1fr);
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
       gap: 12px;
       padding: 20px;
     }
@@ -541,7 +549,7 @@ function handleResize() {
 
   .dashboard-bottom {
     display: grid;
-    grid-template-columns: 1fr 400px;
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 400px);
     gap: 16px;
   }
 

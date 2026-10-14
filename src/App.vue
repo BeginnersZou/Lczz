@@ -45,14 +45,14 @@ select {
   font: inherit;
 }
 
-.main-content :is(.order-page, .user-page, .audit-page, .dynamic-page, .dashboard) {
+.main-content :is(.order-page, .user-page, .audit-page, .dynamic-page, .dashboard, .preparation-page, .case-page) {
   min-height: auto !important;
   padding: 0 !important;
   background: transparent !important;
 }
 
-.main-content :is(.order-page, .user-page, .audit-page, .dynamic-page, .dashboard) > .page-header,
-.main-content :is(.order-form-page, .publish-page, .detail-edit-page, .audit-detail-page, .detail-page) > .page-header {
+.main-content :is(.order-page, .user-page, .audit-page, .dynamic-page, .dashboard, .preparation-page, .case-page) > .page-header,
+.main-content :is(.order-form-page, .publish-page, .detail-edit-page, .audit-detail-page, .detail-page, .case-form-page) > .page-header {
   min-height: 68px !important;
   margin: 0 !important;
   padding: 0 4px 16px !important;
@@ -60,13 +60,15 @@ select {
   align-items: center !important;
   justify-content: space-between !important;
   gap: 20px !important;
+  flex-wrap: wrap;
   background: transparent !important;
   border: 0 !important;
   border-radius: 0 !important;
   box-shadow: none !important;
 }
 
-.main-content .page-title {
+.main-content .page-title,
+.main-content .page-header h2 {
   margin: 0 !important;
   color: var(--text-primary) !important;
   font-size: 20px !important;
@@ -87,6 +89,7 @@ select {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .main-content .page-header .header-right .el-button + .el-button {
@@ -132,8 +135,17 @@ select {
   margin: 0 !important;
 }
 
+.main-content .search-card .search-bar > .search-item {
+  flex: 1 1 100%;
+}
+
 .main-content .search-card .search-input {
-  width: 280px !important;
+  width: min(100%, 280px) !important;
+}
+
+.main-content :is(.search-card, .filter-card) :is(.el-input, .el-select, .el-form-item, .search-item) {
+  max-width: 100%;
+  min-width: 0;
 }
 
 .main-content .search-card :is(.status-select, .role-select, .category-select) {
@@ -154,6 +166,7 @@ select {
 
 .main-content .table-card > .el-card__body {
   padding: 0 !important;
+  overflow: hidden;
 }
 
 .main-content :is(.pagination-wrap, .el-pagination-style) {
@@ -165,6 +178,8 @@ select {
   justify-content: flex-end !important;
   background: #fff;
   border-top: 1px solid var(--border-default);
+  max-width: 100%;
+  overflow-x: auto;
 }
 
 .primary-cell {
@@ -262,15 +277,21 @@ select {
 }
 
 .main-content :is(.form-content, .publish-form, .detail-content) {
-  width: min(100%, 1180px) !important;
+  width: 100% !important;
   margin-right: auto !important;
-  margin-left: auto !important;
+  margin-left: 0 !important;
 }
 
-.main-content :is(.order-form-page, .publish-page, .detail-edit-page, .audit-detail-page) > .page-header {
-  width: min(100%, 1180px);
+.main-content :is(.order-form-page, .publish-page, .detail-edit-page, .audit-detail-page, .order-detail-page, .case-form-page, .service-page) {
+  max-width: var(--form-content-width);
+  margin-left: 0;
+  margin-right: 0;
+}
+
+.main-content :is(.order-form-page, .publish-page, .detail-edit-page, .audit-detail-page, .case-form-page) > .page-header {
+  width: 100%;
   margin-right: auto !important;
-  margin-left: auto !important;
+  margin-left: 0 !important;
   justify-content: flex-start !important;
 }
 
@@ -281,6 +302,8 @@ select {
 .main-content :is(.order-form-page, .publish-page, .detail-edit-page, .audit-detail-page) > .page-header .header-empty {
   display: none;
 }
+
+.main-content .case-form-page > .page-header > span:empty { display: none; }
 
 .main-content .form-card .el-form-item:last-child {
   margin-bottom: 0;
@@ -313,7 +336,7 @@ select {
 
 .form-load-error {
   max-width: 960px;
-  margin: 0 auto 16px;
+  margin: 0 0 16px;
   border: 1px solid var(--border-default);
   border-radius: var(--radius-card);
 }
@@ -334,8 +357,8 @@ select {
     width: calc(100vw - 32px) !important;
   }
 
-  .main-content :is(.order-page, .user-page, .audit-page, .dynamic-page, .dashboard) > .page-header,
-  .main-content :is(.order-form-page, .publish-page, .detail-edit-page, .audit-detail-page, .detail-page) > .page-header {
+  .main-content :is(.order-page, .user-page, .audit-page, .dynamic-page, .dashboard, .preparation-page, .case-page) > .page-header,
+  .main-content :is(.order-form-page, .publish-page, .detail-edit-page, .audit-detail-page, .detail-page, .case-form-page) > .page-header {
     min-height: auto !important;
     align-items: flex-start !important;
     flex-direction: column !important;
@@ -348,6 +371,24 @@ select {
 
   .main-content :is(.form-content, .publish-form, .detail-content) {
     width: 100% !important;
+  }
+
+  .main-content .search-card .el-form-item { width: 100%; }
+  .main-content .search-card .el-form-item__content { min-width: 0; }
+  .main-content :is(.pagination-wrap, .el-pagination-style) {
+    padding: 12px !important;
+    justify-content: flex-start !important;
+  }
+  .main-content .form-card .el-card__body { padding: 16px !important; }
+  .main-content .form-footer { flex-wrap: wrap; gap: 12px; }
+  .main-content .form-footer .footer-right { flex-wrap: wrap; gap: 8px; }
+}
+
+@media (max-width: 900px) {
+  /* Narrow viewports scroll to actions; a wide pinned action column would cover the first fields. */
+  .main-content .business-table .el-table-fixed-column--right {
+    position: static !important;
+    box-shadow: none !important;
   }
 }
 </style>
