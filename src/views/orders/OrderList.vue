@@ -538,7 +538,7 @@ onMounted(loadList)
       overflow-x: auto;
     }
 
-    .business-table { width: 100%; min-width: 1396px; }
+    .business-table { width: 100%; min-width: 0; }
 
     .table-actions { display: flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap; }
     .table-actions :deep(.el-button + .el-button) { margin-left: 0; }

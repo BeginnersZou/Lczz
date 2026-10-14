@@ -288,7 +288,7 @@ onMounted(load)
 </script>
 
 <style lang="scss" scoped>
-.service-page { max-width: 1180px; margin: 0 auto; padding-bottom: 36px; }
+.service-page { max-width: var(--form-content-width); margin: 0; padding-bottom: 36px; }
 .page-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
 .page-heading h1 { margin: 0 0 6px; color: #172033; font-size: 26px; }
 .page-heading p { margin: 0; color: #718096; }

@@ -197,7 +197,7 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.order-detail-page { padding: 20px; max-width: 1280px; margin: 0 auto; }
+.order-detail-page { padding: 0; max-width: var(--form-content-width); margin: 0; }
 .detail-header, .request-header, .review-summary, .review-labels { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .detail-header { justify-content: space-between; margin-bottom: 20px; }
 h2 { margin: 14px 0 8px; font-size: 22px; color: #1f2937; }
@@ -212,7 +212,7 @@ h4 { margin-bottom: 12px; }
 .el-timeline { padding-left: 8px; }
 :deep(.el-descriptions__body) { overflow-wrap: anywhere; }
 @media (max-width: 768px) {
-  .order-detail-page { padding: 12px; }
+  .order-detail-page { padding: 0; }
   :deep(.el-descriptions__label) { width: 94px; white-space: nowrap; }
 }
 </style>

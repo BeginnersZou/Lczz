@@ -194,7 +194,7 @@ onMounted(loadDetail)
 .case-form-page { min-height: calc(100vh - 112px); }
 .page-header { display: grid; grid-template-columns: 150px 1fr 150px; align-items: center; margin-bottom: 18px; }
 .page-header h2 { margin: 0; text-align: center; color: #172033; font-size: 22px; }
-.case-form { max-width: 980px; margin: 0 auto; }
+.case-form { width: 100%; margin: 0; }
 .card-title { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; }
 .upload-tip { display: flex; gap: 7px; align-items: center; width: 100%; margin-bottom: 12px; color: #64748b; font-size: 13px; }
 .image-grid { display: flex; flex-wrap: wrap; gap: 12px; }
