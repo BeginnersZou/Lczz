@@ -205,6 +205,59 @@ class OrderIntegrationTests {
                 .doesNotContain(cancelled.path("orderNo").asText());
     }
 
+    @Test
+    void pendingVisitCanReassignThroughBothEndpointsWithoutDuplicateAssignmentNotifications() throws Exception {
+        long id = createOrder("13800138000", installerId).path("id").asLong();
+        mockMvc.perform(put("/api/v1/orders/" + id).header("Authorization", "Bearer " + adminToken)
+                        .contentType("application/json").content(orderJson("13800138000", "[" + otherInstallerId + "]")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.statusCode").value("PENDING_VISIT"))
+                .andExpect(jsonPath("$.data.selectedMasterList[0].id").value(otherInstallerId));
+        for (int retry = 0; retry < 2; retry++) {
+            mockMvc.perform(post("/api/orders/" + id + "/assign-master").header("Authorization", "Bearer " + adminToken)
+                            .contentType("application/json").content("{\"masterIds\":[" + otherInstallerId + "]}"))
+                    .andExpect(status().isOk());
+        }
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM work_order_assignment WHERE order_id=?", Integer.class, id)).isEqualTo(2);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM sms_notification WHERE event_type='INSTALLER_ASSIGNED'", Integer.class)).isEqualTo(2);
+        mockMvc.perform(post("/api/v1/orders/" + id + "/assign-master").header("Authorization", "Bearer " + adminToken)
+                        .contentType("application/json").content("{\"masterIds\":[" + installerId + "]}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.statusCode").value("PENDING_VISIT"));
+        assertThat(jdbcTemplate.queryForObject("SELECT installer_user_id FROM work_order_assignment WHERE order_id=? AND is_active=TRUE", Long.class, id)).isEqualTo(installerId);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM sms_notification WHERE event_type='INSTALLER_ASSIGNED'", Integer.class)).isEqualTo(3);
+    }
+
+    @Test
+    void processingAndLaterStatesRejectChangingOrClearingInstallerWithoutWritingAnything() throws Exception {
+        for (String state : new String[] {"IN_PROGRESS", "PENDING_REVIEW", "REVIEWED", "CANCELLED"}) {
+            long id = createOrder("13800138000", installerId).path("id").asLong();
+            jdbcTemplate.update("UPDATE work_order SET order_status=? WHERE id=?", state, id);
+            var before = jdbcTemplate.queryForMap("SELECT * FROM work_order WHERE id=?", id);
+            int sms = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM sms_notification", Integer.class);
+            String error = Set.of("REVIEWED", "CANCELLED").contains(state) ? "ORDER_NOT_EDITABLE" : "ORDER_INSTALLER_CHANGE_FORBIDDEN";
+            for (String masters : new String[] {"[" + otherInstallerId + "]", "[]", "null"}) {
+                mockMvc.perform(put("/api/orders/" + id).header("Authorization", "Bearer " + adminToken)
+                                .contentType("application/json").content(orderJson("13800138000", masters)))
+                        .andExpect(status().isConflict()).andExpect(jsonPath("$.error").value(error));
+            }
+            mockMvc.perform(post("/api/v1/orders/" + id + "/assign-master").header("Authorization", "Bearer " + adminToken)
+                            .contentType("application/json").content("{\"masterIds\":[" + otherInstallerId + "]}"))
+                    .andExpect(status().isConflict()).andExpect(jsonPath("$.error").value(error));
+            mockMvc.perform(post("/api/orders/" + id + "/assign-master").header("Authorization", "Bearer " + adminToken)
+                            .contentType("application/json").content("{\"masterIds\":[]}"))
+                    .andExpect(status().isBadRequest());
+            assertThat(jdbcTemplate.queryForMap("SELECT * FROM work_order WHERE id=?", id)).isEqualTo(before);
+            assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM work_order_assignment WHERE order_id=?", Integer.class, id)).isEqualTo(1);
+            assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM sms_notification", Integer.class)).isEqualTo(sms);
+            if (!Set.of("REVIEWED", "CANCELLED").contains(state)) {
+                mockMvc.perform(put("/api/orders/" + id).header("Authorization", "Bearer " + adminToken)
+                                .contentType("application/json").content(orderJson("13800138000", "[" + installerId + "]")
+                                        .replace("客厅挂机安装", "只改说明，保留师傅")))
+                        .andExpect(status().isOk()).andExpect(jsonPath("$.data.description").value("只改说明，保留师傅"))
+                        .andExpect(jsonPath("$.data.statusCode").value(state));
+            }
+        }
+    }
+
     private JsonNode createOrder(String phone, long masterId) throws Exception {
         String response = mockMvc.perform(post("/api/orders").header("Authorization", "Bearer " + adminToken)
                         .contentType("application/json").content(orderJson(phone, "[" + masterId + "]")))

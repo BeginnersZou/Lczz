@@ -476,6 +476,64 @@ class AdminOrderEditorIntegrationTests {
         http.perform(get(editorPath(0)).header("Authorization", "Bearer " + adminToken)).andExpect(status().isBadRequest());
     }
 
+    @Test
+    void protectedStatesRejectInstallerChangesAtomicallyButRetainOtherEditing() throws Exception {
+        for (String state : new String[] {"IN_PROGRESS", "PENDING_REVIEW", "REVIEWED"}) {
+            jdbc.update("UPDATE work_order SET order_status=? WHERE id=?", state, orderId);
+            String revision = load(orderId).path("revision").asText();
+            long notifications = count("sms_notification"), assignments = count("work_order_assignment"), audits = count("operation_audit_log");
+            BigDecimal stockBefore = stock();
+            for (boolean clear : new boolean[] {false, true}) {
+                ObjectNode rejected = command(orderId);
+                ObjectNode basic = orderBody("不能部分保存的说明");
+                if (clear) basic.putArray("masterIds");
+                else basic.putArray("masterIds").add(otherInstallerId);
+                rejected.set("order", basic);
+                rejected.putArray("progress").addObject().put("id", progressId).put("description", "不能部分保存的进度");
+                rejected.set("materials", json.readTree(materialBody("4", "不能部分保存的清单")));
+                fail(rejected, 409, "ORDER_INSTALLER_CHANGE_FORBIDDEN");
+                assertThat(load(orderId).path("revision").asText()).isEqualTo(revision);
+                assertThat(stock()).isEqualByComparingTo(stockBefore);
+                assertThat(count("sms_notification")).isEqualTo(notifications);
+                assertThat(count("work_order_assignment")).isEqualTo(assignments);
+                assertThat(count("operation_audit_log")).isEqualTo(audits);
+            }
+            ObjectNode allowed = command(orderId);
+            allowed.set("order", orderBody("保留师傅更正说明" + state));
+            JsonNode saved = save(orderId, allowed);
+            assertThat(saved.at("/order/statusCode").asText()).isEqualTo(state);
+            assertThat(orders.selectById(orderId).getInstallerUserId()).isEqualTo(installerId);
+            assertThat(orders.selectById(orderId).getDescription()).isEqualTo("保留师傅更正说明" + state);
+            assertThat(count("sms_notification")).isEqualTo(notifications);
+        }
+    }
+
+    @Test
+    void pendingVisitEditorCannotReassignAfterInstallerSubmitsProgress() throws Exception {
+        long id = order("WO-STALE178");
+        ObjectNode stale = command(id), basic = orderBody("过期的改派草稿");
+        basic.putArray("masterIds").add(otherInstallerId);
+        stale.set("order", basic);
+        postData("/api/v1/orders/" + id + "/progress", installerToken, "{\"description\":\"师傅开始施工\"}");
+        var before = jdbc.queryForMap("SELECT * FROM work_order WHERE id=?", id);
+        long notifications = count("sms_notification"), assignments = count("work_order_assignment");
+        http.perform(put(editorPath(id)).header("Authorization", "Bearer " + adminToken)
+                        .contentType("application/json").content(stale.toString()))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.error").value("ORDER_EDIT_CONFLICT"));
+        http.perform(put("/api/v1/orders/" + id).header("Authorization", "Bearer " + adminToken)
+                        .contentType("application/json").content(basic.toString()))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.error").value("ORDER_INSTALLER_CHANGE_FORBIDDEN"));
+        http.perform(post("/api/v1/orders/" + id + "/assign-master").header("Authorization", "Bearer " + adminToken)
+                        .contentType("application/json").content("{\"masterIds\":[" + otherInstallerId + "]}"))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.error").value("ORDER_INSTALLER_CHANGE_FORBIDDEN"));
+        assertThat(jdbc.queryForMap("SELECT * FROM work_order WHERE id=?", id)).isEqualTo(before);
+        assertThat(count("sms_notification")).isEqualTo(notifications);
+        assertThat(count("work_order_assignment")).isEqualTo(assignments);
+        JsonNode refreshed = load(id);
+        assertThat(refreshed.at("/order/statusCode").asText()).isEqualTo("IN_PROGRESS");
+        assertThat(refreshed.at("/progress/0/installerUserId").asLong()).isEqualTo(installerId);
+    }
+
     private void finishPreparation() throws Exception {
         ObjectNode body = json.createObjectNode();
         var items = body.putArray("materials");
