@@ -1,6 +1,7 @@
 <template>
-  <el-container class="layout-container">
-    <el-aside :width="asideWidth" class="sidebar" :class="{ 'mobile-open': mobileMenuOpen }">
+  <el-container class="layout-container" :data-screen="screenSize" @keydown.esc="mobileMenuOpen = false">
+    <el-aside id="admin-sidebar" :width="asideWidth" class="sidebar" :class="{ 'mobile-open': mobileMenuOpen }"
+      :inert="isMobile && !mobileMenuOpen">
       <div class="logo">
         <el-icon :size="22" class="logo-icon">
           <HomeFilled />
@@ -41,14 +42,16 @@
       </el-menu>
     </el-aside>
     <div v-if="isMobile && mobileMenuOpen" class="sidebar-mask" @click="mobileMenuOpen = false"></div>
-    <el-container>
+    <el-container class="workspace">
       <el-header class="header">
         <div class="header-left">
           <el-button
             link
             @click="handleSidebarToggle"
             class="collapse-btn"
-            :aria-label="isMobile ? '打开导航菜单' : (isCollapse ? '展开导航菜单' : '收起导航菜单')"
+            :aria-label="isMobile ? (mobileMenuOpen ? '关闭导航菜单' : '打开导航菜单') : (isCollapse ? '展开导航菜单' : '收起导航菜单')"
+            :aria-expanded="isMobile ? mobileMenuOpen : !isCollapse"
+            aria-controls="admin-sidebar"
           >
             <el-icon :size="20">
               <Fold v-if="!isMobile && !isCollapse" />
@@ -110,15 +113,20 @@ const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
 
-const isCollapse = ref(localStorage.getItem('sidebarCollapsed') === 'true')
-const isMobile = ref(window.innerWidth <= 900)
+const sidebarPreference = ref(localStorage.getItem('sidebarCollapsed'))
+const viewportWidth = ref(window.innerWidth)
+const isMobile = computed(() => viewportWidth.value <= 900)
+const screenSize = computed(() => viewportWidth.value < 1280 ? 'small' : viewportWidth.value < 1920 ? 'medium' : 'large')
+// A narrow desktop starts collapsed; explicit user choices persist. Drawer navigation is always expanded.
+const isCollapse = computed(() => !isMobile.value && (sidebarPreference.value === null
+  ? viewportWidth.value < 1280 : sidebarPreference.value === 'true'))
 const mobileMenuOpen = ref(false)
-const asideWidth = computed(() => isMobile.value ? '216px' : (isCollapse.value ? '64px' : '216px'))
+const asideWidth = computed(() => isCollapse.value ? '64px' : (screenSize.value === 'large' ? '232px' : '216px'))
 
-watch(isCollapse, value => localStorage.setItem('sidebarCollapsed', String(value)))
+watch(sidebarPreference, value => localStorage.setItem('sidebarCollapsed', value))
 
 function updateViewport() {
-  isMobile.value = window.innerWidth <= 900
+  viewportWidth.value = window.innerWidth
   if (!isMobile.value) mobileMenuOpen.value = false
 }
 
@@ -126,7 +134,7 @@ function handleSidebarToggle() {
   if (isMobile.value) {
     mobileMenuOpen.value = !mobileMenuOpen.value
   } else {
-    isCollapse.value = !isCollapse.value
+    sidebarPreference.value = String(!isCollapse.value)
   }
 }
 
@@ -180,10 +188,21 @@ async function handleCommand(command) {
 <style lang="scss" scoped>
 .layout-container {
   height: 100vh;
+  height: 100dvh;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
   background: var(--surface-page);
 }
 
+.workspace {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
 .sidebar {
+  flex-shrink: 0;
   background: #101828;
   transition: width 0.22s ease;
   overflow: hidden;
@@ -378,12 +397,14 @@ async function handleCommand(command) {
 }
 
 .header {
+  flex-shrink: 0;
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
   background-color: #fff;
   height: 56px;
-  padding: 0 24px;
+  padding: 0 var(--workspace-gutter);
   border-bottom: 1px solid var(--border-default);
   box-shadow: none;
 
@@ -465,15 +486,19 @@ async function handleCommand(command) {
 }
 
 .main-content {
-  padding: clamp(18px, 2vw, 28px);
+  min-width: 0;
+  min-height: 0;
+  padding: var(--workspace-gutter);
   overflow-y: auto;
+  overflow-x: hidden;
   background: var(--surface-page);
 
   > * {
     width: 100%;
-    max-width: 1480px;
-    margin-right: auto;
-    margin-left: auto;
+    min-width: 0;
+    max-width: none;
+    margin-right: 0;
+    margin-left: 0;
   }
 
   ::-webkit-scrollbar {
