@@ -20,6 +20,9 @@ public class WorkOrderProgressEntity {
     private String confirmedContentHash;
     private Long customerConfirmedBy;
     private LocalDateTime customerConfirmedAt;
+    private String adminApprovedContentHash;
+    private Long adminEditedBy;
+    private LocalDateTime adminEditedAt;
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
@@ -45,4 +48,10 @@ public class WorkOrderProgressEntity {
     public void setCustomerConfirmedBy(Long value) { customerConfirmedBy = value; }
     public LocalDateTime getCustomerConfirmedAt() { return customerConfirmedAt; }
     public void setCustomerConfirmedAt(LocalDateTime value) { customerConfirmedAt = value; }
+    public String getAdminApprovedContentHash() { return adminApprovedContentHash; }
+    public void setAdminApprovedContentHash(String value) { adminApprovedContentHash = value; }
+    public Long getAdminEditedBy() { return adminEditedBy; }
+    public void setAdminEditedBy(Long value) { adminEditedBy = value; }
+    public LocalDateTime getAdminEditedAt() { return adminEditedAt; }
+    public void setAdminEditedAt(LocalDateTime value) { adminEditedAt = value; }
 }

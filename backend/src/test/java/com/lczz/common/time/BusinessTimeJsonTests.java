@@ -25,7 +25,7 @@ class BusinessTimeJsonTests {
     void storedUtcProgressAndBeijingDatabaseTimeDescribeTheSameInstant() throws Exception {
         LocalDateTime utc = LocalDateTime.of(2026, 10, 12, 2, 36);
         var progress = new ProgressView(1, 2, 3, "PROGRESS", "上午施工", List.of(), utc,
-                "version", "CONFIRMED", true, 4L, utc, "version");
+                "version", "CONFIRMED", true, 4L, utc, "version", null, null);
         assertThat(mapper.readTree(mapper.writeValueAsString(progress)).path("submittedAt").asText())
                 .isEqualTo("2026-10-12T10:36:00+08:00");
         assertThat(mapper.writeValueAsString(utc.plusHours(8))).isEqualTo("\"2026-10-12T10:36:00+08:00\"");

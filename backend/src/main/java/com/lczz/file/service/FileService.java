@@ -11,6 +11,7 @@ import com.lczz.file.persistence.FileAssetRecordMapper;
 import com.lczz.file.persistence.FileRelationRecord;
 import com.lczz.file.persistence.FileRelationRecordMapper;
 import com.lczz.file.storage.FileStorage;
+import com.lczz.progress.service.ProgressConfirmationService;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -74,17 +75,19 @@ public class FileService {
     private final FileStorageProperties properties;
     private final JdbcTemplate jdbcTemplate;
     private final FileImageVariantService imageVariantService;
+    private final ProgressConfirmationService progressConfirmations;
     private final byte[] accessKey;
 
     public FileService(FileAssetRecordMapper fileMapper, FileRelationRecordMapper relationMapper,
                        FileStorage storage, FileStorageProperties properties, JdbcTemplate jdbcTemplate,
-                       FileImageVariantService imageVariantService) {
+                       FileImageVariantService imageVariantService, ProgressConfirmationService progressConfirmations) {
         this.fileMapper = fileMapper;
         this.relationMapper = relationMapper;
         this.storage = storage;
         this.properties = properties;
         this.jdbcTemplate = jdbcTemplate;
         this.imageVariantService = imageVariantService;
+        this.progressConfirmations = progressConfirmations;
         this.accessKey = createAccessKey(properties.getAccessSecret());
     }
 
@@ -198,11 +201,12 @@ public class FileService {
         requireFile(fileId);
         RelationCommand normalized = normalizeRequiredRelation(relation);
         authorizeBusiness(actor, normalized.businessType(), normalized.businessId(), true);
-        relationMapper.delete(new LambdaQueryWrapper<FileRelationRecord>()
+        int removed = relationMapper.delete(new LambdaQueryWrapper<FileRelationRecord>()
                 .eq(FileRelationRecord::getBusinessType, normalized.businessType())
                 .eq(FileRelationRecord::getBusinessId, normalized.businessId())
                 .eq(FileRelationRecord::getUsageType, normalized.usageType())
                 .eq(FileRelationRecord::getFileId, fileId));
+        if (removed > 0) approveAdminProgressFileChange(actor, normalized);
         return true;
     }
 
@@ -256,11 +260,15 @@ public class FileService {
                     "SELECT id FROM business_file_relation WHERE file_id=? FOR UPDATE", id).isEmpty()) {
                 throw new BusinessException(403, "EDITOR_FILE_FORBIDDEN", "新增图片必须是本人上传且未关联其它业务的文件");
             }
-            if (!Set.of("image/jpeg", "image/png", "image/gif", "image/webp").contains(file.getMimeType())) {
-                throw new BusinessException("INVALID_FILE_TYPE", "新增附件仅支持 jpg/png/gif/webp 图片");
+            boolean image = Set.of("image/jpeg", "image/png", "image/gif", "image/webp").contains(file.getMimeType());
+            boolean video = "PROGRESS".equals(target.usageType())
+                    && Set.of("video/mp4", "video/quicktime").contains(file.getMimeType());
+            if (!image && !video) {
+                throw new BusinessException("INVALID_FILE_TYPE", "施工附件仅支持图片或 mp4/mov 视频");
             }
-            if (file.getFileSize() > Math.min(properties.getMaxBytes(), properties.getMaxImageBytes())) {
-                throw new BusinessException(413, "FILE_TOO_LARGE", "图片超过上传大小限制");
+            if (file.getFileSize() > (image ? Math.min(properties.getMaxBytes(), properties.getMaxImageBytes())
+                    : properties.getMaxBytes())) {
+                throw new BusinessException(413, "FILE_TOO_LARGE", image ? "图片超过上传大小限制" : "视频超过上传大小限制");
             }
         }
         if ("PROGRESS".equals(target.usageType())) ProgressMediaLimits.validate(selectedMimeTypes);
@@ -281,6 +289,7 @@ public class FileService {
                 addRelation(actor, fileId, new RelationCommand(target.businessType(), target.businessId(), target.usageType(), index));
             }
         }
+        approveAdminProgressFileChange(actor, target);
     }
 
     public FileContent authenticatedContent(AuthenticatedUser actor, long fileId) {
@@ -416,8 +425,17 @@ public class FileService {
         link.setFileId(fileId);
         link.setSortOrder(relation.sortOrder() == null ? count.intValue() : relation.sortOrder());
         link.setCreatedBy(actor.userId());
-        try { relationMapper.insert(link); }
+        try { relationMapper.insert(link); approveAdminProgressFileChange(actor, relation); }
         catch (DuplicateKeyException ignored) { }
+    }
+
+    private void approveAdminProgressFileChange(AuthenticatedUser actor, RelationCommand relation) {
+        if (!"PROGRESS".equals(relation.businessType())) return;
+        if (actor != null && actor.hasRole(RoleCode.ADMIN)) {
+            progressConfirmations.approveAdminCorrection(relation.businessId(), actor.userId());
+        } else {
+            progressConfirmations.invalidateAdminApproval(relation.businessId());
+        }
     }
 
     private void authorizeFile(AuthenticatedUser actor, FileAssetRecord file) {

@@ -110,6 +110,7 @@ public class WorkProgressService {
         if (description == null || description.isBlank() || description.length() > 2000) {
             throw new BusinessException("INVALID_PROGRESS_DESCRIPTION", "请填写 1 至 2000 字的施工说明");
         }
+        String beforeVersion = progressVersion(progress, order.getCustomerUserId());
         if (!Objects.equals(progress.getDescription(), description.trim())) {
             progressMapper.update(null, new LambdaUpdateWrapper<WorkOrderProgressEntity>()
                     .eq(WorkOrderProgressEntity::getId, progressId)
@@ -121,6 +122,41 @@ public class WorkProgressService {
                     new FileService.RelationCommand("PROGRESS", progressId, progress.getProgressType(), null),
                     normalizeFiles(fileIds));
         }
+        WorkOrderProgressEntity updated = progressMapper.selectById(progressId);
+        String afterVersion = progressVersion(updated, order.getCustomerUserId());
+        if (!Objects.equals(beforeVersion, afterVersion)
+                || !Objects.equals(progress.getAdminApprovedContentHash(), updated.getAdminApprovedContentHash())) {
+            confirmations.approveAdminCorrection(updated, progressLinks(progressId), actor.userId());
+        }
+    }
+
+    @Transactional
+    public ProgressView replaceForAdmin(AuthenticatedUser actor, long orderId, long progressId,
+                                        String expectedVersion, String description, List<Long> fileIds) {
+        if (actor == null || !actor.hasRole(RoleCode.ADMIN))
+            throw new BusinessException(403, "ADMIN_PROGRESS_EDIT_FORBIDDEN", "仅管理员可修改施工记录");
+        WorkOrderEntity order = orderMapper.selectForUpdate(orderId);
+        if (order == null) throw new BusinessException(404, "ORDER_NOT_FOUND", "订单不存在");
+        if ("CANCELLED".equals(order.getOrderStatus()))
+            throw new BusinessException(409, "ORDER_NOT_EDITABLE", "已作废订单不能修改");
+        WorkOrderProgressEntity record = progressMapper.selectById(progressId);
+        if (record == null || !Objects.equals(record.getOrderId(), orderId))
+            throw new BusinessException(404, "PROGRESS_NOT_FOUND", "施工进度不存在或不属于该订单");
+        if (!Objects.equals(expectedVersion, progressVersion(record, order.getCustomerUserId())))
+            throw new BusinessException(409, "PROGRESS_CONTENT_CHANGED", "本条施工内容已变化，请刷新后重试");
+        editForAdmin(actor, orderId, progressId, description, fileIds);
+        return toViews(actor, List.of(progressMapper.selectById(progressId)), order.getCustomerUserId()).getFirst();
+    }
+
+    private List<FileRelationRecord> progressLinks(long progressId) {
+        return relationMapper.selectList(new LambdaQueryWrapper<FileRelationRecord>()
+                .eq(FileRelationRecord::getBusinessType, "PROGRESS")
+                .eq(FileRelationRecord::getBusinessId, progressId)
+                .orderByAsc(FileRelationRecord::getSortOrder).orderByAsc(FileRelationRecord::getId));
+    }
+
+    private String progressVersion(WorkOrderProgressEntity record, Long customerId) {
+        return confirmations.inspect(record, progressLinks(record.getId()), customerId).contentVersion();
     }
 
     private WorkOrderProgressEntity insert(AuthenticatedUser actor, long orderId, String type, String description, String token, String hash) {
@@ -239,7 +275,8 @@ public class WorkProgressService {
             return new ProgressView(record.getId(), record.getOrderId(), record.getInstallerUserId(), record.getProgressType(),
                     record.getDescription(), grouped.getOrDefault(record.getId(), List.of()), record.getSubmittedAt(),
                     state.contentVersion(), state.confirmationStatus(), state.customerConfirmed(), state.customerConfirmedBy(),
-                    state.customerConfirmedAt(), state.confirmedContentVersion());
+                    state.customerConfirmedAt(), state.confirmedContentVersion(), record.getAdminEditedBy(),
+                    record.getAdminEditedAt());
         }).toList();
     }
 
@@ -252,5 +289,6 @@ public class WorkProgressService {
     public record ProgressView(long id, long orderId, long installerUserId, String type, String description,
                                List<ProgressFileView> images, @UtcTime LocalDateTime submittedAt,
                                String contentVersion, String confirmationStatus, boolean customerConfirmed,
-                               Long customerConfirmedBy, @UtcTime LocalDateTime customerConfirmedAt, String confirmedContentVersion) { }
+                               Long customerConfirmedBy, @UtcTime LocalDateTime customerConfirmedAt, String confirmedContentVersion,
+                               Long adminEditedBy, @UtcTime LocalDateTime adminEditedAt) { }
 }

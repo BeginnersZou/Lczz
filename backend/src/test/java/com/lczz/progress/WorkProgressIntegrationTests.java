@@ -40,6 +40,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -191,7 +192,7 @@ class WorkProgressIntegrationTests {
         mockMvc.perform(get("/api/v1/orders/" + orderId + "/progress")
                         .header("Authorization", "Bearer " + customerToken))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data[0].images.length()").value(30));
-        assertThat(progressList().get(0).path("confirmationStatus").asText()).isEqualTo("CHANGED");
+        assertThat(progressList().get(0).path("confirmationStatus").asText()).isEqualTo("ADMIN_EDITED");
         assertThat(jdbcTemplate.queryForObject("SELECT order_status FROM work_order WHERE id=?", String.class, orderId)).isEqualTo("REVIEWED");
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM sms_notification WHERE event_type='PROGRESS_SUBMITTED'", Integer.class)).isEqualTo(1);
     }
@@ -395,7 +396,7 @@ class WorkProgressIntegrationTests {
     }
 
     @Test
-    void confirmationChecksCustomerOwnershipAndContentVersionAndRetainsBothSnapshots() throws Exception {
+    void confirmationChecksCustomerOwnershipAndAdminCorrectionNeedsNoSecondConfirmation() throws Exception {
         JsonNode first = submit("ownership-progress", "原施工说明", "");
         long id = first.path("id").asLong(); String version = first.path("contentVersion").asText();
         String body = "{\"contentVersion\":\"" + version + "\"}";
@@ -413,11 +414,94 @@ class WorkProgressIntegrationTests {
                 .andExpect(status().isConflict()).andExpect(jsonPath("$.error").value("PROGRESS_CONTENT_CHANGED"));
         JsonNode changed = progressList().get(0);
         assertThat(changed.path("customerConfirmed").asBoolean()).isFalse();
-        assertThat(changed.path("confirmationStatus").asText()).isEqualTo("CHANGED");
-        confirm(id, changed.path("contentVersion").asText(), customerToken);
+        assertThat(changed.path("confirmationStatus").asText()).isEqualTo("ADMIN_EDITED");
+        assertThat(changed.path("adminEditedBy").asLong()).isEqualTo(adminId);
+        mockMvc.perform(post(path).header("Authorization", "Bearer " + customerToken).contentType("application/json")
+                        .content("{\"contentVersion\":\"" + changed.path("contentVersion").asText() + "\"}"))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.error").value("PROGRESS_ADMIN_APPROVED"));
         assertThat(jdbcTemplate.queryForList("SELECT content_snapshot FROM work_order_progress_confirmation ORDER BY id", String.class))
-                .hasSize(2).anyMatch(value -> value.contains("原施工说明")).anyMatch(value -> value.contains("管理员修订说明"));
+                .hasSize(1).anyMatch(value -> value.contains("原施工说明"));
         assertThat(jdbcTemplate.queryForObject("SELECT order_status FROM work_order WHERE id=?", String.class, orderId)).isEqualTo("IN_PROGRESS");
+    }
+
+    @Test
+    void adminReplacesOneOfManyProgressRecordsWithPhotoAndVideoAfterCompletion() throws Exception {
+        JsonNode first = submit("admin-record-1", "第一次施工", "");
+        long oldImage = uploadImage("old.png");
+        JsonNode second = submit("admin-record-2", "第二次施工", ",\"fileIds\":[" + oldImage + "]");
+        JsonNode third = submit("admin-record-3", "第三次施工", "");
+        confirm(second.path("id").asLong(), second.path("contentVersion").asText(), customerToken);
+        jdbcTemplate.update("UPDATE work_order SET order_status='PENDING_REVIEW' WHERE id=?", orderId);
+
+        long adminImage = uploadAsAdmin("corrected.png", "image/png", PNG);
+        byte[] mp4 = new byte[] {0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d,
+                0, 0, 0, 0x69, 0x73, 0x6f, 0x6d, 0x6d, 0x70, 0x34, 0x32};
+        long adminVideo = uploadAsAdmin("corrected.mp4", "video/mp4", mp4);
+        String url = "/api/v1/orders/" + orderId + "/progress/" + second.path("id").asLong();
+        String body = objectMapper.writeValueAsString(java.util.Map.of("contentVersion", second.path("contentVersion").asText(),
+                "description", "管理员覆盖第二次", "fileIds", List.of(adminImage, adminVideo)));
+
+        for (String caller : List.of(installerToken, customerToken))
+            mockMvc.perform(put(url).header("Authorization", "Bearer " + caller)
+                            .contentType("application/json").content(body)).andExpect(status().isForbidden());
+        mockMvc.perform(put("/api/v1/orders/" + orderId + "/progress/" + first.path("id").asLong())
+                        .header("Authorization", "Bearer " + adminToken).contentType("application/json").content(body))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.error").value("PROGRESS_CONTENT_CHANGED"));
+        mockMvc.perform(put(url).header("Authorization", "Bearer " + adminToken)
+                        .contentType("application/json").content(body))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.id").value(second.path("id").asLong()))
+                .andExpect(jsonPath("$.data.description").value("管理员覆盖第二次"))
+                .andExpect(jsonPath("$.data.images.length()").value(2))
+                .andExpect(jsonPath("$.data.images[1].id").value(adminVideo))
+                .andExpect(jsonPath("$.data.confirmationStatus").value("ADMIN_EDITED"))
+                .andExpect(jsonPath("$.data.adminEditedBy").value(adminId));
+
+        JsonNode records = progressList();
+        assertThat(records).hasSize(3);
+        assertThat(records.get(0).path("description").asText()).isEqualTo("第一次施工");
+        assertThat(records.get(1).path("description").asText()).isEqualTo("管理员覆盖第二次");
+        assertThat(records.get(2).path("description").asText()).isEqualTo("第三次施工");
+        assertThat(records.get(1).path("submittedAt").asText()).isEqualTo(second.path("submittedAt").asText());
+        assertThat(records.get(1).path("adminEditedAt").asText()).isNotBlank();
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM business_file_relation WHERE business_type='PROGRESS' AND business_id=?",
+                Long.class, second.path("id").asLong())).isEqualTo(2L);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM business_file_relation WHERE file_id=?", Long.class, oldImage)).isZero();
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM work_order_progress_confirmation", Long.class)).isEqualTo(1L);
+        assertThat(jdbcTemplate.queryForObject("SELECT order_status FROM work_order WHERE id=?", String.class, orderId)).isEqualTo("PENDING_REVIEW");
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM sms_notification WHERE event_type='PROGRESS_SUBMITTED'", Long.class)).isEqualTo(3L);
+
+        mockMvc.perform(put(url).header("Authorization", "Bearer " + adminToken)
+                        .contentType("application/json").content(body))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.error").value("PROGRESS_CONTENT_CHANGED"));
+    }
+
+    @Test
+    void installerLaterAttachmentChangeRestoresCustomerConfirmationRequirement() throws Exception {
+        JsonNode record = submit("admin-then-installer", "师傅第一次提交", "");
+        long progressId = record.path("id").asLong();
+        String url = "/api/orders/" + orderId + "/progress/" + progressId;
+        String correction = objectMapper.writeValueAsString(java.util.Map.of("contentVersion", record.path("contentVersion").asText(),
+                "description", "管理员修订", "fileIds", List.of()));
+        mockMvc.perform(put(url).header("Authorization", "Bearer " + adminToken)
+                        .contentType("application/json").content(correction))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.confirmationStatus").value("ADMIN_EDITED"));
+        mockMvc.perform(multipart("/api/files/upload")
+                        .file(new MockMultipartFile("file", "installer-after-admin.png", "image/png", PNG))
+                        .param("businessType", "PROGRESS").param("businessId", Long.toString(progressId))
+                        .param("usageType", "PROGRESS").header("Authorization", "Bearer " + installerToken))
+                .andExpect(status().isOk());
+        JsonNode changed = progressList().get(0);
+        assertThat(changed.path("confirmationStatus").asText()).isEqualTo("PENDING");
+        confirm(progressId, changed.path("contentVersion").asText(), customerToken);
+        assertThat(progressList().get(0).path("customerConfirmed").asBoolean()).isTrue();
+    }
+
+    private long uploadAsAdmin(String name, String mime, byte[] content) throws Exception {
+        String response = mockMvc.perform(multipart("/api/files/upload")
+                        .file(new MockMultipartFile("file", name, mime, content))
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        return objectMapper.readTree(response).at("/data/id").asLong();
     }
 
     @Test
@@ -433,7 +517,7 @@ class WorkProgressIntegrationTests {
         mockMvc.perform(delete("/api/files/" + file + "/relations").header("Authorization", "Bearer " + adminToken)
                         .param("businessType", "PROGRESS").param("businessId", String.valueOf(id)).param("usageType", "PROGRESS"))
                 .andExpect(status().isOk());
-        assertThat(progressList().get(0).path("confirmationStatus").asText()).isEqualTo("CHANGED");
+        assertThat(progressList().get(0).path("confirmationStatus").asText()).isEqualTo("ADMIN_EDITED");
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM sms_notification", Integer.class)).isEqualTo(1);
     }
 
