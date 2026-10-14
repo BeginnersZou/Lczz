@@ -343,7 +343,7 @@ onMounted(loadList)
 .filters .keyword-input { width: 360px; }
 .filters :deep(.el-select) { width: 190px; }
 .table-card :deep(.el-card__body) { padding: 0; overflow-x: auto; }
-.business-table { width: 100%; min-width: 1540px; }
+.business-table { width: 100%; min-width: 0; }
 .business-table :deep(th.el-table__cell) { height: 52px; color: #344054; background: #f8fafc; }
 .copy-button { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 0; color: #175cd3; background: transparent; border: 0; cursor: pointer; }
 .copy-button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

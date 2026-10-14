@@ -18,6 +18,8 @@
   --shadow-popup: 0 12px 28px rgba(16, 24, 40, 0.12);
   --radius-control: 6px;
   --radius-card: 8px;
+  --workspace-gutter: 24px;
+  --form-content-width: 1280px;
 
   --el-color-primary: var(--brand-primary);
   --el-color-primary-light-3: #5b85ef;
@@ -241,6 +243,7 @@
 }
 
 .el-dialog {
+  max-width: calc(100vw - var(--workspace-gutter) * 2);
   overflow: hidden;
   border-radius: 10px;
   box-shadow: var(--shadow-popup);
@@ -316,4 +319,16 @@
 
 .el-button[aria-busy='true'] {
   pointer-events: none;
+}
+
+@media (min-width: 1920px) {
+  :root { --workspace-gutter: 32px; }
+}
+
+@media (max-width: 1279px) {
+  :root { --workspace-gutter: 20px; }
+}
+
+@media (max-width: 900px) {
+  :root { --workspace-gutter: 16px; }
 }
