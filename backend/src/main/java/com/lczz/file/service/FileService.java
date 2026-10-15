@@ -121,7 +121,7 @@ public class FileService {
             record.setAccessUrl("/api/files/" + record.getId());
             fileMapper.updateById(record);
             if (normalized != null) addRelation(actor, record.getId(), normalized);
-            return toView(record, signedUrl(record.getId()));
+            return toView(record);
         } catch (IOException exception) {
             storage.deleteQuietly(objectKey);
             throw new BusinessException(500, "FILE_STORAGE_FAILED", "文件保存失败，请稍后重试");
@@ -140,7 +140,7 @@ public class FileService {
         RelationCommand normalized = normalizeRequiredRelation(relation);
         authorizeBusiness(actor, normalized.businessType(), normalized.businessId(), true);
         addRelation(actor, fileId, normalized);
-        return toView(file, signedUrl(fileId));
+        return toView(file);
     }
 
     @Transactional(readOnly = true)
@@ -162,7 +162,7 @@ public class FileService {
                         (left, right) -> left, LinkedHashMap::new));
         return relations.stream().map(link -> files.get(link.getFileId()))
                 .filter(Objects::nonNull)
-                .map(file -> toView(file, signedUrl(file.getId())))
+                .map(this::toView)
                 .toList();
     }
 
@@ -327,7 +327,7 @@ public class FileService {
         if (files.size() != ids.size()) throw new BusinessException(404, "FILE_NOT_FOUND", "文件不存在");
         authorizeFiles(actor, files);
         Map<Long, FileView> result = new LinkedHashMap<>();
-        ids.forEach(id -> result.put(id, toView(files.get(id), signedUrl(id))));
+        ids.forEach(id -> result.put(id, toView(files.get(id))));
         return result;
     }
 
@@ -553,10 +553,9 @@ public class FileService {
             // 管理员需要能在小程序中更正历史施工照片；订单封存仅限制安装师傅，
             // 不能把后台/管理端的数据修正能力一并锁死。
             if (actor.hasRole(RoleCode.ADMIN)) return true;
-            boolean assignedAuthor = actor.hasRole(RoleCode.INSTALLER)
-                    && ((Number) order.get("installer_user_id")).longValue() == actor.userId()
-                    && ((Number) order.get("progress_installer_id")).longValue() == actor.userId();
-            if (!assignedAuthor) return false;
+            boolean currentInstaller = actor.hasRole(RoleCode.INSTALLER)
+                    && ((Number) order.get("installer_user_id")).longValue() == actor.userId();
+            if (!currentInstaller) return false;
             if (!Set.of("PENDING_VISIT", "IN_PROGRESS").contains(order.get("order_status"))) {
                 throw new BusinessException(409, "PROGRESS_SEALED", "该订单施工进度已封存，不能修改附件");
             }
@@ -569,8 +568,8 @@ public class FileService {
         }
         if (actor.hasRole(RoleCode.INSTALLER)) {
             return count("SELECT COUNT(*) FROM work_order_progress p JOIN work_order o ON o.id=p.order_id "
-                    + "WHERE p.id=? AND p.installer_user_id=? AND o.installer_user_id=? AND o.deleted=0",
-                    progressId, actor.userId(), actor.userId()) > 0;
+                    + "WHERE p.id=? AND o.installer_user_id=? AND o.deleted=0",
+                    progressId, actor.userId()) > 0;
         }
         if (write) return false;
         return count("SELECT COUNT(*) FROM work_order_progress p JOIN work_order o ON o.id=p.order_id "
@@ -729,24 +728,23 @@ public class FileService {
         catch (GeneralSecurityException exception) { throw new IllegalStateException(exception); }
     }
 
-    private FileView toView(FileAssetRecord file, String url) {
+    private FileView toView(FileAssetRecord file) {
+        long fileId = file.getId();
+        long expires = accessExpiry();
+        String scope = assignmentScope(fileId);
+        String url = "/api/files/access/%d?expires=%d&signature=%s"
+                .formatted(fileId, expires, signature(fileId + ":" + expires + ":" + scope));
         boolean image = file.getMimeType() != null && file.getMimeType().startsWith("image/");
-        String thumbnailUrl = image ? signedImageUrl(file.getId(), "thumbnail") : url;
-        String displayUrl = image ? signedImageUrl(file.getId(), "display") : url;
+        String thumbnailUrl = image ? signedImageUrl(fileId, "thumbnail", expires, scope) : url;
+        String displayUrl = image ? signedImageUrl(fileId, "display", expires, scope) : url;
         return new FileView(file.getId(), file.getOriginalName(), file.getMimeType(),
                 file.getFileSize() == null ? 0L : file.getFileSize(),
                 file.getSha256(), url, file.getCreatedAt(), thumbnailUrl, displayUrl, url);
     }
 
-    private String signedUrl(long fileId) {
-        long expires = accessExpiry();
-        String signature = signature(fileId, expires);
-        return "/api/files/access/%d?expires=%d&signature=%s".formatted(fileId, expires, signature);
-    }
-
-    private String signedImageUrl(long fileId, String variant) {
-        long expires = accessExpiry();
-        String signature = signature(fileId, expires, variant);
+    private String signedImageUrl(long fileId, String variant, long expires, String scope) {
+        String signature = signature(fileId + ":" + expires + ":" + variant.toLowerCase(Locale.ROOT)
+                + ":" + scope);
         return "/api/files/access/%d/%s?expires=%d&signature=%s"
                 .formatted(fileId, variant, expires, signature);
     }
@@ -780,11 +778,27 @@ public class FileService {
     }
 
     private String signature(long fileId, long expires) {
-        return signature(fileId + ":" + expires);
+        return signature(fileId + ":" + expires + ":" + assignmentScope(fileId));
     }
 
     private String signature(long fileId, long expires, String variant) {
-        return signature(fileId + ":" + expires + ":" + variant.toLowerCase(Locale.ROOT));
+        return signature(fileId + ":" + expires + ":" + variant.toLowerCase(Locale.ROOT)
+                + ":" + assignmentScope(fileId));
+    }
+
+    /** Rotating the active assignment invalidates URLs issued before a handoff, including cached progress URLs. */
+    private String assignmentScope(long fileId) {
+        List<Long> assignments = jdbcTemplate.queryForList("""
+                SELECT a.id FROM business_file_relation r
+                JOIN work_order_assignment a ON a.order_id=r.business_id AND a.is_active=TRUE
+                WHERE r.file_id=? AND r.business_type='ORDER'
+                UNION
+                SELECT a.id FROM business_file_relation r
+                JOIN work_order_progress p ON p.id=r.business_id
+                JOIN work_order_assignment a ON a.order_id=p.order_id AND a.is_active=TRUE
+                WHERE r.file_id=? AND r.business_type='PROGRESS'
+                """, Long.class, fileId, fileId);
+        return assignments.stream().sorted().map(String::valueOf).collect(Collectors.joining(","));
     }
 
     private String signature(String payload) {

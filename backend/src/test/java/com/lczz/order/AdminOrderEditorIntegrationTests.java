@@ -142,6 +142,51 @@ class AdminOrderEditorIntegrationTests {
     }
 
     @Test
+    void handoffTransfersActiveAccessAndInvalidatesOldProgressFileUrls() throws Exception {
+        long image = upload(installerToken);
+        bind(image, "PROGRESS", progressId, "PROGRESS");
+        String oldUrl = getData("/api/v1/files/" + image + "/url", installerToken).path("url").asText();
+        http.perform(get(oldUrl)).andExpect(status().isOk());
+        LocalDateTime originalSubmission = jdbc.queryForObject(
+                "SELECT submitted_at FROM material_request WHERE id=?", LocalDateTime.class, requestId);
+        String replacementToken = token(otherInstallerId, RoleCode.INSTALLER);
+        postData("/api/v1/orders/" + orderId + "/assign-master", adminToken,
+                "{\"masterIds\":[" + otherInstallerId + "]}");
+
+        http.perform(get(oldUrl)).andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("INVALID_FILE_SIGNATURE"));
+        http.perform(get("/api/v1/files/" + image + "/url").header("Authorization", "Bearer " + installerToken))
+                .andExpect(status().isForbidden());
+        String freshUrl = getData("/api/v1/files/" + image + "/url", replacementToken).path("url").asText();
+        http.perform(get(freshUrl)).andExpect(status().isOk());
+        assertThat(freshUrl).isNotEqualTo(oldUrl);
+        http.perform(get("/api/v1/orders/" + orderId + "/progress")
+                        .header("Authorization", "Bearer " + installerToken)).andExpect(status().isNotFound());
+        assertThat(getData("/api/v1/orders/" + orderId + "/progress", replacementToken)
+                .get(0).path("installerUserId").asLong()).isEqualTo(installerId);
+        http.perform(get("/api/v1/orders/" + orderId + "/materials")
+                        .header("Authorization", "Bearer " + installerToken)).andExpect(status().isNotFound());
+        assertThat(getData("/api/v1/orders/" + orderId + "/materials", replacementToken)
+                .path("materials").size()).isEqualTo(1);
+        http.perform(post("/api/v1/orders/" + orderId + "/materials")
+                        .header("Authorization", "Bearer " + installerToken)
+                        .contentType("application/json").content(materialBody("3", "旧师傅不能改")))
+                .andExpect(status().isNotFound());
+        postData("/api/v1/orders/" + orderId + "/materials", replacementToken,
+                materialBody("3", "新师傅继续申请"));
+        postData("/api/v1/orders/" + orderId + "/progress", replacementToken,
+                "{\"description\":\"新师傅继续施工\"}");
+        assertThat(jdbc.queryForObject("SELECT installer_user_id FROM material_request WHERE id=?", Long.class, requestId))
+                .isEqualTo(installerId);
+        assertThat(jdbc.queryForObject("SELECT submitted_at FROM material_request WHERE id=?", LocalDateTime.class, requestId))
+                .isEqualTo(originalSubmission);
+        assertThat(jdbc.queryForObject("SELECT order_status FROM work_order WHERE id=?", String.class, orderId))
+                .isEqualTo("IN_PROGRESS");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM work_order_progress WHERE order_id=?", Long.class, orderId))
+                .isEqualTo(2L);
+    }
+
+    @Test
     void correctionCanRetainHistoricalInstallerWhoIsNoLongerAssignable() throws Exception {
         jdbc.update("UPDATE sys_user SET account_status='DISABLED' WHERE id=?", installerId);
         jdbc.update("UPDATE work_order SET order_status='REVIEWED' WHERE id=?", orderId);
@@ -477,39 +522,31 @@ class AdminOrderEditorIntegrationTests {
     }
 
     @Test
-    void protectedStatesRejectInstallerChangesAtomicallyButRetainOtherEditing() throws Exception {
-        for (String state : new String[] {"IN_PROGRESS", "PENDING_REVIEW", "REVIEWED"}) {
-            jdbc.update("UPDATE work_order SET order_status=? WHERE id=?", state, orderId);
-            String revision = load(orderId).path("revision").asText();
-            long notifications = count("sms_notification"), assignments = count("work_order_assignment"), audits = count("operation_audit_log");
-            BigDecimal stockBefore = stock();
-            for (boolean clear : new boolean[] {false, true}) {
-                ObjectNode rejected = command(orderId);
-                ObjectNode basic = orderBody("不能部分保存的说明");
-                if (clear) basic.putArray("masterIds");
-                else basic.putArray("masterIds").add(otherInstallerId);
-                rejected.set("order", basic);
-                rejected.putArray("progress").addObject().put("id", progressId).put("description", "不能部分保存的进度");
-                rejected.set("materials", json.readTree(materialBody("4", "不能部分保存的清单")));
-                fail(rejected, 409, "ORDER_INSTALLER_CHANGE_FORBIDDEN");
-                assertThat(load(orderId).path("revision").asText()).isEqualTo(revision);
-                assertThat(stock()).isEqualByComparingTo(stockBefore);
-                assertThat(count("sms_notification")).isEqualTo(notifications);
-                assertThat(count("work_order_assignment")).isEqualTo(assignments);
-                assertThat(count("operation_audit_log")).isEqualTo(audits);
-            }
-            ObjectNode allowed = command(orderId);
-            allowed.set("order", orderBody("保留师傅更正说明" + state));
-            JsonNode saved = save(orderId, allowed);
-            assertThat(saved.at("/order/statusCode").asText()).isEqualTo(state);
-            assertThat(orders.selectById(orderId).getInstallerUserId()).isEqualTo(installerId);
-            assertThat(orders.selectById(orderId).getDescription()).isEqualTo("保留师傅更正说明" + state);
-            assertThat(count("sms_notification")).isEqualTo(notifications);
-        }
+    void completedEditorCanReassignWithoutChangingHistoricalMaterialsOrProgress() throws Exception {
+        finishPreparation();
+        jdbc.update("UPDATE work_order SET order_status='REVIEWED' WHERE id=?", orderId);
+        LocalDateTime submitted = jdbc.queryForObject("SELECT submitted_at FROM material_request WHERE id=?",
+                LocalDateTime.class, requestId);
+        ObjectNode command = command(orderId);
+        ObjectNode basic = orderBody("历史订单改派");
+        basic.putArray("masterIds").add(otherInstallerId);
+        command.set("order", basic);
+        JsonNode saved = save(orderId, command);
+        assertThat(saved.at("/order/statusCode").asText()).isEqualTo("REVIEWED");
+        assertThat(saved.at("/progress/0/installerUserId").asLong()).isEqualTo(installerId);
+        assertThat(saved.at("/materialRequest/statusCode").asText()).isEqualTo("DONE");
+        assertThat(jdbc.queryForObject("SELECT installer_user_id FROM material_request WHERE id=?", Long.class, requestId))
+                .isEqualTo(installerId);
+        assertThat(jdbc.queryForObject("SELECT submitted_at FROM material_request WHERE id=?", LocalDateTime.class, requestId))
+                .isEqualTo(submitted);
+        assertThat(stock()).isEqualByComparingTo("8");
+        assertThat(count("work_order_assignment")).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT operation_type FROM operation_audit_log WHERE operation_type='ORDER_INSTALLER_REASSIGN'",
+                String.class)).isEqualTo("ORDER_INSTALLER_REASSIGN");
     }
 
     @Test
-    void pendingVisitEditorCannotReassignAfterInstallerSubmitsProgress() throws Exception {
+    void staleEditorConflictsAfterProgressButFreshReassignmentKeepsProgress() throws Exception {
         long id = order("WO-STALE178");
         ObjectNode stale = command(id), basic = orderBody("过期的改派草稿");
         basic.putArray("masterIds").add(otherInstallerId);
@@ -520,18 +557,16 @@ class AdminOrderEditorIntegrationTests {
         http.perform(put(editorPath(id)).header("Authorization", "Bearer " + adminToken)
                         .contentType("application/json").content(stale.toString()))
                 .andExpect(status().isConflict()).andExpect(jsonPath("$.error").value("ORDER_EDIT_CONFLICT"));
-        http.perform(put("/api/v1/orders/" + id).header("Authorization", "Bearer " + adminToken)
-                        .contentType("application/json").content(basic.toString()))
-                .andExpect(status().isConflict()).andExpect(jsonPath("$.error").value("ORDER_INSTALLER_CHANGE_FORBIDDEN"));
-        http.perform(post("/api/v1/orders/" + id + "/assign-master").header("Authorization", "Bearer " + adminToken)
-                        .contentType("application/json").content("{\"masterIds\":[" + otherInstallerId + "]}"))
-                .andExpect(status().isConflict()).andExpect(jsonPath("$.error").value("ORDER_INSTALLER_CHANGE_FORBIDDEN"));
         assertThat(jdbc.queryForMap("SELECT * FROM work_order WHERE id=?", id)).isEqualTo(before);
         assertThat(count("sms_notification")).isEqualTo(notifications);
         assertThat(count("work_order_assignment")).isEqualTo(assignments);
+        http.perform(post("/api/v1/orders/" + id + "/assign-master").header("Authorization", "Bearer " + adminToken)
+                        .contentType("application/json").content("{\"masterIds\":[" + otherInstallerId + "]}"))
+                .andExpect(status().isOk());
         JsonNode refreshed = load(id);
         assertThat(refreshed.at("/order/statusCode").asText()).isEqualTo("IN_PROGRESS");
         assertThat(refreshed.at("/progress/0/installerUserId").asLong()).isEqualTo(installerId);
+        assertThat(refreshed.at("/order/selectedMasterList/0/id").asLong()).isEqualTo(otherInstallerId);
     }
 
     private void finishPreparation() throws Exception {

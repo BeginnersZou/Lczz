@@ -14,7 +14,7 @@
       <el-button type="primary" link @click="loadEditData">重新加载</el-button>
     </div>
     <el-form v-else v-loading="pageLoading" ref="orderFormRef" :disabled="submitLoading || !editable" :model="form" :rules="rules" label-width="120px" class="form-content">
-      <el-alert v-if="isEdit && !editable" title="已作废订单只读，无法保存修改。" type="warning" :closable="false" show-icon />
+      <el-alert v-if="isEdit && !editable" title="已作废订单的其它信息只读；如需更换师傅，请在订单详情操作。" type="warning" :closable="false" show-icon />
       <el-alert v-else-if="isEdit && ['PENDING_REVIEW', 'REVIEWED'].includes(orderOrigin.statusCode)"
         title="此订单已完成。管理员更正会保留客户确认及完成状态；修改耗材清单将重新备货。" type="info" :closable="false" show-icon />
       <p v-if="lastEdit" class="edit-audit">上次管理员修改：{{ lastEdit.operatorName }} · {{ formatDateTime(lastEdit.editedAt, { seconds: true }) }}</p>
@@ -88,7 +88,7 @@
           <div class="master-select-wrap">
             <el-button plain :disabled="!canChangeInstaller || submitLoading || pageLoading" @click="openMasterDialog">添加</el-button>
           </div>
-          <p v-if="isEdit && !canChangeInstaller" class="edit-tip">当前订单已进入处理中或已结束，不能修改安装师傅。</p>
+          <p v-if="isEdit && !canChangeInstaller" class="edit-tip">此页只读，请到订单详情更换师傅。</p>
           <!-- 已选师傅表格 -->
           <el-table v-if="selectedMasterList.length > 0" :data="selectedMasterList" border size="small"
             style="width: 100%;margin-top:10px">
@@ -250,8 +250,7 @@ const orderId = ref('')
 const submitLoading = ref(false)
 const pageLoading = ref(false)
 const loadError = ref('')
-const canChangeInstaller = computed(() => editable.value && (!isEdit.value
-  || ['PENDING_ASSIGNMENT', 'PENDING_VISIT'].includes(orderOrigin.value.statusCode)))
+const canChangeInstaller = computed(() => editable.value)
 
 const masterDialogVisible = ref(false)
 const leaveDialogVisible = ref(false)
@@ -630,7 +629,6 @@ async function handleSubmit() {
   } catch (error) {
     if (error === 'cancel' || error === 'close') return
     saveConflict.value = error.response?.data?.error === 'ORDER_EDIT_CONFLICT'
-      || error.response?.data?.error === 'ORDER_INSTALLER_CHANGE_FORBIDDEN'
       || error.response?.status === 409 && /已被修改|重新加载/.test(error.response?.data?.message || error.message || '')
     submitError.value = error.response?.data?.message || error.message || '保存失败，请检查后重试。'
   } finally {

@@ -227,34 +227,39 @@ class OrderIntegrationTests {
     }
 
     @Test
-    void processingAndLaterStatesRejectChangingOrClearingInstallerWithoutWritingAnything() throws Exception {
+    void everyStatusAllowsReassignmentWithoutChangingStatusOrDuplicatingNotifications() throws Exception {
         for (String state : new String[] {"IN_PROGRESS", "PENDING_REVIEW", "REVIEWED", "CANCELLED"}) {
             long id = createOrder("13800138000", installerId).path("id").asLong();
             jdbcTemplate.update("UPDATE work_order SET order_status=? WHERE id=?", state, id);
-            var before = jdbcTemplate.queryForMap("SELECT * FROM work_order WHERE id=?", id);
             int sms = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM sms_notification", Integer.class);
-            String error = Set.of("REVIEWED", "CANCELLED").contains(state) ? "ORDER_NOT_EDITABLE" : "ORDER_INSTALLER_CHANGE_FORBIDDEN";
-            for (String masters : new String[] {"[" + otherInstallerId + "]", "[]", "null"}) {
-                mockMvc.perform(put("/api/orders/" + id).header("Authorization", "Bearer " + adminToken)
-                                .contentType("application/json").content(orderJson("13800138000", masters)))
-                        .andExpect(status().isConflict()).andExpect(jsonPath("$.error").value(error));
-            }
+            int histories = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM work_order_status_history WHERE order_id=?",
+                    Integer.class, id);
+            mockMvc.perform(post("/api/v1/orders/" + id + "/assign-master").header("Authorization", "Bearer " + adminToken)
+                            .contentType("application/json").content("{\"masterIds\":[" + otherInstallerId
+                                    + "],\"expectedInstallerId\":" + installerId + "}"))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.data.statusCode").value(state))
+                    .andExpect(jsonPath("$.data.selectedMasterList[0].id").value(otherInstallerId));
+            mockMvc.perform(get("/api/orders/detail/" + id)
+                            .header("Authorization", "Bearer " + token(installerId, RoleCode.INSTALLER)))
+                    .andExpect(status().isNotFound());
+            mockMvc.perform(get("/api/orders/detail/" + id)
+                            .header("Authorization", "Bearer " + token(otherInstallerId, RoleCode.INSTALLER)))
+                    .andExpect(status().isOk());
+            mockMvc.perform(post("/api/v1/orders/" + id + "/assign-master").header("Authorization", "Bearer " + adminToken)
+                            .contentType("application/json").content("{\"masterIds\":[" + installerId
+                                    + "],\"expectedInstallerId\":" + installerId + "}"))
+                    .andExpect(status().isConflict()).andExpect(jsonPath("$.error").value("ORDER_ASSIGNMENT_CONFLICT"));
             mockMvc.perform(post("/api/v1/orders/" + id + "/assign-master").header("Authorization", "Bearer " + adminToken)
                             .contentType("application/json").content("{\"masterIds\":[" + otherInstallerId + "]}"))
-                    .andExpect(status().isConflict()).andExpect(jsonPath("$.error").value(error));
+                    .andExpect(status().isOk());
             mockMvc.perform(post("/api/orders/" + id + "/assign-master").header("Authorization", "Bearer " + adminToken)
                             .contentType("application/json").content("{\"masterIds\":[]}"))
                     .andExpect(status().isBadRequest());
-            assertThat(jdbcTemplate.queryForMap("SELECT * FROM work_order WHERE id=?", id)).isEqualTo(before);
-            assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM work_order_assignment WHERE order_id=?", Integer.class, id)).isEqualTo(1);
-            assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM sms_notification", Integer.class)).isEqualTo(sms);
-            if (!Set.of("REVIEWED", "CANCELLED").contains(state)) {
-                mockMvc.perform(put("/api/orders/" + id).header("Authorization", "Bearer " + adminToken)
-                                .contentType("application/json").content(orderJson("13800138000", "[" + installerId + "]")
-                                        .replace("客厅挂机安装", "只改说明，保留师傅")))
-                        .andExpect(status().isOk()).andExpect(jsonPath("$.data.description").value("只改说明，保留师傅"))
-                        .andExpect(jsonPath("$.data.statusCode").value(state));
-            }
+            assertThat(jdbcTemplate.queryForObject("SELECT order_status FROM work_order WHERE id=?", String.class, id)).isEqualTo(state);
+            assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM work_order_assignment WHERE order_id=?", Integer.class, id)).isEqualTo(2);
+            assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM sms_notification", Integer.class)).isEqualTo(sms + 1);
+            assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM work_order_status_history WHERE order_id=?",
+                    Integer.class, id)).isEqualTo(histories);
         }
     }
 

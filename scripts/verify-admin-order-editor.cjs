@@ -181,20 +181,7 @@ async function main() {
   conflict.stop()
   console.log('PASS: cancelled orders are read-only and conflicts are visible with explicit reload')
 
-  for (const status of ['IN_PROGRESS', 'PENDING_REVIEW', 'REVIEWED', 'CANCELLED']) {
-    const locked = editorFixture({ status, editable: status !== 'CANCELLED' })
-    await locked.mount()
-    assert.equal(locked.view.canChangeInstaller.value, false)
-    await locked.view.openMasterDialog()
-    locked.view.removeSelectedMaster(0)
-    locked.view.tempSelectMaster.value = [{ id: 8 }]
-    await locked.view.confirmSelectMaster()
-    assert.deepEqual([...locked.view.selectedMasterList.value.map(master => master.id)], [7])
-    assert.equal(locked.masterLoads.length, 0)
-    assert.equal(locked.saves.length, 0)
-    locked.stop()
-  }
-  for (const status of ['PENDING_ASSIGNMENT', 'PENDING_VISIT']) {
+  for (const status of ['PENDING_ASSIGNMENT', 'PENDING_VISIT', 'IN_PROGRESS', 'PENDING_REVIEW', 'REVIEWED']) {
     const allowed = editorFixture({ status })
     await allowed.mount()
     assert.equal(allowed.view.canChangeInstaller.value, true)
@@ -209,23 +196,29 @@ async function main() {
     assert.deepEqual([...allowed.saves[0].order.masterIds], [8])
     allowed.stop()
   }
+  const cancelledReassignment = editorFixture({ status: 'CANCELLED', editable: false })
+  await cancelledReassignment.mount()
+  assert.equal(cancelledReassignment.view.canChangeInstaller.value, false)
+  await cancelledReassignment.view.openMasterDialog()
+  assert.equal(cancelledReassignment.masterLoads.length, 0)
+  cancelledReassignment.stop()
   const changedState = editorFixture({ status: 'PENDING_VISIT' })
   await changedState.mount()
   await changedState.view.openMasterDialog()
   changedState.view.handleMasterSelection([{ id: 8 }])
   await changedState.view.confirmSelectMaster()
   changedState.data.order.statusCode = 'IN_PROGRESS'
-  changedState.fail({ response: { status: 409, data: { error: 'ORDER_INSTALLER_CHANGE_FORBIDDEN', message: '不能修改安装师傅' } } })
+  changedState.fail({ response: { status: 409, data: { error: 'ORDER_EDIT_CONFLICT', message: '订单已变化，请重新加载' } } })
   await changedState.view.handleSubmit()
   assert.equal(changedState.view.saveConflict.value, true)
   assert.equal(changedState.navigations.length, 0)
   await changedState.view.reloadAfterConflict()
-  assert.equal(changedState.view.canChangeInstaller.value, false)
+  assert.equal(changedState.view.canChangeInstaller.value, true)
   assert.equal(changedState.view.masterDialogVisible.value, false)
   assert.deepEqual([...changedState.view.selectedMasterList.value.map(master => master.id)], [7])
   assert.equal(changedState.view.formIsDirty.value, false)
   changedState.stop()
-  console.log('PASS: installer selection follows order state; rejected stale changes reload the current installer without saving early')
+  console.log('PASS: installer selection supports active states; rejected stale changes reload the current installer without saving early')
 
   const materialProps = vue.reactive({ modelValue: { items: [{ productId: 5, skuId: 9, quantity: 2, stock: 8 }], remark: '' },
     request: { materials: [{ skuId: 9, count: 2 }] }, disabled: false })

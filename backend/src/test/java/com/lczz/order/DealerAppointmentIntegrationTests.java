@@ -231,7 +231,7 @@ class DealerAppointmentIntegrationTests {
                 post("/api/orders/" + id + "/cancel"))) {
             mvc.perform(auth(request, dealer)).andExpect(status().isForbidden());
         }
-        assertThatThrownBy(() -> orders.assign(actor(dealer), id, List.of(installer), "bypass"))
+        assertThatThrownBy(() -> orders.assign(actor(dealer), id, List.of(installer), "bypass", null))
                 .hasMessageContaining("仅管理员");
         assertThatThrownBy(() -> appointments.create(actor(customer), new DealerAppointmentService.Command(
                 "request-1234567890", "空调安装", null, "客户", "13800138000", List.of("湖北省", "武汉市", "江岸区"), "1号", List.of())))
@@ -299,7 +299,9 @@ class DealerAppointmentIntegrationTests {
         mvc.perform(auth(post("/api/orders/" + id + "/progress").contentType("application/json").content("{\"description\":\"施工\",\"fileIds\":[]}"), installer)).andExpect(status().isNotFound());
         mvc.perform(auth(post("/api/orders/" + id + "/confirm-completion"), customer)).andExpect(status().isConflict());
         assertThat(data(post("/api/orders/" + id + "/cancel"), admin).path("statusCode").asText()).isEqualTo("CANCELLED");
-        mvc.perform(auth(post("/api/orders/" + id + "/assign-master").contentType("application/json").content(json.writeValueAsString(Map.of("masterIds", List.of(installer)))), admin)).andExpect(status().isConflict());
+        mvc.perform(auth(post("/api/orders/" + id + "/assign-master").contentType("application/json")
+                .content(json.writeValueAsString(Map.of("masterIds", List.of(installer)))), admin))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.statusCode").value("CANCELLED"));
     }
 
     @Test
