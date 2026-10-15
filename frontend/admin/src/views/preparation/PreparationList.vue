@@ -34,7 +34,7 @@
         <p>{{ loadError }}</p>
         <el-button type="primary" @click="loadList">重新加载</el-button>
       </div>
-      <el-table v-else v-loading="tableLoading" :data="pagedList" border stripe
+      <el-table v-else v-loading="tableLoading" :data="pagedList" scrollbar-always-on
         table-layout="fixed" class="business-table" empty-text="当前筛选条件下暂无备货记录">
         <el-table-column label="序号" width="72" align="center">
           <template #default="scope">{{ (currentPage - 1) * pageSize + scope.$index + 1 }}</template>
@@ -79,13 +79,11 @@
         <el-table-column label="创建时间" width="180">
           <template #default="scope">{{ formatDateTime(scope.row.createTime) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="230" align="center" fixed="right">
+        <el-table-column label="操作" width="152" align="left">
           <template #default="scope">
-            <div class="row-actions">
-              <el-button type="primary" link :loading="openingAction === `${rowKey(scope.row)}:view`" :disabled="openingId !== ''" @click="handleView(scope.row)">查看</el-button>
-              <el-button type="primary" link :loading="exportingId === rowKey(scope.row)" :disabled="exportingId !== ''" @click="handleDetailExport(scope.row)">导出</el-button>
-              <el-button v-if="canPrepare(scope.row)" type="primary" size="small" :loading="openingAction === `${rowKey(scope.row)}:prepare`" :disabled="openingId !== ''" @click="handlePrepare(scope.row)">备货</el-button>
-            </div>
+            <AdminRowActions primary-label="查看详情" :menu-items="preparationActions(scope.row)"
+              :primary-loading="openingAction === `${rowKey(scope.row)}:view`" :primary-disabled="openingId !== ''"
+              @primary="handleView(scope.row)" @command="command => handlePreparationAction(command, scope.row)" />
           </template>
         </el-table-column>
       </el-table>
@@ -163,6 +161,7 @@ import {
   submitPreparationApi
 } from '@/api/preparation'
 import { formatDate, formatDateTime } from '@/utils/format'
+import AdminRowActions from '@/components/AdminRowActions.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -270,6 +269,17 @@ async function openDetail(row, editable) {
 function handleView(row) { return openDetail(row, false) }
 function handlePrepare(row) { return openDetail(row, true) }
 
+function preparationActions(row) {
+  const actions = [{ command: 'export', label: '导出明细', disabled: exportingId.value !== '' }]
+  if (canPrepare(row)) actions.unshift({ command: 'prepare', label: '开始备货', disabled: openingId.value !== '' })
+  return actions
+}
+
+function handlePreparationAction(command, row) {
+  if (command === 'export') handleDetailExport(row)
+  else if (command === 'prepare') handlePrepare(row)
+}
+
 async function savePreparation() {
   if (!currentRow.value || preparing.value) return
   const shouldFinish = allChecked.value
@@ -342,9 +352,6 @@ onMounted(loadList)
 .filters { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
 .filters .keyword-input { width: 360px; }
 .filters :deep(.el-select) { width: 190px; }
-.table-card :deep(.el-card__body) { padding: 0; overflow-x: auto; }
-.business-table { width: 100%; min-width: 0; }
-.business-table :deep(th.el-table__cell) { height: 52px; color: #344054; background: #f8fafc; }
 .copy-button { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 0; color: #175cd3; background: transparent; border: 0; cursor: pointer; }
 .copy-button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .person-cell { display: flex; flex-direction: column; gap: 5px; }
@@ -353,9 +360,6 @@ onMounted(loadList)
 .material-summary { display: flex; flex-direction: column; gap: 5px; }
 .material-summary strong { color: #344054; font-size: 13px; }
 .material-summary span { color: #98a2b3; font-size: 12px; }
-.row-actions { display: flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap; }
-.row-actions :deep(.el-button + .el-button) { margin-left: 0; }
-.pagination-wrap { display: flex; justify-content: flex-end; padding: 18px 20px; }
 .feedback-state { display: flex; min-height: 280px; flex-direction: column; align-items: center; justify-content: center; color: #667085; }
 .feedback-state p { margin: 12px 0 18px; }
 .detail-content { min-height: 220px; }

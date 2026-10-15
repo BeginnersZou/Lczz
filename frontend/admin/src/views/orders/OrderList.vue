@@ -62,7 +62,7 @@
         <span>{{ loadError }}</span>
         <el-button type="primary" link @click="loadList">重新加载</el-button>
       </div>
-      <el-table v-else v-loading="tableLoading" :data="orders" border stripe table-layout="fixed" class="business-table"
+      <el-table v-else v-loading="tableLoading" :data="orders" table-layout="fixed" class="business-table" scrollbar-always-on
         empty-text="暂无订单，点击上方按钮新增第一条订单">
         <!-- 序号 -->
         <el-table-column label="序号" align="center" width="72">
@@ -71,14 +71,14 @@
           </template>
         </el-table-column>
         <!-- 订单名称 -->
-        <el-table-column label="任务信息" align="left" min-width="240">
+        <el-table-column label="任务信息" align="left" min-width="200">
           <template #default="scope">
             <div class="primary-cell">{{ scope.row.productName || scope.row.taskType || '-' }}</div>
             <div class="secondary-cell">{{ scope.row.description || '暂无描述' }}</div>
           </template>
         </el-table-column>
         <!-- 订单编号 支持点击复制 -->
-        <el-table-column prop="orderNo" label="订单编号" align="left" min-width="240" show-overflow-tooltip>
+        <el-table-column prop="orderNo" label="订单编号" align="left" min-width="210" show-overflow-tooltip>
           <template #default="scope">
             <span class="table-order-id code-cell" role="button" tabindex="0" @click="copyOrderId(scope.row.orderNo || scope.row.id)" @keyup.enter="copyOrderId(scope.row.orderNo || scope.row.id)">
               {{ scope.row.orderNo || scope.row.id }}
@@ -89,19 +89,19 @@
           </template>
         </el-table-column>
         <!-- 指派师傅 -->
-        <el-table-column label="客户" align="left" min-width="160">
+        <el-table-column label="客户" align="left" min-width="140">
           <template #default="scope">
             <div class="primary-cell">{{ scope.row.customerName || '-' }}</div>
             <div class="secondary-cell">{{ formatPhone(scope.row.customerPhone) }}</div>
           </template>
         </el-table-column>
-        <el-table-column prop="projectAddress" label="项目地址" align="left" min-width="220" show-overflow-tooltip>
+        <el-table-column prop="projectAddress" label="项目地址" align="left" min-width="180" show-overflow-tooltip>
           <template #default="scope">{{ scope.row.projectAddress || '-' }}</template>
         </el-table-column>
-        <el-table-column label="订单来源" min-width="180">
+        <el-table-column label="订单来源" min-width="130">
           <template #default="{ row }"><OrderOrigin :order="row" /></template>
         </el-table-column>
-        <el-table-column prop="assignMaster" label="指派师傅" align="left" min-width="160" show-overflow-tooltip>
+        <el-table-column prop="assignMaster" label="指派师傅" align="left" min-width="120" show-overflow-tooltip>
           <template #default="scope">{{ scope.row.assignMaster || scope.row.masterName || '待指派' }}</template>
         </el-table-column>
         <el-table-column label="状态" align="center" width="104">
@@ -109,21 +109,18 @@
             <el-tag :type="getStatusType(scope.row.status)" size="small">{{ getStatusText(scope.row.status) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="创建 / 客户确认时间" align="left" width="200">
+        <el-table-column label="时间信息" align="left" width="170">
           <template #default="scope">
             <div class="datetime-cell">创建：{{ formatDateTime(scope.row.createTime) }}</div>
             <div class="datetime-cell">确认：{{ formatDateTime(scope.row.customerConfirmedAt) }}</div>
           </template>
         </el-table-column>
         <!-- 操作：查看、修改与作废 -->
-        <el-table-column label="操作" align="center" width="330" fixed="right">
+        <el-table-column label="操作" align="left" width="152">
           <template #default="scope">
-            <div class="table-actions">
-              <el-button text type="primary" @click="router.push({ name: 'OrderDetail', params: { id: scope.row.id }, query: route.query })">查看详情</el-button>
-              <el-button v-if="isReviewedStatus(scope.row.status)" text type="success" @click="handleViewReview(scope.row)">查看评价</el-button>
-              <el-button text type="primary" @click="handleEditOrder(scope.row)">{{ scope.row.status === 'PENDING_ASSIGNMENT' ? '完善并派单' : '修改' }}</el-button>
-              <el-button v-if="!isCancelled(scope.row.status)" text type="danger" @click="handleDeleteOrder(scope.row)">作废</el-button>
-            </div>
+            <AdminRowActions primary-label="查看详情" :menu-items="orderActions(scope.row)"
+              @primary="router.push({ name: 'OrderDetail', params: { id: scope.row.id }, query: route.query })"
+              @command="command => handleOrderAction(command, scope.row)" />
           </template>
         </el-table-column>
       </el-table>
@@ -188,6 +185,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { getOrderListApi, cancelOrderApi, exportOrdersApi, getOrderEvaluationApi } from '@/api/orders'
 import { formatDate, formatDateTime, formatPhone } from '@/utils/format'
 import OrderOrigin from './OrderOrigin.vue'
+import AdminRowActions from '@/components/AdminRowActions.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -434,6 +432,19 @@ function isCancelled(status) {
 function isReviewedStatus(status) {
   return status === 'REVIEWED' || status === '已评价'
 }
+
+function orderActions(row) {
+  const actions = [{ command: 'edit', label: row.status === 'PENDING_ASSIGNMENT' ? '完善并派单' : '修改订单' }]
+  if (isReviewedStatus(row.status)) actions.push({ command: 'review', label: '查看评价' })
+  if (!isCancelled(row.status)) actions.push({ command: 'cancel', label: '作废订单', danger: true })
+  return actions
+}
+
+function handleOrderAction(command, row) {
+  if (command === 'edit') handleEditOrder(row)
+  else if (command === 'review') handleViewReview(row)
+  else if (command === 'cancel') handleDeleteOrder(row)
+}
 // 页面初始化自动请求
 onMounted(loadList)
 </script>
@@ -529,20 +540,6 @@ onMounted(loadList)
 
   // 表格卡片
   .table-card {
-    border-radius: 8px;
-    border: none;
-    margin-bottom: 16px;
-
-    :deep(.el-card__body) {
-      padding: 12px;
-      overflow-x: auto;
-    }
-
-    .business-table { width: 100%; min-width: 0; }
-
-    .table-actions { display: flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap; }
-    .table-actions :deep(.el-button + .el-button) { margin-left: 0; }
-
     // 表格订单号复制样式
     .table-order-id {
       cursor: pointer;
@@ -571,15 +568,6 @@ onMounted(loadList)
       white-space: nowrap;
     }
 
-    // 表格全局样式微调
-    :deep(.el-table) {
-      border-radius: 6px;
-    }
-
-    :deep(.el-table th) {
-      background-color: #f8fafc;
-      color: #1f2937;
-    }
   }
 
   .review-dialog-body {
@@ -671,21 +659,6 @@ onMounted(loadList)
     }
   }
 
-  // 分页
-  .el-pagination-style {
-    margin-top: 24px;
-    display: flex;
-    justify-content: flex-end;
-
-    :deep(.el-pagination) {
-
-      .btn-prev,
-      .btn-next,
-      .number {
-        border-radius: 4px;
-      }
-    }
-  }
 }
 
 // 移动端适配
