@@ -113,9 +113,6 @@ public class MaterialRequestService {
                 .orderByDesc(MaterialRequestEntity::getSubmittedAt)
                 .orderByDesc(MaterialRequestEntity::getId)
                 .last("LIMIT 1"));
-        if (request != null && !java.util.Objects.equals(request.getInstallerUserId(), actor.userId())) {
-            throw new BusinessException(404, "ORDER_MATERIALS_NOT_FOUND", "订单不存在或耗材申请不属于当前安装师傅");
-        }
         return request == null ? null : toViews(List.of(request)).getFirst();
     }
 
@@ -171,13 +168,12 @@ public class MaterialRequestService {
             return null;
         }
         if (existing != null) {
-            if (!adminEdit && !existing.getInstallerUserId().equals(actor.userId())) {
-                throw new BusinessException(409, "ACTIVE_MATERIAL_REQUEST_EXISTS", "该订单已有其他师傅提交的耗材申请");
-            }
+            // The request records its original submitter; the current order assignee owns subsequent edits.
+            boolean retainOriginalSubmission = adminEdit || !java.util.Objects.equals(existing.getInstallerUserId(), actor.userId());
             List<MaterialRequestItemEntity> previousItems = items(existing.getId());
             if (sameSubmittedItems(previousItems, command.items())) {
                 if (!java.util.Objects.equals(existing.getRemark(), blankToNull(command.remark()))) {
-                    updateRequestRemark(existing, command.remark(), adminEdit);
+                    updateRequestRemark(existing, command.remark(), retainOriginalSubmission);
                 }
                 if (!adminEdit) transitionToInProgress(order, actor.userId());
                 return toViews(List.of(existing)).getFirst();
@@ -200,7 +196,7 @@ public class MaterialRequestService {
             existing.setRequestStatus("PENDING");
             existing.setCompletedBy(null);
             existing.setCompletedAt(null);
-            updateRequestRemark(existing, command.remark(), adminEdit);
+            updateRequestRemark(existing, command.remark(), retainOriginalSubmission);
             if (!adminEdit) transitionToInProgress(order, actor.userId());
             return toViews(List.of(existing)).getFirst();
         }

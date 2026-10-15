@@ -292,7 +292,7 @@ class MaterialRequestIntegrationTests {
     }
 
     @Test
-    void miniProgramMaterialDetailsAreLimitedToTheSubmittingInstaller() throws Exception {
+    void miniProgramMaterialDetailsFollowTheCurrentInstallerWhilePreservingTheSubmitter() throws Exception {
         submit(orderId, installerToken, itemsJson("2", "1"));
 
         for (String prefix : new String[] {"/api", "/api/v1"}) {
@@ -316,8 +316,10 @@ class MaterialRequestIntegrationTests {
         jdbcTemplate.update("UPDATE work_order SET installer_user_id=? WHERE id=?", otherInstallerId, orderId);
         mockMvc.perform(get("/api/v1/orders/" + orderId + "/materials")
                         .header("Authorization", "Bearer " + token(otherInstallerId, RoleCode.INSTALLER)))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.error").value("ORDER_MATERIALS_NOT_FOUND"));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.materials[0].name").value("铜管"));
+        assertThat(jdbcTemplate.queryForObject("SELECT installer_user_id FROM material_request WHERE order_id=?",
+                Long.class, orderId)).isEqualTo(installerId);
         mockMvc.perform(get("/api/v1/orders/" + orderId + "/materials")
                         .header("Authorization", "Bearer " + installerToken))
                 .andExpect(status().isNotFound())

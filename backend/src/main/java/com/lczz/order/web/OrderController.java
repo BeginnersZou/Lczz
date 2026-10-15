@@ -103,7 +103,8 @@ public class OrderController {
     ApiResponse<OrderView> assign(@AuthenticationPrincipal AuthenticatedUser actor,
                                   @PathVariable @Min(1) long id,
                                   @Valid @RequestBody AssignRequest body, HttpServletRequest request) {
-        return ApiResponse.success(orderService.assign(actor, id, body.masterIds(), body.reason()), requestId(request));
+        return ApiResponse.success(orderService.assign(actor, id, body.masterIds(), body.reason(),
+                body.expectedInstallerId()), requestId(request));
     }
 
     @PatchMapping("/{id}/status")
@@ -157,7 +158,7 @@ public class OrderController {
     }
 
     record AssignRequest(@NotNull @Size(min = 1, max = 1) List<@NotNull @Min(1) Long> masterIds,
-                         @Size(max = 500) String reason) { }
+                         @Size(max = 500) String reason, @Min(0) Long expectedInstallerId) { }
     record StatusRequest(@NotBlank @Size(max = 32) String status, @Size(max = 500) String reason) { }
     record CancelRequest(@Size(max = 500) String reason) { }
 }
