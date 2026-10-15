@@ -51,7 +51,7 @@
         </template>
       </el-alert>
 
-      <el-table v-else v-loading="loading" :data="tableData" border stripe table-layout="fixed" class="business-table">
+      <el-table v-else v-loading="loading" :data="tableData" table-layout="fixed" class="business-table" scrollbar-always-on>
         <el-table-column label="用户" min-width="190">
           <template #default="{ row }">
             <div class="user-cell">
@@ -93,23 +93,11 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="300" fixed="right" align="center">
+        <el-table-column label="操作" width="152" align="left">
           <template #default="{ row }">
-            <div class="table-actions">
-              <el-button link type="primary" @click="openDialog('view', row)">详情</el-button>
-              <el-button link type="primary" @click="openDialog('edit', row)">编辑</el-button>
-              <el-button
-                link
-                :type="row.accountStatus === 'ENABLED' ? 'warning' : 'success'"
-                :loading="statusLoadingId === row.id"
-                @click="handleStatusChange(row)"
-              >
-                {{ row.accountStatus === 'ENABLED' ? '停用' : '启用' }}
-              </el-button>
-              <el-button link :type="row.blacklist ? 'primary' : 'danger'" @click="openBlacklistDialog(row)">
-                {{ row.blacklist ? '移出黑名单' : '加入黑名单' }}
-              </el-button>
-            </div>
+            <AdminRowActions primary-label="查看详情" :menu-items="userActions(row)"
+              :menu-disabled="statusLoadingId === row.id" @primary="openDialog('view', row)"
+              @command="command => handleUserAction(command, row)" />
           </template>
         </el-table-column>
         <template #empty>
@@ -288,6 +276,7 @@ import {
 } from '@/api/users'
 import { formatDateTime, formatPhone } from '@/utils/format'
 import { useUserStore } from '@/stores/user'
+import AdminRowActions from '@/components/AdminRowActions.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -642,6 +631,20 @@ function openBlacklistDialog(row) {
   blacklistDialogVisible.value = true
 }
 
+function userActions(row) {
+  return [
+    { command: 'edit', label: '编辑用户' },
+    { command: 'status', label: row.accountStatus === 'ENABLED' ? '停用账号' : '启用账号', danger: row.accountStatus === 'ENABLED' },
+    { command: 'blacklist', label: row.blacklist ? '移出黑名单' : '加入黑名单', danger: !row.blacklist }
+  ]
+}
+
+function handleUserAction(command, row) {
+  if (command === 'edit') openDialog('edit', row)
+  else if (command === 'status') handleStatusChange(row)
+  else if (command === 'blacklist') openBlacklistDialog(row)
+}
+
 function resetBlacklistDialog() {
   blacklistTarget.value = null
   blacklistReason.value = ''
@@ -745,27 +748,6 @@ onMounted(loadList)
 
   .search-actions {
     margin-left: auto;
-  }
-}
-
-.table-card {
-  :deep(.el-card__body) {
-    padding: 0;
-    overflow-x: auto;
-  }
-
-  .business-table { width: 100%; min-width: 0; }
-  .table-actions { display: flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap; }
-  .table-actions :deep(.el-button + .el-button) { margin-left: 0; }
-
-  :deep(.el-table th.el-table__cell) {
-    height: 50px;
-    color: #334155;
-    background: #f8fafc;
-  }
-
-  :deep(.el-table td.el-table__cell) {
-    height: 62px;
   }
 }
 

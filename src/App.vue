@@ -53,9 +53,9 @@ select {
 
 .main-content :is(.order-page, .user-page, .audit-page, .dynamic-page, .dashboard, .preparation-page, .case-page) > .page-header,
 .main-content :is(.order-form-page, .publish-page, .detail-edit-page, .audit-detail-page, .detail-page, .case-form-page) > .page-header {
-  min-height: 68px !important;
+  min-height: 72px !important;
   margin: 0 !important;
-  padding: 0 4px 16px !important;
+  padding: 0 0 18px !important;
   display: flex !important;
   align-items: center !important;
   justify-content: space-between !important;
@@ -96,13 +96,12 @@ select {
   margin-left: 0;
 }
 
-.main-content .search-card {
-  margin: 0 !important;
+.main-content :is(.order-page, .user-page, .preparation-page, .case-page) :is(.search-card, .filter-card) {
+  margin: 0 0 14px !important;
   background: var(--surface-card) !important;
   border: 1px solid var(--border-default) !important;
-  border-bottom: 0 !important;
-  border-radius: var(--radius-card) var(--radius-card) 0 0 !important;
-  box-shadow: none !important;
+  border-radius: 10px !important;
+  box-shadow: var(--shadow-card) !important;
 }
 
 .main-content .dynamic-page .search-card {
@@ -118,7 +117,7 @@ select {
   border: 0;
 }
 
-.main-content .search-card .el-card__body {
+.main-content :is(.search-card, .filter-card) .el-card__body {
   padding: 16px 20px !important;
 }
 
@@ -156,30 +155,42 @@ select {
   margin-left: 0;
 }
 
-.main-content .table-card {
+.main-content :is(.order-page, .user-page, .preparation-page, .case-page) .table-card {
   margin: 0 !important;
   overflow: hidden;
   border: 1px solid var(--border-default) !important;
-  border-radius: 0 0 var(--radius-card) var(--radius-card) !important;
+  border-radius: 10px !important;
   box-shadow: var(--shadow-card) !important;
 }
 
-.main-content .table-card > .el-card__body {
+.main-content :is(.order-page, .user-page, .preparation-page, .case-page) .table-card > .el-card__body {
   padding: 0 !important;
   overflow: hidden;
 }
 
-.main-content :is(.pagination-wrap, .el-pagination-style) {
-  min-height: 58px;
+.main-content :is(.order-page, .user-page, .preparation-page, .case-page) .pagination-wrap {
+  min-height: 68px;
   margin: 0 !important;
-  padding: 14px 20px !important;
+  padding: 12px 20px !important;
   display: flex !important;
   align-items: center;
-  justify-content: flex-end !important;
+  justify-content: space-between !important;
   background: #fff;
   border-top: 1px solid var(--border-default);
   max-width: 100%;
-  overflow-x: auto;
+}
+
+.main-content :is(.order-page, .user-page, .preparation-page, .case-page) .pagination-wrap .el-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  width: 100%;
+  gap: 8px 4px;
+}
+
+.main-content :is(.order-page, .user-page, .preparation-page, .case-page) .pagination-wrap .el-pagination__total {
+  margin-right: auto;
+  color: var(--text-secondary);
 }
 
 .primary-cell {
@@ -375,7 +386,7 @@ select {
 
   .main-content .search-card .el-form-item { width: 100%; }
   .main-content .search-card .el-form-item__content { min-width: 0; }
-  .main-content :is(.pagination-wrap, .el-pagination-style) {
+  .main-content :is(.order-page, .user-page, .preparation-page, .case-page) .pagination-wrap {
     padding: 12px !important;
     justify-content: flex-start !important;
   }
@@ -384,11 +395,4 @@ select {
   .main-content .form-footer .footer-right { flex-wrap: wrap; gap: 8px; }
 }
 
-@media (max-width: 900px) {
-  /* Narrow viewports scroll to actions; a wide pinned action column would cover the first fields. */
-  .main-content .business-table .el-table-fixed-column--right {
-    position: static !important;
-    box-shadow: none !important;
-  }
-}
 </style>

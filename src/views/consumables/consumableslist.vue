@@ -58,7 +58,7 @@
         <span>{{ loadError }}</span>
         <el-button type="primary" link @click="loadList">重新加载</el-button>
       </div>
-      <el-table v-else v-loading="tableLoading" :data="pagedList" border stripe table-layout="fixed" class="business-table"
+      <el-table v-else v-loading="tableLoading" :data="pagedList" table-layout="fixed" class="business-table" scrollbar-always-on
         empty-text="暂无耗材，点击上方按钮发布第一条耗材">
         <!-- 序号 -->
         <el-table-column label="序号" align="center" width="72">
@@ -102,26 +102,11 @@
           <template #default="scope"><span class="datetime-cell">{{ formatDateTime(scope.row.createTime) }}</span></template>
         </el-table-column>
         <!-- 操作 -->
-        <el-table-column label="操作" align="center" width="300" fixed="right">
+        <el-table-column label="操作" align="left" width="152">
           <template #default="scope">
-            <div class="table-actions">
-              <div class="action-row">
-                <el-button text type="primary" @click="handleEdit(scope.row)">修改</el-button>
-                <el-button text :type="scope.row.enabled ? 'warning' : 'success'" @click="toggleEnabled(scope.row)">
-                  {{ scope.row.enabled ? '下架' : '上架' }}
-                </el-button>
-                <el-button text type="success" @click="openStockDialog(scope.row)">调整库存</el-button>
-                <el-button text type="danger" @click="handleDelete(scope.row)">删除</el-button>
-              </div>
-              <div class="action-row sort-actions">
-                <el-button text type="primary" :disabled="sortingProductId !== null"
-                  @click="handleSort(scope.row, 'TOP')">置顶</el-button>
-                <el-button text type="primary" :disabled="sortingProductId !== null"
-                  @click="handleSort(scope.row, 'UP')">上移</el-button>
-                <el-button text type="primary" :disabled="sortingProductId !== null"
-                  @click="handleSort(scope.row, 'DOWN')">下移</el-button>
-              </div>
-            </div>
+            <AdminRowActions primary-label="修改耗材" :menu-items="consumableActions(scope.row)"
+              :menu-disabled="sortingProductId !== null" @primary="handleEdit(scope.row)"
+              @command="command => handleConsumableAction(command, scope.row)" />
           </template>
         </el-table-column>
       </el-table>
@@ -182,6 +167,7 @@ import {
 import { useRouter, useRoute } from 'vue-router'
 import { getConsumablesListApi, getConsumableCategoriesApi, deleteConsumablesApi, exportConsumablesApi, adjustConsumableStockApi, setConsumableEnabledApi, sortConsumableApi } from '@/api/consumables'
 import { formatDate, formatDateTime } from '@/utils/format'
+import AdminRowActions from '@/components/AdminRowActions.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -308,6 +294,24 @@ async function toggleEnabled(row) {
   await setConsumableEnabledApi(row.id, !row.enabled)
   ElMessage.success(row.enabled ? '已下架' : '已上架')
   await loadList()
+}
+
+function consumableActions(row) {
+  return [
+    { command: 'stock', label: '调整库存' },
+    { command: 'enabled', label: row.enabled ? '下架耗材' : '上架耗材' },
+    { command: 'TOP', label: '置顶' },
+    { command: 'UP', label: '上移' },
+    { command: 'DOWN', label: '下移' },
+    { command: 'delete', label: '删除耗材', danger: true }
+  ]
+}
+
+function handleConsumableAction(command, row) {
+  if (command === 'stock') openStockDialog(row)
+  else if (command === 'enabled') toggleEnabled(row)
+  else if (['TOP', 'UP', 'DOWN'].includes(command)) handleSort(row, command)
+  else if (command === 'delete') handleDelete(row)
 }
 
 async function handleSort(row, action) {
@@ -554,21 +558,6 @@ onMounted(() => {
 
   // 表格卡片
   .table-card {
-    border-radius: 8px;
-    border: none;
-    margin-bottom: 16px;
-
-    :deep(.el-card__body) {
-      padding: 12px;
-      overflow-x: auto;
-    }
-
-    .business-table { width: 100%; min-width: 0; }
-    .table-actions { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; white-space: nowrap; }
-    .action-row { display: flex; align-items: center; justify-content: center; gap: 8px; }
-    .sort-actions { min-height: 26px; }
-    .table-actions :deep(.el-button + .el-button) { margin-left: 0; }
-
     // 行内耗材图片
     .row-img {
       width: 48px;
@@ -594,31 +583,8 @@ onMounted(() => {
       }
     }
 
-    :deep(.el-table) {
-      border-radius: 6px;
-    }
-
-    :deep(.el-table th) {
-      background-color: #f8fafc;
-      color: #1f2937;
-    }
   }
 
-  // 分页
-  .el-pagination-style {
-    margin-top: 24px;
-    display: flex;
-    justify-content: flex-end;
-
-    :deep(.el-pagination) {
-
-      .btn-prev,
-      .btn-next,
-      .number {
-        border-radius: 4px;
-      }
-    }
-  }
 }
 
 // 移动端适配
