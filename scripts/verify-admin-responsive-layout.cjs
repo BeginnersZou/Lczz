@@ -22,7 +22,7 @@ function reply(url) {
   if (pathname === '/consumables/categories') return [{ id: 1, name: '管材', parentId: null, children: [{ id: 2, name: 'PVC管件', parentId: 1 }] }]
   if (pathname === '/users/list') return { list: [{ ...admin, nickname: '测试管理员', realName: '测试管理员', accountStatus: 'ENABLED', blacklist: false }], total: 1 }
   if (pathname === '/preparation/list') return { list: orders.map(order => ({ ...order, source: 'W', productName: '工程耗材', submitterName: '测试师傅', statusCode: 'PENDING', statusLabel: '待备货', materials: [{ name: 'PVC弯头', count: 2, unit: '个', spec: '25mm' }] })), total: 36 }
-  if (pathname === '/admin/cases' || pathname === '/cases/list') return { list: [], total: 0 }
+  if (pathname === '/admin/cases' || pathname === '/cases/list') return { list: [{ id: 1, siteName: '测试项目案例', imageCount: 0, updatedAt: '2026-10-14T10:00:00+08:00' }], total: 1 }
   if (pathname === '/admin/service-page') return { companyName: '力创之尊', companySubtitle: '专业机电服务', slogan: '服务安心', profileText: '测试公司介绍', services: [{ title: '安装服务', description: '上门服务' }], heroStats: [{ title: '专业', description: '规范施工' }], advantages: [{ title: '标准施工', description: '可靠交付' }] }
   if (pathname === '/dashboard/overview') return { todayOrders: 6, pendingAssign: 2, processingOrders: 4, completedOrders: 3, stockAlerts: 1 }
   if (pathname === '/dashboard/order-trend') return { xAxis: ['10-12', '10-13', '10-14'], values: [2, 5, 6] }
@@ -81,6 +81,9 @@ async function main() {
             const scroll = page.locator('.business-table .el-scrollbar__wrap').first()
             const initial = await scroll.evaluate(el => el.scrollLeft)
             assert.equal(initial, 0, 'First columns must start visible')
+            if (width <= 1024 && await scroll.evaluate(el => el.scrollWidth > el.clientWidth)) {
+              assert.ok(await page.locator('.business-table .el-scrollbar__bar.is-horizontal').first().isVisible(), `${width} ${route}: horizontal scrollbar must remain visible`)
+            }
             const first = await page.locator('.business-table th').first().boundingBox()
             assert.ok(first.x >= info.table.x - 1, 'First column must not be clipped')
             if (width <= 900) {
@@ -93,8 +96,17 @@ async function main() {
             assert.ok(actions.x >= info.table.x - 1 && actions.x + actions.width <= info.table.right + 1, 'Actions must be reachable inside the table scroll area')
             await scroll.evaluate(el => { el.scrollLeft = 0 })
           }
-          if (width === 3816 && route === '/orders' || width === 1366 && route === '/orders' || width === 1024 && route === '/consumables' || width === 375 && route === '/users') {
+          if (width === 3816 && route === '/orders' || width === 1366 && route === '/orders' || width === 1024 && route === '/consumables' || width === 375 && route === '/users' || width === 1920 && route === '/cases') {
             await page.screenshot({ path: path.join(output, `${route.slice(1)}-${width}.png`) })
+          }
+          if (width === 1920 && ['/orders', '/consumables', '/preparation', '/users', '/cases'].includes(route)) {
+            const row = page.locator('.business-table tbody tr').first()
+            await row.locator('.admin-row-actions__more').click()
+            const dropdown = page.locator('.el-dropdown-menu:visible')
+            await dropdown.waitFor()
+            assert.ok(await dropdown.locator('.el-dropdown-menu__item').count() > 0, `${route}: missing secondary row actions`)
+            await page.keyboard.press('Escape')
+            await dropdown.waitFor({ state: 'hidden' })
           }
           results.push({ width, route, contentLeft: info.content.x, contentWidth: info.content.width, gutter: info.gutter })
           if (route === '/users') {

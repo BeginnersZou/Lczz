@@ -74,7 +74,8 @@ function fixture(query = {}) {
         getOrderEvaluationApi: async id => { calls.reviews.push(id); return reviewReply }
       },
       '@/utils/format': { formatDateTime: value => value, formatPhone: value => value },
-      './OrderOrigin.vue': { default: {} }
+      './OrderOrigin.vue': { default: {} },
+      '@/components/AdminRowActions.vue': { default: {} }
     }
   }
   vm.runInNewContext(compiled, context, { filename })
@@ -98,6 +99,8 @@ async function main() {
   assert.equal(initial.view.loadError.value, '')
   assert.equal(initial.view.tableLoading.value, false)
   assert.equal(initial.view.reviewImages.value.length, 0)
+  assert.deepEqual(Array.from(initial.view.orderActions({ status: 'REVIEWED' }), action => action.command), ['edit', 'review', 'cancel'])
+  assert.deepEqual(Array.from(initial.view.orderActions({ status: 'CANCELLED' }), action => action.command), ['edit'])
   console.log('PASS: actual order list setup succeeds and mount loads orders')
 
   const filtered = fixture({ keyword: '客户', projectAddress: '工地', status: 'IN_PROGRESS', page: '2', pageSize: '20' })

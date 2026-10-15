@@ -6,15 +6,15 @@
   --brand-success: #059669;
   --brand-warning: #d97706;
   --brand-danger: #dc2626;
-  --surface-page: #f5f7fa;
+  --surface-page: #f4f6fa;
   --surface-card: #ffffff;
-  --surface-subtle: #f8fafc;
+  --surface-subtle: #f7f9fc;
   --text-primary: #111827;
   --text-secondary: #4b5563;
   --text-tertiary: #9ca3af;
-  --border-default: #e5e7eb;
+  --border-default: #e6eaf0;
   --border-strong: #d1d5db;
-  --shadow-card: 0 1px 3px rgba(16, 24, 40, 0.06);
+  --shadow-card: 0 2px 8px rgba(16, 24, 40, 0.035);
   --shadow-popup: 0 12px 28px rgba(16, 24, 40, 0.12);
   --radius-control: 6px;
   --radius-card: 8px;
@@ -61,20 +61,20 @@
   font-size: 13px;
 }
 
-.el-button--primary:not(.is-text):not(.is-link) {
+.el-button--primary:not(.is-text):not(.is-link):not(.is-plain) {
   color: #fff;
   background: var(--brand-primary);
   border-color: var(--brand-primary);
 }
 
-.el-button--primary:not(.is-text):not(.is-link):hover,
-.el-button--primary:not(.is-text):not(.is-link):focus {
+.el-button--primary:not(.is-text):not(.is-link):not(.is-plain):hover,
+.el-button--primary:not(.is-text):not(.is-link):not(.is-plain):focus {
   color: #fff;
   background: var(--brand-primary-hover);
   border-color: var(--brand-primary-hover);
 }
 
-.el-button--primary:not(.is-text):not(.is-link):active {
+.el-button--primary:not(.is-text):not(.is-link):not(.is-plain):active {
   background: var(--brand-primary-active);
   border-color: var(--brand-primary-active);
 }
@@ -90,6 +90,19 @@
   color: #fff;
   background: #7da2ee;
   border-color: #7da2ee;
+}
+
+.el-button--primary.is-plain {
+  color: var(--brand-primary);
+  background: #f3f7ff;
+  border-color: #d8e5ff;
+}
+
+.el-button--primary.is-plain:hover,
+.el-button--primary.is-plain:focus {
+  color: var(--brand-primary-hover);
+  background: #e8f0ff;
+  border-color: #b9d0ff;
 }
 
 .el-button.is-plain:not(.el-button--primary) {
@@ -161,10 +174,10 @@
 
 .el-table {
   --el-table-header-bg-color: var(--surface-subtle);
-  --el-table-row-hover-bg-color: #f7faff;
+  --el-table-row-hover-bg-color: #f5f8ff;
   --el-table-border-color: var(--border-default);
   --el-table-header-text-color: var(--text-secondary);
-  --el-table-text-color: var(--text-secondary);
+  --el-table-text-color: #344054;
   border-radius: 0;
   font-size: 14px;
 }
@@ -189,39 +202,40 @@
   line-height: 1.5;
 }
 
-.el-table .el-table-fixed-column--right.is-first-column {
-  border-left: 1px solid var(--border-default);
-  box-shadow: -10px 0 18px -18px rgba(15, 23, 42, 0.55);
-}
-
-.el-table .el-table-fixed-column--right {
-  background-color: #fff;
-}
-
-.el-table--striped .el-table__body tr.el-table__row--striped .el-table-fixed-column--right {
-  background-color: #fbfcfe;
-}
-
-.el-table__body tr:hover > .el-table-fixed-column--right.el-table__cell {
-  background-color: var(--el-table-row-hover-bg-color) !important;
-}
-
-.table-actions {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-  white-space: nowrap;
-}
-
-.table-actions .el-button {
-  min-height: 30px;
-  padding: 4px 5px;
-  margin-left: 0 !important;
-}
-
 .el-table--striped .el-table__body tr.el-table__row--striped td.el-table__cell {
-  background: #fbfcfe;
+  background: #fcfdff;
+}
+
+/* List pages share a quiet, scan-friendly table instead of heavy spreadsheet grids. */
+.business-table th.el-table__cell {
+  height: 46px;
+  color: #667085;
+  background: var(--surface-subtle);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.business-table td.el-table__cell {
+  height: 62px;
+  padding: 10px 0;
+  border-bottom-color: #edf0f4;
+}
+
+.business-table .cell {
+  padding: 0 16px;
+}
+
+.business-table .el-table__body tr:last-child td.el-table__cell {
+  border-bottom: 0;
+}
+
+.business-table .el-scrollbar__bar.is-horizontal {
+  height: 7px;
+  opacity: 0.65;
+}
+
+.business-table .el-table__empty-block {
+  min-height: 240px;
 }
 
 .el-pagination {
@@ -233,13 +247,18 @@
 .el-pagination.is-background .btn-next,
 .el-pagination.is-background .btn-prev,
 .el-pagination.is-background .el-pager li {
-  min-width: 30px;
-  height: 30px;
-  line-height: 30px;
-  margin: 0 3px;
+  min-width: 32px;
+  height: 32px;
+  line-height: 32px;
+  margin: 0 2px;
   border: 1px solid var(--border-default);
-  border-radius: 5px;
+  border-radius: 6px;
   background: #fff;
+}
+
+.el-pagination.is-background .el-pager li.is-active {
+  border-color: var(--brand-primary);
+  background: var(--brand-primary);
 }
 
 .el-dialog {

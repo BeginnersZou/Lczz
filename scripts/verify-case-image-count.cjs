@@ -94,6 +94,7 @@ async function main() {
     'vue-router': { useRouter: () => ({ push() {}, replace() {} }) },
     'element-plus': { ElMessage: { success() {} }, ElMessageBox: { confirm: async () => {} } },
     '@element-plus/icons-vue': {}, '@/api/cases': casesApi,
+    '@/components/AdminRowActions.vue': { default: {} },
     '@/utils/format': { formatDateTime: value => value }
   }).default
   const view = component.setup({}, { expose() {} })

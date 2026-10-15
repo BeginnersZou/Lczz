@@ -79,6 +79,7 @@ async function main() {
       useRouter: () => ({ replace: route => { calls.routes.push(route); return Promise.resolve() } })
     },
     '@element-plus/icons-vue': {},
+    '@/components/AdminRowActions.vue': { default: {} },
     'element-plus': { ElMessage: { success() {} } },
     '@/utils/format': { formatDateTime: value => value },
     '@/api/consumables': {
