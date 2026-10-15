@@ -22,7 +22,7 @@
       <div v-if="loadError" class="error-state">
         <span>{{ loadError }}</span><el-button link type="primary" @click="loadCases">重新加载</el-button>
       </div>
-      <el-table v-else v-loading="loading" :data="rows" border stripe empty-text="暂无项目案例，点击“新增案例”创建第一条案例">
+      <el-table v-else v-loading="loading" :data="rows" table-layout="fixed" class="business-table" scrollbar-always-on empty-text="暂无项目案例，点击“新增案例”创建第一条案例">
         <el-table-column label="序号" width="76" align="center">
           <template #default="scope">{{ (page - 1) * pageSize + scope.$index + 1 }}</template>
         </el-table-column>
@@ -42,14 +42,15 @@
         <el-table-column prop="updatedAt" label="最后更新" width="190">
           <template #default="{ row }">{{ formatDateTime(row.updatedAt) || '-' }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="180" fixed="right" align="center">
+        <el-table-column label="操作" width="152" align="left">
           <template #default="{ row }">
-            <el-button link type="primary" @click="router.push({ name: 'ProjectCaseEdit', params: { id: row.id } })">修改</el-button>
-            <el-button link type="danger" @click="remove(row)">删除</el-button>
+            <AdminRowActions primary-label="修改案例" :menu-items="[{ command: 'delete', label: '删除案例', danger: true }]"
+              @primary="router.push({ name: 'ProjectCaseEdit', params: { id: row.id } })"
+              @command="() => remove(row)" />
           </template>
         </el-table-column>
       </el-table>
-      <div v-if="total" class="pagination">
+      <div v-if="total" class="pagination-wrap">
         <el-pagination v-model:current-page="page" v-model:page-size="pageSize" background
           :page-sizes="[10, 20, 50]" :total="total" layout="total, sizes, prev, pager, next"
           @size-change="loadCases" @current-change="loadCases" />
@@ -65,6 +66,7 @@ import { Plus, Search } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
 import { deleteProjectCaseApi, getProjectCaseListApi } from '@/api/cases'
 import { formatDateTime } from '@/utils/format'
+import AdminRowActions from '@/components/AdminRowActions.vue'
 
 const router = useRouter()
 const casePreviewImages = row => {
@@ -130,12 +132,9 @@ onMounted(loadCases)
 .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
 .page-header h2 { margin: 0; font-size: 22px; color: #172033; }
 .page-header p { margin: 7px 0 0; color: #64748b; font-size: 14px; }
-.search-card, .table-card { border-color: #e7edf5; }
-.search-card { margin-bottom: 16px; }
 .search-row { display: flex; gap: 10px; max-width: 560px; }
 .cover-image { width: 64px; height: 64px; border-radius: 6px; background: #f1f5f9; }
 .image-error { display: inline-flex; width: 64px; height: 64px; align-items: center; justify-content: center; color: #94a3b8; font-size: 12px; background: #f8fafc; text-align: center; }
 .error-state { display: flex; align-items: center; gap: 8px; padding: 24px; color: #b45309; }
-.pagination { display: flex; justify-content: flex-end; padding-top: 18px; }
 @media (max-width: 640px) { .search-row { flex-wrap: wrap; } .search-row :deep(.el-input) { width: 100%; } }
 </style>
