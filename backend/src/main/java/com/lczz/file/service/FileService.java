@@ -168,10 +168,13 @@ public class FileService {
 
     /** Internal creation path only; generic relation endpoints retain their existing authorization. */
     @Transactional
-    public void bindDealerAppointmentFiles(AuthenticatedUser actor, long orderId, List<Long> fileIds) {
-        if (!actor.hasRole(RoleCode.DEALER) || count("SELECT COUNT(*) FROM work_order WHERE id=? "
-                + "AND dealer_user_id=? AND order_source='DEALER_APPOINTMENT' "
-                + "AND order_status='PENDING_ASSIGNMENT' AND deleted=0", orderId, actor.userId()) != 1) {
+    public void bindAppointmentFiles(AuthenticatedUser actor, long orderId, List<Long> fileIds) {
+        boolean dealer = actor.hasRole(RoleCode.DEALER);
+        boolean sales = actor.hasRole(RoleCode.SALES);
+        if (!(dealer || sales) || count("SELECT COUNT(*) FROM work_order WHERE id=? "
+                + "AND created_by=? AND order_source=? "
+                + "AND order_status='PENDING_ASSIGNMENT' AND deleted=0", orderId, actor.userId(),
+                dealer ? "DEALER_APPOINTMENT" : "SALES_APPOINTMENT") != 1) {
             throw new BusinessException(403, "FILE_RELATION_FORBIDDEN", "无权关联预约附件");
         }
         if (fileIds.size() > USAGE_LIMITS.get("ATTACHMENT")) {
@@ -528,6 +531,14 @@ public class FileService {
     }
 
     private boolean canAccessOrder(AuthenticatedUser actor, long orderId, boolean write) {
+        if (actor.hasRole(RoleCode.PROJECT_MANAGER)) {
+            return !write && count("SELECT COUNT(*) FROM work_order WHERE id=? AND deleted=0", orderId) > 0;
+        }
+        if (actor.hasRole(RoleCode.SALES)) {
+            return !write && count("SELECT COUNT(*) FROM work_order WHERE id=? AND deleted=0 "
+                    + "AND (sales_user_id=? OR (order_source='SALES_APPOINTMENT' AND created_by=?))",
+                    orderId, actor.userId(), actor.userId()) > 0;
+        }
         if (actor.hasRole(RoleCode.DEALER)) {
             return !write && count("SELECT COUNT(*) FROM work_order WHERE id=? AND order_source='DEALER_APPOINTMENT' "
                     + "AND dealer_user_id=? AND deleted=0", orderId, actor.userId()) > 0;
@@ -560,6 +571,16 @@ public class FileService {
                 throw new BusinessException(409, "PROGRESS_SEALED", "该订单施工进度已封存，不能修改附件");
             }
             return true;
+        }
+        if (actor.hasRole(RoleCode.PROJECT_MANAGER)) {
+            return count("SELECT COUNT(*) FROM work_order_progress p JOIN work_order o ON o.id=p.order_id "
+                    + "WHERE p.id=? AND o.deleted=0", progressId) > 0;
+        }
+        if (actor.hasRole(RoleCode.SALES)) {
+            return count("SELECT COUNT(*) FROM work_order_progress p JOIN work_order o ON o.id=p.order_id "
+                    + "WHERE p.id=? AND o.deleted=0 "
+                    + "AND (o.sales_user_id=? OR (o.order_source='SALES_APPOINTMENT' AND o.created_by=?))",
+                    progressId, actor.userId(), actor.userId()) > 0;
         }
         if (actor.hasRole(RoleCode.DEALER)) {
             return count("SELECT COUNT(*) FROM work_order_progress p JOIN work_order o ON o.id=p.order_id "

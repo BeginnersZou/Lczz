@@ -70,6 +70,7 @@ public class OrderService {
     private final WorkOrderStatusHistoryMapper historyMapper;
     private final UserMapper userMapper;
     private final RoleMapper roleMapper;
+    private final SalespersonService salespersonService;
     private final FileService fileService;
     private final MaterialRequestService materialRequestService;
     private final SmsNotificationService smsNotificationService;
@@ -78,12 +79,14 @@ public class OrderService {
     public OrderService(WorkOrderMapper orderMapper, WorkOrderAssignmentMapper assignmentMapper,
                         WorkOrderStatusHistoryMapper historyMapper, UserMapper userMapper, RoleMapper roleMapper,
                         FileService fileService, MaterialRequestService materialRequestService,
+                        SalespersonService salespersonService,
                         SmsNotificationService smsNotificationService, OperationAuditService auditService) {
         this.orderMapper = orderMapper;
         this.assignmentMapper = assignmentMapper;
         this.historyMapper = historyMapper;
         this.userMapper = userMapper;
         this.roleMapper = roleMapper;
+        this.salespersonService = salespersonService;
         this.fileService = fileService;
         this.materialRequestService = materialRequestService;
         this.smsNotificationService = smsNotificationService;
@@ -211,6 +214,7 @@ public class OrderService {
         Long previousInstaller = order.getInstallerUserId();
         Long previousCustomer = order.getCustomerUserId();
         String previousPhone = order.getCustomerPhone();
+        Long previousSalesperson = order.getSalesUserId();
         apply(order, command, installerId, customer, actor.userId());
         if (pending && installerId != null) {
             order.setOrderStatus("PENDING_VISIT");
@@ -218,6 +222,11 @@ public class OrderService {
         }
         order.setVersion(order.getVersion() + 1);
         orderMapper.updateById(order);
+        if (!java.util.Objects.equals(previousSalesperson, order.getSalesUserId())) {
+            auditService.recordSuccess(actor.userId(), "ORDER_SALES_REASSIGN", "ORDER", id, null, null,
+                    Map.of("salesUserId", previousSalesperson == null ? "" : previousSalesperson),
+                    Map.of("salesUserId", order.getSalesUserId() == null ? "" : order.getSalesUserId()));
+        }
         if (!java.util.Objects.equals(previousCustomer, order.getCustomerUserId())
                 || !java.util.Objects.equals(previousPhone, order.getCustomerPhone())) {
             auditService.recordSuccess(actor.userId(), "ORDER_CUSTOMER_REBIND", "ORDER", id, null, null,
@@ -295,7 +304,12 @@ public class OrderService {
     private LambdaQueryWrapper<WorkOrderEntity> scopedQuery(AuthenticatedUser actor) {
         LambdaQueryWrapper<WorkOrderEntity> query = new LambdaQueryWrapper<WorkOrderEntity>()
                 .eq(WorkOrderEntity::getDeleted, false);
-        if (actor.hasRole(RoleCode.ADMIN)) return query;
+        if (actor.hasRole(RoleCode.ADMIN) || actor.hasRole(RoleCode.PROJECT_MANAGER)) return query;
+        if (actor.hasRole(RoleCode.SALES)) {
+            return query.and(part -> part.eq(WorkOrderEntity::getSalesUserId, actor.userId())
+                    .or().eq(WorkOrderEntity::getOrderSource, "SALES_APPOINTMENT")
+                    .eq(WorkOrderEntity::getCreatedBy, actor.userId()));
+        }
         if (actor.hasRole(RoleCode.DEALER)) {
             return query.eq(WorkOrderEntity::getOrderSource, "DEALER_APPOINTMENT")
                     .eq(WorkOrderEntity::getDealerUserId, actor.userId());
@@ -336,6 +350,9 @@ public class OrderService {
         order.setCustomerName(command.customerName().trim());
         order.setCustomerPhone(phone);
         order.setInstallerUserId(installerId);
+        if (!java.util.Objects.equals(order.getSalesUserId(), command.salesUserId())) {
+            order.setSalesUserId(salespersonService.requireEligible(command.salesUserId()));
+        }
         order.setProvinceCode(area.get(0));
         order.setProvinceName(area.get(0));
         order.setCityCode(area.get(1));
@@ -436,7 +453,8 @@ public class OrderService {
                                 .orderByAsc(WorkOrderStatusHistoryEntity::getId)).stream()
                 .collect(Collectors.toMap(WorkOrderStatusHistoryEntity::getOrderId, Function.identity(), (first, later) -> first));
         Set<Long> userIds = orders.stream()
-                .flatMap(order -> java.util.stream.Stream.of(order.getCustomerUserId(), order.getInstallerUserId(), order.getDealerUserId()))
+                .flatMap(order -> java.util.stream.Stream.of(order.getCustomerUserId(), order.getInstallerUserId(),
+                        order.getDealerUserId(), order.getSalesUserId()))
                 .filter(java.util.Objects::nonNull).collect(Collectors.toSet());
         Map<Long, UserEntity> users = userIds.isEmpty() ? Map.of() : userMapper.selectByIds(userIds).stream()
                 .collect(Collectors.toMap(UserEntity::getId, Function.identity()));
@@ -453,6 +471,7 @@ public class OrderService {
                 : InstallerView.from(installer);
         List<InstallerView> masters = master == null ? List.of() : List.of(master);
         UserEntity dealer = order.getDealerUserId() == null ? null : users.get(order.getDealerUserId());
+        UserEntity salesperson = order.getSalesUserId() == null ? null : users.get(order.getSalesUserId());
         DealerView dealerView = actor.hasRole(RoleCode.ADMIN) && order.getDealerUserId() != null
                 ? new DealerView(order.getDealerUserId(), dealer == null ? "经销商" : InstallerView.from(dealer).masterName(),
                     dealer == null ? null : dealer.getPhone()) : null;
@@ -469,8 +488,15 @@ public class OrderService {
                 "空调服务", taskLabel, order.getDescription(), order.getCustomerName(), order.getCustomerPhone(),
                 fileList, confirmation == null ? null : confirmation.getOperatorUserId(),
                 confirmation == null ? null : confirmation.getCreatedAt().atOffset(ZoneOffset.UTC),
-                order.getOrderSource(), "DEALER_APPOINTMENT".equals(order.getOrderSource()) ? "经销商预约" : "管理员创建",
-                dealerView == null ? null : dealerView.id(), dealerView == null ? null : dealerView.name(), dealerView);
+                order.getOrderSource(), switch (order.getOrderSource()) {
+                    case "DEALER_APPOINTMENT" -> "经销商预约";
+                    case "SALES_APPOINTMENT" -> "销售员预约";
+                    default -> "管理员创建";
+                },
+                dealerView == null ? null : dealerView.id(), dealerView == null ? null : dealerView.name(), dealerView,
+                order.getSalesUserId(), salesperson == null ? null
+                        : salesperson.getRealName() != null && !salesperson.getRealName().isBlank()
+                        ? salesperson.getRealName() : salesperson.getNickname());
     }
 
     String normalizePhone(String raw) {
@@ -581,7 +607,7 @@ public class OrderService {
 
     public record OrderCommand(String taskType, String description, String customerName, String customerPhone,
                                List<String> addressArea, String addressDetail, String projectAddress, String orderStartTime,
-                               String orderEndTime, List<Long> masterIds, String adminRemark) { }
+                               String orderEndTime, List<Long> masterIds, String adminRemark, Long salesUserId) { }
     public record OrderPage(List<OrderView> list, long total, int page, int pageSize) { }
     public record InstallerView(long id, String masterName, String masterPhone,
                                 int unfinishedOrderCount, List<InstallerTaskView> unfinishedOrders) {
@@ -614,5 +640,5 @@ public class OrderService {
                             String serviceName, String productName, String productSpec, String name, String phone,
                             List<FileView> fileList, Long customerConfirmedBy, OffsetDateTime customerConfirmedAt,
                             String orderSource, String orderSourceLabel, Long dealerUserId, String dealerName,
-                            DealerView dealer) { }
+                            DealerView dealer, Long salesUserId, String salesName) { }
 }

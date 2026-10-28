@@ -73,6 +73,19 @@
             placeholder="请输入项目名称、园区或施工地点" class="input-base" />
         </el-form-item>
 
+        <el-form-item label="销售人员">
+          <div class="salesperson-field">
+            <el-select v-model="form.salesUserId" class="input-base" clearable filterable remote
+              :remote-method="searchSalespersons" :loading="salespersonLoading" placeholder="选填，搜索销售人员姓名或手机号">
+              <el-option v-for="person in salespersons" :key="person.id" :value="person.id"
+                :label="`${person.name}${person.maskedPhone ? `（${person.maskedPhone}）` : ''}`" />
+            </el-select>
+            <div v-if="salespersonError" class="field-feedback is-error">
+              {{ salespersonError }} <el-button link type="primary" @click="searchSalespersons()">重试</el-button>
+            </div>
+          </div>
+        </el-form-item>
+
         <!-- 订单时间 双日期框 -->
         <el-form-item label="订单时间" prop="orderEndTime" required>
           <div class="time-row">
@@ -218,7 +231,7 @@ import {
 import { useRouter, useRoute } from 'vue-router'
 import {
   getAdminOrderEditorApi, saveAdminOrderEditorApi, addOrderApi,
-  bindOrderFileApi, getMasterListApi, cancelOrderApi
+  bindOrderFileApi, getMasterListApi, getSalespersonOptionsApi, cancelOrderApi
 } from '@/api/orders'
 import { getRegionTreeApi } from '@/api/regions'
 import { useUnsavedChanges } from '@/composables/useUnsavedChanges'
@@ -273,6 +286,21 @@ const materialsChanged = computed(() => !!initialDraft.value && materialSignatur
 const cityOptions = ref([])
 const regionLoading = ref(false)
 const regionError = ref('')
+const salespersons = ref([])
+const salespersonLoading = ref(false)
+const salespersonError = ref('')
+async function searchSalespersons(keyword = '') {
+  salespersonLoading.value = true
+  salespersonError.value = ''
+  try {
+    const result = await getSalespersonOptionsApi({ page: 1, pageSize: 100, keyword })
+    const found = result.list || []
+    const selected = salespersons.value.find(person => person.id === form.salesUserId)
+    salespersons.value = selected && !found.some(person => person.id === selected.id)
+      ? [selected, ...found] : found
+  } catch { salespersonError.value = '销售人员加载失败'; salespersons.value = [] }
+  finally { salespersonLoading.value = false }
+}
 
 // 图片只在草稿中增删，确认提交后才变更业务关联。
 const form = reactive({
@@ -283,6 +311,7 @@ const form = reactive({
   addressArea: [],
   addressDetail: '',
   projectAddress: '',
+  salesUserId: null,
   orderStartTime: '',
   orderEndTime: '',
   images: [],
@@ -348,7 +377,7 @@ watch([form, progressEntries, materialDraft, selectedMasterList], () => {
 }, { deep: true })
 
 onMounted(async () => {
-  const tasks = [loadRegions()]
+  const tasks = [loadRegions(), searchSalespersons()]
   if (route.params.id) {
     isEdit.value = true
     orderId.value = route.params.id
@@ -396,7 +425,11 @@ async function loadEditData() {
         quantity: Number(item.count), name: item.name, skuId: item.skuId, stock: item.stock })),
       remark: result.materialRequest?.remark || ''
     }
-    orderOrigin.value = { orderSource: res.orderSource, dealerName: res.dealerName, statusCode: res.statusCode }
+    orderOrigin.value = { orderSource: res.orderSource, dealerName: res.dealerName,
+      salesUserId: res.salesUserId, salesName: res.salesName, statusCode: res.statusCode }
+    if (res.salesUserId && !salespersons.value.some(person => person.id === res.salesUserId)) {
+      salespersons.value.push({ id: res.salesUserId, name: res.salesName || `销售员 #${res.salesUserId}` })
+    }
     // 回显 fileList：远程图片 url 直接作为 previewUrl，file 为 null
     const remoteFiles = res.fileList || res.images || []
     const fileList = remoteFiles.map(toDraftFile)
@@ -407,6 +440,7 @@ async function loadEditData() {
       addressArea: res.addressArea || [],
       addressDetail: res.addressDetail || '',
       projectAddress: res.projectAddress || '',
+      salesUserId: res.salesUserId || null,
       orderStartTime: formatDateTimeInput(res.orderStartTime),
       orderEndTime: formatDateTimeInput(res.orderEndTime),
       customerName: res.customerName || '',
@@ -546,7 +580,8 @@ function toDraftFile(item) {
 function orderPayload() {
   return { taskType: form.taskType, description: form.description, customerName: form.customerName,
     customerPhone: form.customerPhone, addressArea: [...form.addressArea], addressDetail: form.addressDetail,
-    projectAddress: form.projectAddress, orderStartTime: form.orderStartTime, orderEndTime: form.orderEndTime,
+    projectAddress: form.projectAddress, salesUserId: form.salesUserId || null,
+    orderStartTime: form.orderStartTime, orderEndTime: form.orderEndTime,
     masterIds: selectedMasterList.value.map(master => master.id).filter(id => id != null), adminRemark: form.adminRemark || '' }
 }
 function currentDraft() {
@@ -823,6 +858,10 @@ function returnToOrderList() {
     &.is-error {
       color: var(--brand-danger);
     }
+  }
+
+  .salesperson-field {
+    width: 100%;
   }
 
   .time-row {

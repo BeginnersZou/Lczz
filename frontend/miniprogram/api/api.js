@@ -191,6 +191,7 @@ export const orderApi = {
 		if (res.code === 200) res.data = normalizeOrder(res.data)
 		return res
 	},
+	getProjectManagerDetail: (id, options = {}) => http.get(`/project-manager/orders/${id}`, {}, options),
 	// 管理员编辑订单基础信息
 	update: (id, data) => http.put(`/orders/${id}`, data),
 	// 作废订单
@@ -303,7 +304,12 @@ export const servicePageApi = {
 
 // ====================== 安装师傅耗材购物车 / 自助取货订单 ======================
 export const dealerBookingApi = {
-	create: (data) => http.post('/dealer/appointments', data, { silent: true, redirectOnUnauthorized: false })
+	create: (data, role = 'dealer') => http.post(role === 'sales' ? '/sales/appointments' : '/dealer/appointments',
+		data, { silent: true, redirectOnUnauthorized: false })
+}
+
+export const salespersonApi = {
+	options: (params = {}) => http.get('/salespersons/options', params, { silent: true, redirectOnUnauthorized: false })
 }
 
 export const installerMaterialApi = {

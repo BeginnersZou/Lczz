@@ -224,9 +224,13 @@ public class WorkProgressService {
     private WorkOrderEntity requireAccessibleOrder(AuthenticatedUser actor, long orderId) {
         LambdaQueryWrapper<WorkOrderEntity> query = new LambdaQueryWrapper<WorkOrderEntity>()
                 .eq(WorkOrderEntity::getId, orderId).eq(WorkOrderEntity::getDeleted, false);
-        if (!actor.hasRole(RoleCode.ADMIN)) {
+        if (!actor.hasRole(RoleCode.ADMIN) && !actor.hasRole(RoleCode.PROJECT_MANAGER)) {
             if (actor.hasRole(RoleCode.DEALER)) query.eq(WorkOrderEntity::getOrderSource, "DEALER_APPOINTMENT")
                     .eq(WorkOrderEntity::getDealerUserId, actor.userId());
+            else if (actor.hasRole(RoleCode.SALES)) query.and(part -> part
+                    .eq(WorkOrderEntity::getSalesUserId, actor.userId())
+                    .or().eq(WorkOrderEntity::getOrderSource, "SALES_APPOINTMENT")
+                    .eq(WorkOrderEntity::getCreatedBy, actor.userId()));
             else if (actor.hasRole(RoleCode.INSTALLER)) query.eq(WorkOrderEntity::getInstallerUserId, actor.userId());
             else query.eq(WorkOrderEntity::getCustomerUserId, actor.userId());
         }

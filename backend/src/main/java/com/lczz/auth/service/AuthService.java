@@ -267,8 +267,7 @@ public class AuthService {
         public static UserInfo from(AuthenticatedUser user, String nickname, String realName) {
             Set<String> roles = user.roles().stream().map(role -> role.name().toLowerCase(Locale.ROOT))
                     .collect(java.util.stream.Collectors.toUnmodifiableSet());
-            String primary = user.roles().stream().sorted().findFirst().orElse(RoleCode.CUSTOMER)
-                    .name().toLowerCase(Locale.ROOT);
+            String primary = user.roles().iterator().next().name().toLowerCase(Locale.ROOT);
             return new UserInfo(user.userId(), user.username(), user.displayName(), nickname, realName,
                     user.phone(), primary, roles);
         }

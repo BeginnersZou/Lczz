@@ -4,5 +4,7 @@ public enum RoleCode {
     ADMIN,
     CUSTOMER,
     INSTALLER,
-    DEALER
+    DEALER,
+    PROJECT_MANAGER,
+    SALES
 }

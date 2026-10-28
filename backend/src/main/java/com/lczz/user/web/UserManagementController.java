@@ -23,6 +23,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -100,6 +101,14 @@ public class UserManagementController {
                                           HttpServletRequest request) {
         return ApiResponse.success(service.changeBlacklist(actor, id, body.blacklist(), body.reason(),
                 context(request)), requestId(request));
+    }
+
+    @DeleteMapping("/{id}")
+    @Operation(summary = "软删除用户，保留订单与审计记录")
+    ApiResponse<Boolean> delete(@AuthenticationPrincipal AuthenticatedUser actor,
+                                @PathVariable @Min(1) long id, HttpServletRequest request) {
+        service.delete(actor, id, context(request));
+        return ApiResponse.success(true, requestId(request));
     }
 
     private AuditContext context(HttpServletRequest request) {

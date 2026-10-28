@@ -29,6 +29,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -343,6 +344,59 @@ class UserManagementIntegrationTests {
                   AND u.audit_status='APPROVED' AND u.blacklist=FALSE AND u.deleted=FALSE
                 """, Integer.class);
         assertThat(activeAdmins).isEqualTo(1);
+    }
+
+    @Test
+    void adminCreatesSingleRoleSalesAndManagerAndSoftDeleteKeepsHistory() throws Exception {
+        mockMvc.perform(post("/api/v1/users").header("Authorization", "Bearer " + adminToken)
+                .contentType("application/json")
+                .content("""
+                        {"nickname":"销售甲","realName":"销售甲","phone":"13960000005","role":"SALES"}
+                        """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.roles.length()").value(1))
+                .andExpect(jsonPath("$.data.role").value("SALES"));
+        mockMvc.perform(post("/api/v1/users").header("Authorization", "Bearer " + adminToken)
+                .contentType("application/json")
+                .content("""
+                        {"nickname":"项目经理","realName":"项目经理","phone":"13960000006","role":"PROJECT_MANAGER"}
+                        """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.roles.length()").value(1))
+                .andExpect(jsonPath("$.data.role").value("PROJECT_MANAGER"));
+        long managerId = jdbcTemplate.queryForObject("SELECT id FROM sys_user WHERE phone='13960000006'", Long.class);
+        mockMvc.perform(delete("/api/v1/users/{id}", managerId)
+                .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/v1/users/detail/{id}", managerId)
+                .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isNotFound());
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM sys_user WHERE id=? AND deleted=TRUE",
+                Integer.class, managerId)).isEqualTo(1);
+    }
+
+    @Test
+    void salespersonWithOpenOrdersCannotBeDisabledReclassifiedOrDeleted() throws Exception {
+        long salesId = createUser(null, "销售员", "13960000005", RoleCode.SALES);
+        jdbcTemplate.update("""
+                INSERT INTO work_order(order_no, task_type, order_status, order_source,
+                  sales_user_id, sales_request_id, sales_request_hash,
+                  customer_name, customer_phone, detailed_address, created_by, deleted, version)
+                VALUES('SALES-OPEN', 'AIR_CONDITIONING_INSTALL', 'PENDING_ASSIGNMENT', 'SALES_APPOINTMENT',
+                  ?, 'request-1', 'hash', '客户', '13860000001', '测试地址', ?, FALSE, 0)
+                """, salesId, salesId);
+        mockMvc.perform(patch("/api/v1/users/{id}/status", salesId)
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType("application/json").content("{\"accountStatus\":\"DISABLED\"}"))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.error").value("SALES_OPEN_ORDERS"));
+        mockMvc.perform(put("/api/v1/users/{id}", salesId)
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType("application/json")
+                .content("{\"nickname\":\"销售员\",\"role\":\"CUSTOMER\"}"))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.error").value("SALES_OPEN_ORDERS"));
+        mockMvc.perform(delete("/api/v1/users/{id}", salesId)
+                .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.error").value("SALES_OPEN_ORDERS"));
     }
 
     private String changeOtherAdminRole(CountDownLatch start, AuthenticatedUser actor, long targetId)

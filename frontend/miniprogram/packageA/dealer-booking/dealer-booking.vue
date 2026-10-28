@@ -42,6 +42,18 @@
         <text class="hint privacy">客户信息仅用于此次服务联系与订单处理，请确保已获得客户提供信息的授权。</text>
       </view>
       <view class="card">
+        <text class="section-title">销售人员 <text class="hint">选填</text></text>
+        <input v-model="salesKeyword" class="field sales-search" :disabled="locked" placeholder="搜索销售员姓名或手机号" @confirm="loadSalespersons" />
+        <button class="secondary" :disabled="locked || salespersonLoading" @click="loadSalespersons">搜索销售员</button>
+        <picker :range="salespersons" range-key="displayName" :disabled="locked || salespersonLoading || !salespersons.length" @change="selectSalesperson">
+          <view class="field picker">{{ selectedSalespersonName || '不指定销售人员' }}<text>›</text></view>
+        </picker>
+        <text v-if="!salespersonLoading && !salespersons.length && !salespersonError" class="hint sales-hint">暂无可选销售人员，可不选继续提交</text>
+        <button v-if="salespersons.length < salespersonTotal" class="secondary" :disabled="locked || salespersonLoading" @click="loadMoreSalespersons">{{ salespersonLoading ? '加载中...' : '加载更多销售员' }}</button>
+        <button v-if="form.salesUserId" class="secondary" :disabled="locked" @click="clearSalesperson">清除选择</button>
+        <text v-if="salespersonError" class="error">{{ salespersonError }}</text>
+      </view>
+      <view class="card">
         <view class="section-row"><text class="section-title">现场附件</text><text class="hint">选填 · {{ files.length }}/9 张</text></view>
         <text class="hint">图片每张不超过10MB，可上传设备、安装位置等照片</text>
         <view class="photos">
@@ -67,11 +79,56 @@
 <script setup>
 import { computed, reactive, ref } from 'vue'
 import { onShow, onUnload } from '@dcloudio/uni-app'
-import { authApi, dealerBookingApi, uploadApi } from '@/api/api.js'
+import { authApi, dealerBookingApi, salespersonApi, uploadApi } from '@/api/api.js'
 import { getAuthToken } from '@/utils/auth-session.js'
 import { BOOKING_TASKS, BOOKING_DESCRIPTION, isDealer, bookingPayload, validateBooking } from '@/utils/dealer-booking.js'
 
-const form = reactive({ taskType: '', description: '', customerName: '', customerPhone: '', addressArea: [], addressDetail: '' })
+const form = reactive({ taskType: '', description: '', customerName: '', customerPhone: '', addressArea: [], addressDetail: '', salesUserId: null })
+const role = ref('')
+const salespersons = ref([])
+const salesKeyword = ref('')
+const activeSalesKeyword = ref('')
+const salespersonLoading = ref(false)
+const salespersonError = ref('')
+const selectedSalespersonName = ref('')
+const salespersonPage = ref(0)
+const salespersonTotal = ref(0)
+const toSalespersonOption = person => ({ ...person, displayName: person.maskedPhone ? `${person.name}（${person.maskedPhone}）` : person.name })
+function selectSalesperson(event) {
+  const person = salespersons.value[Number(event.detail.value)]
+  form.salesUserId = person?.id || null
+  selectedSalespersonName.value = person?.displayName || ''
+}
+function clearSalesperson() { form.salesUserId = null; selectedSalespersonName.value = '' }
+async function loadSalespersons() {
+  if (salespersonLoading.value) return
+  salespersonLoading.value = true
+  salespersonError.value = ''
+  try {
+    const keyword = salesKeyword.value.trim()
+    const response = await salespersonApi.options({ page: 1, pageSize: 100, keyword })
+    if (response.code !== 200) throw new Error(response.msg || '销售人员列表加载失败')
+    activeSalesKeyword.value = keyword
+    salespersons.value = (response.data?.list || []).map(toSalespersonOption)
+    salespersonPage.value = 1
+    salespersonTotal.value = Number(response.data?.total || 0)
+  } catch (err) { salespersonError.value = err.message || '销售人员列表加载失败，请重新进入页面' }
+  finally { salespersonLoading.value = false }
+}
+async function loadMoreSalespersons() {
+  if (salespersonLoading.value || salespersons.value.length >= salespersonTotal.value) return
+  salespersonLoading.value = true
+  salespersonError.value = ''
+  try {
+    const nextPage = salespersonPage.value + 1
+    const response = await salespersonApi.options({ page: nextPage, pageSize: 100, keyword: activeSalesKeyword.value })
+    if (response.code !== 200) throw new Error(response.msg || '销售人员列表加载失败')
+    salespersons.value = [...salespersons.value, ...(response.data?.list || []).map(toSalespersonOption)]
+    salespersonPage.value = nextPage
+    salespersonTotal.value = Number(response.data?.total || 0)
+  } catch (err) { salespersonError.value = err.message || '销售人员列表加载失败，请重试' }
+  finally { salespersonLoading.value = false }
+}
 const checking = ref(true)
 const accessError = ref('')
 const allowed = ref(false)
@@ -90,11 +147,13 @@ async function checkAccess() {
   checking.value = true
   accessError.value = ''
   try {
-    if (!getAuthToken()) { allowed.value = false; accessError.value = '请先使用经销商账号登录'; return }
+    if (!getAuthToken()) { allowed.value = false; accessError.value = '请先登录经销商或销售员账号'; return }
     const res = await authApi.getUserInfo({ redirectOnUnauthorized: false })
     if (res.code !== 200) { allowed.value = false; accessError.value = res.msg || '账号权限检查失败'; return }
     allowed.value = isDealer(res.data)
-    if (!allowed.value) accessError.value = '预约安装仅对经销商开放'
+    role.value = String(res.data?.role || '').toLowerCase()
+    if (!allowed.value) accessError.value = '预约安装仅对经销商或销售员开放'
+    else await loadSalespersons()
   } catch { allowed.value = false; accessError.value = '网络异常，请重新检查账号权限' }
   finally { checking.value = false }
 }
@@ -160,7 +219,7 @@ async function submit() {
   submitting.value = true
   locked.value = true
   try {
-    const res = await dealerBookingApi.create(pendingPayload)
+    const res = await dealerBookingApi.create(pendingPayload, role.value)
     if (res.code === 200 && res.data?.id && res.data?.orderNo) {
       result.value = res.data
       pendingPayload = null
@@ -195,5 +254,7 @@ function cancel() {
 .card { padding:30rpx; margin-bottom:24rpx; background:#fff; border-radius:24rpx; }.section-title { font-size:30rpx; font-weight:650; }.section-row { display:flex; justify-content:space-between; align-items:center; margin-bottom:12rpx; }.label { display:block; font-size:27rpx; margin:28rpx 0 14rpx; }.required { color:#df4747; }
 .field { box-sizing:border-box; width:100%; min-height:88rpx; border:1rpx solid #e3eaf2; border-radius:14rpx; padding:20rpx; font-size:27rpx; background:#f8fafc; }.picker { display:flex; justify-content:space-between; align-items:center; }.textarea { height:230rpx; line-height:1.6; }.address { margin-top:16rpx; height:150rpx; }.counter { display:block; text-align:right; font-size:22rpx; color:#8897aa; margin-top:8rpx; }.privacy { margin-top:18rpx; }
 .photos { display:flex; flex-wrap:wrap; gap:18rpx; margin-top:24rpx; }.photo,.add-photo { position:relative; width:190rpx; height:230rpx; margin:0; overflow:hidden; border-radius:14rpx; }.photo image { width:190rpx; height:180rpx; }.remove { margin:0; height:50rpx; padding:0; line-height:50rpx; font-size:23rpx; color:#b42332; background:#fff1f2; }.upload-state,.retry { position:absolute; top:64rpx; left:0; width:100%; background:rgba(0,0,0,.65); color:#fff; text-align:center; font-size:23rpx; line-height:60rpx; padding:0; }.add-photo { height:180rpx; border:1rpx dashed #b9cce0; display:flex; flex-direction:column; align-items:center; justify-content:center; background:#f6faff; color:#0b63ce; font-size:24rpx; }.plus { font-size:48rpx; line-height:1.3; }
+.sales-search { margin-top:18rpx; }
+.sales-hint { margin-top:14rpx; }
 button::after { border:0; }.primary,.secondary { width:100%; margin:20rpx 0 0; min-height:88rpx; line-height:88rpx; border-radius:16rpx; font-size:28rpx; }.primary { background:#0b63ce; color:#fff; }.secondary { background:#fff; color:#45617f; border:1rpx solid #d7e1ed; }.primary[disabled] { background:#aac7e9; color:#fff; }.actions .hint { margin-top:20rpx; text-align:center; }.error,.notice { display:block; font-size:25rpx; line-height:1.6; color:#a54a12; }.notice { padding:24rpx; margin-bottom:24rpx; background:#fff5e6; border-radius:16rpx; }.state { text-align:center; padding:60rpx 30rpx; }.state .title,.state .hint { margin:22rpx 0; }
 </style>

@@ -18,6 +18,10 @@ public class WorkOrderEntity {
     private Long dealerUserId;
     private String dealerRequestId;
     private String dealerRequestHash;
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
+    private Long salesUserId;
+    private String salesRequestId;
+    private String salesRequestHash;
     private String description;
     @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private Long customerUserId;
@@ -64,6 +68,12 @@ public class WorkOrderEntity {
     public void setDealerRequestId(String dealerRequestId) { this.dealerRequestId = dealerRequestId; }
     public String getDealerRequestHash() { return dealerRequestHash; }
     public void setDealerRequestHash(String dealerRequestHash) { this.dealerRequestHash = dealerRequestHash; }
+    public Long getSalesUserId() { return salesUserId; }
+    public void setSalesUserId(Long salesUserId) { this.salesUserId = salesUserId; }
+    public String getSalesRequestId() { return salesRequestId; }
+    public void setSalesRequestId(String salesRequestId) { this.salesRequestId = salesRequestId; }
+    public String getSalesRequestHash() { return salesRequestHash; }
+    public void setSalesRequestHash(String salesRequestHash) { this.salesRequestHash = salesRequestHash; }
     public String getDescription() { return description; }
     public void setDescription(String description) { this.description = description; }
     public Long getCustomerUserId() { return customerUserId; }

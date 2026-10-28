@@ -82,7 +82,7 @@ public class OrderController {
     }
 
     @GetMapping("/task-types")
-    @PreAuthorize("hasAnyRole('ADMIN', 'DEALER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DEALER', 'SALES')")
     @Operation(summary = "查询后台与经销商预约共用的订单任务类型")
     ApiResponse<List<OrderService.TaskTypeView>> taskTypes(HttpServletRequest request) {
         return ApiResponse.success(orderService.taskTypes(), requestId(request));
@@ -150,10 +150,11 @@ public class OrderController {
             @Size(max = 40) String orderStartTime,
             @Size(max = 40) String orderEndTime,
             @Size(max = 1) List<@NotNull @Min(1) Long> masterIds,
-            @Size(max = 1000) String adminRemark) {
+            @Size(max = 1000) String adminRemark,
+            @Min(1) Long salesUserId) {
         OrderCommand toCommand() {
             return new OrderCommand(taskType, description, customerName, customerPhone, addressArea,
-                    addressDetail, projectAddress, orderStartTime, orderEndTime, masterIds, adminRemark);
+                    addressDetail, projectAddress, orderStartTime, orderEndTime, masterIds, adminRemark, salesUserId);
         }
     }
 

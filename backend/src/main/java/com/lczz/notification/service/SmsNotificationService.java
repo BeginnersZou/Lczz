@@ -23,6 +23,7 @@ public class SmsNotificationService {
     private static final Pattern PHONE_PATTERN = Pattern.compile("^1[3-9]\\d{9}$");
     static final String INSTALLER_ASSIGNED = "INSTALLER_ASSIGNED";
     static final String DEALER_APPOINTMENT_CREATED = "DEALER_APPOINTMENT_CREATED";
+    static final String SALES_APPOINTMENT_CREATED = "SALES_APPOINTMENT_CREATED";
     static final String INSTALLER_SELF_ORDER_CREATED = "INSTALLER_SELF_ORDER_CREATED";
     static final String PROGRESS_SUBMITTED = "PROGRESS_SUBMITTED";
     private static final Logger log = LoggerFactory.getLogger(SmsNotificationService.class);
@@ -53,6 +54,15 @@ public class SmsNotificationService {
         Map<String, String> params = Map.of("orderNo", appointmentNo);
         for (String adminPhone : properties.dealerAppointmentAdminPhoneList()) {
             queue(new NotificationCommand(DEALER_APPOINTMENT_CREATED, "DEALER_APPOINTMENT",
+                    Long.toString(appointmentId), appointmentNo, adminPhone,
+                    properties.getDealerAppointmentTemplateCode(), params));
+        }
+    }
+
+    public void queueSalesAppointmentCreated(long appointmentId, String appointmentNo) {
+        Map<String, String> params = Map.of("orderNo", appointmentNo);
+        for (String adminPhone : properties.dealerAppointmentAdminPhoneList()) {
+            queue(new NotificationCommand(SALES_APPOINTMENT_CREATED, "SALES_APPOINTMENT",
                     Long.toString(appointmentId), appointmentNo, adminPhone,
                     properties.getDealerAppointmentTemplateCode(), params));
         }

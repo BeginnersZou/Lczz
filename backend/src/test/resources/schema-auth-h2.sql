@@ -32,7 +32,7 @@ CREATE TABLE sys_user_role (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
   user_id BIGINT NOT NULL, role_id BIGINT NOT NULL, created_by BIGINT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
-  UNIQUE(user_id, role_id)
+  UNIQUE(user_id, role_id), UNIQUE(user_id)
 );
 
 CREATE TABLE operation_audit_log (
@@ -90,4 +90,5 @@ CREATE TABLE wechat_login_challenge (
 );
 
 INSERT INTO sys_role(role_code, role_name) VALUES
- ('ADMIN', '管理员'), ('CUSTOMER', '普通用户'), ('INSTALLER', '安装师傅'), ('DEALER', '经销商');
+ ('ADMIN', '管理员'), ('CUSTOMER', '普通用户'), ('INSTALLER', '安装师傅'),
+ ('DEALER', '经销商'), ('PROJECT_MANAGER', '项目经理'), ('SALES', '销售员');

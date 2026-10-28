@@ -43,14 +43,15 @@ public class DealerAppointmentController {
             @NotBlank @Pattern(regexp = "^(?:\\+86)?1[3-9]\\d{9}$") String customerPhone,
             @NotNull @Size(min = 3, max = 3) List<@NotBlank @Size(max = 64) String> addressArea,
             @NotBlank @Size(max = 500) String addressDetail,
-            @Size(max = 9) List<@NotNull @Min(1) Long> fileIds) {
+            @Size(max = 9) List<@NotNull @Min(1) Long> fileIds,
+            @Min(1) Long salesUserId) {
         @JsonAnySetter
         public void rejectUnknown(String name, Object value) {
             throw new BusinessException("INVALID_APPOINTMENT_FIELD", "预约包含不支持的字段");
         }
         Command toCommand() {
             return new Command(requestId, taskType, description, customerName, customerPhone,
-                    addressArea, addressDetail, fileIds);
+                    addressArea, addressDetail, fileIds, salesUserId);
         }
     }
 }

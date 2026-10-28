@@ -11,7 +11,7 @@ const pages = JSON.parse(readFileSync(new URL('../pages.json', import.meta.url),
 
 test('preparation helper keeps mobile actions admin-only and state-safe', () => {
   assert.equal(helpers.hasAdminRole({ role: 'admin' }), true)
-  assert.equal(helpers.hasAdminRole({ role: 'customer', roles: ['ADMIN'] }), true)
+  assert.equal(helpers.hasAdminRole({ role: 'customer', roles: ['ADMIN'] }), false)
   assert.equal(helpers.hasAdminRole({ role: 'installer' }), false)
   assert.equal(helpers.canPrepare({ source: 'W', statusCode: 'PENDING' }), true)
   assert.equal(helpers.canPrepare({ source: 'W', statusCode: 'PREPARING' }), true)

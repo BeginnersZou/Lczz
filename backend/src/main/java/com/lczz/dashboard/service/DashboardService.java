@@ -89,13 +89,18 @@ public class DashboardService {
     @Transactional(readOnly = true)
     public TodoPage todo(AuthenticatedUser actor, int page, int pageSize) {
         TodoScope scope = TodoScope.forActor(actor);
-        Map<String, Long> allStatusCounts = orderStatusCounts(scope.column(), scope.userId());
+        Map<String, Long> allStatusCounts = scope.role() == RoleCode.SALES
+                ? salesOrderStatusCounts(actor.userId()) : orderStatusCounts(scope.column(), scope.userId());
         List<String> todoStatuses = scope.todoStatuses();
         String placeholders = String.join(",", todoStatuses.stream().map(ignored -> "?").toList());
         StringBuilder where = new StringBuilder(" WHERE deleted = FALSE AND order_status IN (")
                 .append(placeholders).append(')');
         List<Object> args = new ArrayList<>(todoStatuses);
-        if (scope.column() != null) {
+        if (scope.role() == RoleCode.SALES) {
+            where.append(" AND (sales_user_id = ? OR (order_source = 'SALES_APPOINTMENT' AND created_by = ?))");
+            args.add(actor.userId());
+            args.add(actor.userId());
+        } else if (scope.column() != null) {
             where.append(" AND ").append(scope.column()).append(" = ?");
             args.add(scope.userId());
         }
@@ -111,7 +116,8 @@ public class DashboardService {
                         resultSet.getString("customer_name"), resultSet.getObject("required_start_at", LocalDateTime.class)),
                 args.toArray());
         return new TodoPage(items, total, page, pageSize, scope.role().name(),
-                allStatusCounts.getOrDefault("PENDING_VISIT", 0L),
+                allStatusCounts.getOrDefault("PENDING_ASSIGNMENT", 0L)
+                        + allStatusCounts.getOrDefault("PENDING_VISIT", 0L),
                 allStatusCounts.getOrDefault("IN_PROGRESS", 0L),
                 allStatusCounts.getOrDefault("PENDING_REVIEW", 0L) + allStatusCounts.getOrDefault("REVIEWED", 0L));
     }
@@ -131,6 +137,16 @@ public class DashboardService {
         Map<String, Long> result = new LinkedHashMap<>();
         jdbcTemplate.query(sql, (RowCallbackHandler) row ->
                 result.put(row.getString("order_status"), row.getLong("total")), args);
+        return result;
+    }
+
+    private Map<String, Long> salesOrderStatusCounts(long salesUserId) {
+        Map<String, Long> result = new LinkedHashMap<>();
+        jdbcTemplate.query("SELECT order_status, COUNT(*) AS total FROM work_order "
+                        + "WHERE deleted = FALSE AND (sales_user_id = ? OR "
+                        + "(order_source = 'SALES_APPOINTMENT' AND created_by = ?)) GROUP BY order_status",
+                (RowCallbackHandler) row -> result.put(row.getString("order_status"), row.getLong("total")),
+                salesUserId, salesUserId);
         return result;
     }
 
@@ -171,6 +187,14 @@ public class DashboardService {
             if (actor.hasRole(RoleCode.ADMIN)) {
                 return new TodoScope(RoleCode.ADMIN, null, null,
                         List.of("PENDING_VISIT", "IN_PROGRESS", "PENDING_REVIEW"));
+            }
+            if (actor.hasRole(RoleCode.PROJECT_MANAGER)) {
+                return new TodoScope(RoleCode.PROJECT_MANAGER, null, null,
+                        List.of("PENDING_ASSIGNMENT", "PENDING_VISIT", "IN_PROGRESS", "PENDING_REVIEW"));
+            }
+            if (actor.hasRole(RoleCode.SALES)) {
+                return new TodoScope(RoleCode.SALES, null, null,
+                        List.of("PENDING_ASSIGNMENT", "PENDING_VISIT", "IN_PROGRESS", "PENDING_REVIEW"));
             }
             if (actor.hasRole(RoleCode.INSTALLER)) {
                 return new TodoScope(RoleCode.INSTALLER, "installer_user_id", actor.userId(),

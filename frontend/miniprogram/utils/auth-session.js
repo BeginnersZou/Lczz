@@ -1,4 +1,4 @@
-const SUPPORTED_ROLES = ['admin', 'customer', 'installer', 'dealer']
+const SUPPORTED_ROLES = ['admin', 'customer', 'installer', 'dealer', 'sales', 'project_manager']
 
 export function getAuthToken() {
   return uni.getStorageSync('token') || ''
@@ -9,11 +9,10 @@ export function getAuthUserInfo() {
 }
 
 export function isValidAuthUser(userInfo) {
-  return Boolean(
-    userInfo &&
-    typeof userInfo === 'object' &&
-    SUPPORTED_ROLES.includes(userInfo.role)
-  )
+  if (!userInfo || typeof userInfo !== 'object' || !SUPPORTED_ROLES.includes(userInfo.role)) return false
+  if (userInfo.roles == null) return true
+  return Array.isArray(userInfo.roles) && userInfo.roles.length === 1
+    && String(userInfo.roles[0]).toLowerCase() === userInfo.role
 }
 
 export function saveAuthSession(token, userInfo) {
@@ -39,7 +38,9 @@ export function getRoleLabel(role) {
     admin: '管理员',
     customer: '认证用户',
     installer: '服务工程师',
-    dealer: '经销商'
+    dealer: '经销商',
+    sales: '销售员',
+    project_manager: '项目经理'
   }
   return labels[role] || '认证用户'
 }

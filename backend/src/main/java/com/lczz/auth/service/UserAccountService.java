@@ -43,8 +43,9 @@ public class UserAccountService {
         }
         EnumSet<RoleCode> roles = EnumSet.noneOf(RoleCode.class);
         roleMapper.selectRoleCodesByUserId(userId).forEach(code -> roles.add(RoleCode.valueOf(code)));
-        if (roles.isEmpty()) {
-            throw new BusinessException(403, "ROLE_MISSING", "账号尚未分配角色");
+        if (roles.size() != 1) {
+            throw new BusinessException(403, roles.isEmpty() ? "ROLE_MISSING" : "ROLE_CONFLICT",
+                    roles.isEmpty() ? "账号尚未分配角色" : "账号角色配置异常，请联系管理员");
         }
         String name = roles.contains(RoleCode.INSTALLER)
                 ? firstNonBlank(user.getRealName(), user.getNickname(), user.getUsername(), "安装师傅" + userId)

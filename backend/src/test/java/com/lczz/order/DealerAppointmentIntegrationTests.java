@@ -291,6 +291,74 @@ class DealerAppointmentIntegrationTests {
     }
 
     @Test
+    void salesAppointmentAssignmentAndProjectManagerReadOnlyAreEnforcedAcrossEndpoints() throws Exception {
+        long salesCreator = user("销售甲", "13900000005", RoleCode.SALES);
+        long salesAssigned = user("销售乙", "13900000006", RoleCode.SALES);
+        long salesOther = user("销售丙", "13900000007", RoleCode.SALES);
+        long projectManager = user("项目经理", "13900000008", RoleCode.PROJECT_MANAGER);
+        Map<String, Object> payload = body("13800138000");
+        payload.put("salesUserId", salesAssigned);
+        long photo = upload(salesCreator);
+        payload.put("fileIds", List.of(photo));
+
+        JsonNode receipt = data(post("/api/v1/sales/appointments").contentType("application/json")
+                .content(json.writeValueAsString(payload)), salesCreator);
+        long id = receipt.path("id").asLong();
+        assertThat(receipt.path("orderSource").asText()).isEqualTo("SALES_APPOINTMENT");
+        assertThat(data(post("/api/v1/sales/appointments").contentType("application/json")
+                .content(json.writeValueAsString(payload)), salesCreator).path("id").asLong()).isEqualTo(id);
+        assertThat(data(get("/api/orders/list"), salesCreator).path("total").asInt()).isEqualTo(1);
+        assertThat(data(get("/api/orders/list"), salesAssigned).path("total").asInt()).isEqualTo(1);
+        assertThat(data(get("/api/orders/list"), salesOther).path("total").asInt()).isZero();
+        assertThat(data(get("/api/orders/list"), projectManager).path("total").asInt()).isEqualTo(1);
+        assertThat(data(get("/api/orders/detail/" + id), salesAssigned).path("salesUserId").asLong())
+                .isEqualTo(salesAssigned);
+        mvc.perform(auth(get("/api/orders/detail/" + id), salesOther)).andExpect(status().isNotFound());
+        mvc.perform(auth(get("/api/files/" + photo + "/url"), salesAssigned)).andExpect(status().isOk());
+        mvc.perform(auth(get("/api/files/" + photo + "/url"), salesOther)).andExpect(status().isForbidden());
+
+        JsonNode managerDetail = data(get("/api/project-manager/orders/" + id), projectManager);
+        assertThat(managerDetail.path("order").path("id").asLong()).isEqualTo(id);
+        assertThat(managerDetail.has("review")).isFalse();
+        assertThat(managerDetail.path("materialRequests").isArray()).isTrue();
+        mvc.perform(auth(get("/api/admin/orders/" + id), projectManager)).andExpect(status().isForbidden());
+        mvc.perform(auth(post("/api/orders/" + id + "/cancel"), projectManager)).andExpect(status().isForbidden());
+        mvc.perform(auth(put("/api/orders/" + id).contentType("application/json")
+                .content(json.writeValueAsString(adminBody())), projectManager)).andExpect(status().isForbidden());
+        mvc.perform(multipart("/api/files/upload")
+                .file(new MockMultipartFile("file", "x.png", "image/png", new byte[]{1}))
+                .header("Authorization", "Bearer " + tokens.issue(actor(projectManager)).value()))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void salespersonOptionsExcludeDisabledAccountsAndBookingRejectsStaleSelection() throws Exception {
+        long available = user("在职销售", "13900000005", RoleCode.SALES);
+        long disabled = user("停用销售", "13900000006", RoleCode.SALES);
+        jdbc.update("UPDATE sys_user SET account_status='DISABLED' WHERE id=?", disabled);
+        JsonNode options = data(get("/api/v1/salespersons/options"), dealer);
+        assertThat(options.path("list").size()).isEqualTo(1);
+        assertThat(options.path("list").get(0).path("id").asLong()).isEqualTo(available);
+        assertThat(options.path("list").get(0).path("maskedPhone").asText()).doesNotContain("00000005");
+        var payload = body("13800138000");
+        payload.put("salesUserId", disabled);
+        mvc.perform(auth(post("/api/v1/dealer/appointments").contentType("application/json")
+                .content(json.writeValueAsString(payload)), dealer)).andExpect(status().isUnprocessableEntity());
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM work_order", Integer.class)).isZero();
+    }
+
+    @Test
+    void identicalBookingRetrySurvivesSalespersonBecomingUnavailable() throws Exception {
+        long selected = user("临时销售", "13900000005", RoleCode.SALES);
+        var payload = body("13800138000");
+        payload.put("salesUserId", selected);
+        long first = create(dealer, payload).path("id").asLong();
+        jdbc.update("UPDATE sys_user SET account_status='DISABLED' WHERE id=?", selected);
+        assertThat(create(dealer, payload).path("id").asLong()).isEqualTo(first);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM work_order", Integer.class)).isEqualTo(1);
+    }
+
+    @Test
     void pendingOrderCannotSkipAssignmentAndCanBeCancelled() throws Exception {
         long id = create(dealer, body("13800138000")).path("id").asLong();
         for (String state : List.of("PENDING_VISIT", "IN_PROGRESS", "PENDING_REVIEW")) {

@@ -96,6 +96,13 @@ public class MaterialRequestService {
 
     public List<RequestView> listByOrderForAdmin(AuthenticatedUser actor, long orderId) {
         requireAdmin(actor);
+        return listByOrderForObserver(actor, orderId);
+    }
+
+    public List<RequestView> listByOrderForObserver(AuthenticatedUser actor, long orderId) {
+        if (actor == null || !(actor.hasRole(RoleCode.ADMIN) || actor.hasRole(RoleCode.PROJECT_MANAGER))) {
+            throw new BusinessException(403, "MATERIAL_REQUEST_READ_FORBIDDEN", "无权查看订单耗材清单");
+        }
         requireAccessibleOrder(actor, orderId);
         return toViews(requestMapper.selectList(new LambdaQueryWrapper<MaterialRequestEntity>()
                 .eq(MaterialRequestEntity::getOrderId, orderId)
@@ -475,7 +482,7 @@ public class MaterialRequestService {
     private WorkOrderEntity requireAccessibleOrder(AuthenticatedUser actor, long orderId) {
         LambdaQueryWrapper<WorkOrderEntity> query = new LambdaQueryWrapper<WorkOrderEntity>()
                 .eq(WorkOrderEntity::getId, orderId).eq(WorkOrderEntity::getDeleted, false);
-        if (!actor.hasRole(RoleCode.ADMIN)) {
+        if (!actor.hasRole(RoleCode.ADMIN) && !actor.hasRole(RoleCode.PROJECT_MANAGER)) {
             if (actor.hasRole(RoleCode.INSTALLER)) query.eq(WorkOrderEntity::getInstallerUserId, actor.userId());
             else query.eq(WorkOrderEntity::getCustomerUserId, actor.userId());
         }

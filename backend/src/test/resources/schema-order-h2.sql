@@ -7,6 +7,9 @@ CREATE TABLE work_order (
   dealer_user_id BIGINT,
   dealer_request_id VARCHAR(64),
   dealer_request_hash VARCHAR(64),
+  sales_user_id BIGINT,
+  sales_request_id VARCHAR(64),
+  sales_request_hash VARCHAR(64),
   description VARCHAR(1000),
   customer_user_id BIGINT,
   customer_name VARCHAR(64) NOT NULL,
@@ -28,8 +31,10 @@ CREATE TABLE work_order (
   updated_by BIGINT,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
   UNIQUE(dealer_user_id, dealer_request_id),
+  UNIQUE(created_by, sales_request_id),
   CHECK (order_status IN ('PENDING_ASSIGNMENT', 'PENDING_VISIT', 'IN_PROGRESS', 'PENDING_REVIEW', 'REVIEWED', 'CANCELLED')),
-  CHECK ((order_status IN ('PENDING_ASSIGNMENT', 'CANCELLED') AND order_source = 'DEALER_APPOINTMENT') OR installer_user_id IS NOT NULL)
+  CHECK ((order_status IN ('PENDING_ASSIGNMENT', 'CANCELLED')
+    AND order_source IN ('DEALER_APPOINTMENT', 'SALES_APPOINTMENT')) OR installer_user_id IS NOT NULL)
 );
 
 CREATE TABLE work_order_assignment (

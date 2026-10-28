@@ -25,6 +25,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -50,6 +51,7 @@ public class FileController {
     }
 
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("!hasRole('PROJECT_MANAGER')")
     @Operation(summary = "上传单张图片或视频；可同时原子绑定业务关系")
     ApiResponse<FileView> upload(@AuthenticationPrincipal AuthenticatedUser actor,
                                  @RequestPart("file") MultipartFile file,
@@ -63,6 +65,7 @@ public class FileController {
     }
 
     @PostMapping("/{id}/relations")
+    @PreAuthorize("!hasRole('PROJECT_MANAGER')")
     @Operation(summary = "将已上传文件绑定到业务；限制只能绑定本人上传文件")
     ApiResponse<FileView> bind(@AuthenticationPrincipal AuthenticatedUser actor,
                                @PathVariable @Min(1) long id,
@@ -72,6 +75,7 @@ public class FileController {
     }
 
     @DeleteMapping("/{id}/relations")
+    @PreAuthorize("!hasRole('PROJECT_MANAGER')")
     @Operation(summary = "解绑文件与业务关系；校验当前用户的业务写权限")
     ApiResponse<Boolean> unbind(@AuthenticationPrincipal AuthenticatedUser actor,
                                 @PathVariable @Min(1) long id,
@@ -84,6 +88,7 @@ public class FileController {
     }
 
     @DeleteMapping("/{id}")
+    @PreAuthorize("!hasRole('PROJECT_MANAGER')")
     @Operation(summary = "删除本人尚未绑定业务的临时上传文件")
     ApiResponse<Boolean> deleteUnbound(@AuthenticationPrincipal AuthenticatedUser actor,
                                        @PathVariable @Min(1) long id,

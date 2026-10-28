@@ -7,19 +7,22 @@ const source = readFileSync(new URL('../utils/dealer-booking.js', import.meta.ur
 const { isDealer, bookingPayload, validateBooking } = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`)
 const valid = () => ({ taskType: '空调安装', description: '安装设备', customerName: '客户', customerPhone: '13800000000', addressArea: ['湖北省', '武汉市', '江汉区'], addressDetail: '测试地址' })
 
-test('only dealer role can enter, including multi-role accounts', () => {
+test('dealer and sales can book; a secondary role cannot bypass the single-role contract', () => {
   for (const role of ['admin', 'customer', 'installer', '', null]) assert.equal(isDealer({ role }), false)
   assert.equal(isDealer({ role: 'DEALER' }), true)
-  assert.equal(isDealer({ role: 'customer', roles: ['DEALER'] }), true)
+  assert.equal(isDealer({ role: 'SALES' }), true)
+  assert.equal(isDealer({ role: 'customer', roles: ['DEALER'] }), false)
   assert.equal(isDealer({ roles: 'DEALER' }), false)
 })
 test('appointment payload excludes server-owned fields and uses ordered file IDs', () => {
   const form = { ...valid(), masterIds: [99], dealerUserId: 3, orderSource: 'ADMIN', customerUserId: 2, status: 'REVIEWED' }
   const payload = bookingPayload(form, [{ id: 4 }, { id: '7' }], 'same-request')
-  assert.deepEqual(Object.keys(payload).sort(), ['requestId', 'taskType', 'description', 'customerName', 'customerPhone', 'addressArea', 'addressDetail', 'fileIds'].sort())
+  assert.deepEqual(Object.keys(payload).sort(), ['requestId', 'taskType', 'description', 'customerName', 'customerPhone', 'addressArea', 'addressDetail', 'salesUserId', 'fileIds'].sort())
+  assert.equal(payload.salesUserId, null)
   assert.deepEqual(payload.fileIds, [4, 7])
   assert.equal(payload.requestId, 'same-request')
   assert.notEqual(payload.addressArea, form.addressArea)
+  assert.equal(bookingPayload({ ...form, salesUserId: 12 }, [], 'other').salesUserId, 12)
 })
 test('required fields, exact task values and phone validation prevent invalid requests', () => {
   assert.equal(validateBooking(valid(), []), '')
@@ -45,12 +48,14 @@ const { ref, reactive, computed } = require('vue')
 const pageSource = readFileSync(new URL('../packageA/dealer-booking/dealer-booking.vue', import.meta.url), 'utf8')
 const pageScript = pageSource.match(/<script setup>([\s\S]*?)<\/script>/)[1].replace(/^import .*$/gm, '')
 const helpers = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`)
-function page({ role = 'dealer', create, upload } = {}) {
+function page({ role = 'dealer', create, upload, salespersonOptions } = {}) {
   const state = { selection: null }
   const uni = { chooseImage: options => { state.selection = options }, showToast() {}, previewImage() {}, showModal() {}, switchTab() {} }
-  const names = ['ref', 'reactive', 'computed', 'onShow', 'onUnload', 'authApi', 'dealerBookingApi', 'uploadApi', 'getAuthToken', 'uni', ...Object.keys(helpers)]
-  const values = [ref, reactive, computed, () => {}, () => {}, { getUserInfo: async () => ({ code: 200, data: { role } }) }, { create }, { uploadImage: upload, deleteTemporary: async () => ({ code: 200 }) }, () => 'test-session', uni, ...Object.values(helpers)]
-  const instance = new Function(...names, `${pageScript}\nreturn { form, files, allowed, checking, locked, result, error, checkAccess, chooseImages, upload, submit };`)(...values)
+  const names = ['ref', 'reactive', 'computed', 'onShow', 'onUnload', 'authApi', 'dealerBookingApi', 'salespersonApi', 'uploadApi', 'getAuthToken', 'uni', ...Object.keys(helpers)]
+  const values = [ref, reactive, computed, () => {}, () => {}, { getUserInfo: async () => ({ code: 200, data: { role } }) }, { create },
+    { options: salespersonOptions || (async () => ({ code: 200, data: { list: [{ id: 12, name: '销售乙' }] } })) },
+    { uploadImage: upload, deleteTemporary: async () => ({ code: 200 }) }, () => 'test-session', uni, ...Object.values(helpers)]
+  const instance = new Function(...names, `${pageScript}\nreturn { form, files, allowed, checking, locked, result, error, salespersons, salesKeyword, salespersonTotal, checkAccess, loadSalespersons, loadMoreSalespersons, selectSalesperson, chooseImages, upload, submit };`)(...values)
   Object.assign(instance.form, valid())
   return { ...instance, state }
 }
@@ -108,4 +113,43 @@ test('flow: non-dealer cannot submit; missing backend never produces success', a
   assert.equal(dealer.result.value, null)
   assert.equal(dealer.locked.value, false)
   assert.match(dealer.error.value, /暂未开放/)
+})
+
+test('flow: sales creator chooses another salesperson without auto-assignment', async () => {
+  const calls = []
+  const sales = page({ role: 'sales', create: async (payload, role) => {
+    calls.push({ payload, role }); return { code: 200, data: { id: 8, orderNo: 'SALES-8' } }
+  } })
+  await sales.checkAccess()
+  assert.equal(sales.allowed.value, true)
+  sales.form.salesUserId = 12
+  await sales.submit()
+  assert.equal(calls[0].role, 'sales')
+  assert.equal(calls[0].payload.salesUserId, 12)
+})
+
+test('salesperson picker loads beyond first page and keeps search results separate', async () => {
+  const calls = []
+  const instance = page({
+    salespersonOptions: async params => {
+      calls.push({ ...params })
+      if (params.keyword === '乙') return { code: 200, data: { list: [{ id: 7, name: '销售乙' }], total: 1 } }
+      if (params.page === 1) return { code: 200, data: {
+        list: Array.from({ length: 100 }, (_, index) => ({ id: index + 1, name: `销售${index + 1}` })), total: 101
+      } }
+      return { code: 200, data: { list: [{ id: 101, name: '末页销售', maskedPhone: '138****0001' }], total: 101 } }
+    }
+  })
+  await instance.checkAccess()
+  assert.equal(instance.salespersons.value.length, 100)
+  instance.salesKeyword.value = '乙'
+  await instance.loadMoreSalespersons()
+  assert.equal(calls[1].keyword, '')
+  assert.equal(instance.salespersons.value.length, 101)
+  instance.selectSalesperson({ detail: { value: 100 } })
+  assert.equal(instance.form.salesUserId, 101)
+  assert.match(instance.salespersons.value[100].displayName, /138\*\*\*\*0001/)
+  await instance.loadSalespersons()
+  assert.equal(instance.salespersons.value.length, 1)
+  assert.equal(calls[2].keyword, '乙')
 })

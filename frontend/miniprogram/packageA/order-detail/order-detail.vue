@@ -41,7 +41,7 @@
 				</view>
 			</view>
 			<view class="info-row">
-				<text class="info-label">{{ userRole === 'dealer' ? '客户' : '收货人' }}</text>
+				<text class="info-label">{{ ['dealer', 'sales', 'project_manager'].includes(userRole) ? '客户' : '收货人' }}</text>
 				<text class="info-value">{{ orderInfo.name }} {{ orderInfo.phone }}</text>
 			</view>
 			<view class="info-row">
@@ -52,9 +52,17 @@
 				<text class="info-label">上门时间</text>
 				<text class="info-value highlight">{{ orderInfo.visitTime || '待管理员安排' }}</text>
 			</view>
-			<template v-if="userRole === 'dealer'">
+			<template v-if="['dealer', 'sales', 'project_manager'].includes(userRole)">
 				<view class="info-row">
-					<text class="info-label">预约提交</text>
+					<text class="info-label">订单来源</text>
+					<text class="info-value">{{ orderInfo.orderSourceLabel || '未知' }}</text>
+				</view>
+				<view class="info-row">
+					<text class="info-label">销售人员</text>
+					<text class="info-value">{{ orderInfo.salesName || '未指定' }}</text>
+				</view>
+				<view class="info-row">
+					<text class="info-label">订单创建</text>
 					<text class="info-value">{{ orderInfo.createdTime }}</text>
 				</view>
 				<view class="info-row">
@@ -66,6 +74,17 @@
 					<text class="info-value">{{ orderInfo.selectedMasterList?.[0]?.masterName || '待指派' }}</text>
 				</view>
 			</template>
+		</view>
+		<view v-if="isProjectManager && managerMaterialRequests.length" class="section-card">
+			<text class="section-title">耗材申请记录</text>
+			<view v-for="request in managerMaterialRequests" :key="request.id" class="manager-material-request">
+				<text>{{ request.requestNo }} · {{ request.statusLabel || request.status }}</text>
+				<view v-for="item in request.materials || []" :key="item.id" class="info-row">
+					<text class="info-label">{{ item.name }} {{ item.spec || '' }}</text>
+					<text class="info-value">{{ item.count }} {{ item.unit || '' }}</text>
+				</view>
+				<text v-if="request.remark">备注：{{ request.remark }}</text>
+			</view>
 		</view>
 
 		<!-- ═══ 安装师傅耗材申请：清单与备注属于同一业务模块 ═══ -->
@@ -470,12 +489,14 @@
 
 	const materialRequest = ref(null)
 	const progressRecords = ref([])
+	const managerMaterialRequests = ref([])
 	// 客户确认订单完成前，施工记录和备货状态都不影响师傅修改耗材清单。
 	const userRole = ref('')
 	const currentUserId = ref(null)
 	const confirmingCompletion = ref(false)
 	const confirmingProgressId = ref(null)
 	const isAdmin = computed(() => userRole.value === 'admin')
+	const isProjectManager = computed(() => userRole.value === 'project_manager')
 	const isInstaller = computed(() => userRole.value === 'installer')
 	const isReviewer = computed(() => userRole.value === 'customer')
 	const isBoundCustomer = computed(() => isReviewer.value && currentUserId.value != null &&
@@ -1295,14 +1316,18 @@ const statusClass = computed(() => {
 				return
 			}
 			if (userRes.code === 200 && userRes.data) {
-				userRole.value = userRes.data.role === 'admin' ? 'admin'
-					: userRes.data.roles?.includes('dealer') ? 'dealer' : (userRes.data.role || '')
+				userRole.value = userRes.data.role || ''
 				currentUserId.value = userRes.data.id
 			}
 			// 订单字段已与模板对齐，res.data 直接赋值
 			const data = orderRes.data || {}
 			orderInfo.value = data
 			if (progressRes.code === 200) progressRecords.value = progressRes.data || []
+			if (isProjectManager.value) {
+				const managerRes = await orderApi.getProjectManagerDetail(orderId.value, { loading: false })
+				if (managerRes.code !== 200) { setDetailError(managerRes); return }
+				managerMaterialRequests.value = managerRes.data?.materialRequests || []
+			}
 			if (userRole.value === 'installer') {
 				const materialsRes = await orderApi.getMaterials(orderId.value, { loading: false, silent: true })
 				// API 层只将明确的“尚未申请”归一化为空；不能吞掉其他 404。
@@ -1363,6 +1388,19 @@ const statusClass = computed(() => {
 		padding: 24rpx;
 		margin: 16rpx 24rpx 0;
 		box-shadow: 0 2rpx 12rpx rgba(30, 41, 59, 0.04);
+	}
+
+	.manager-material-request {
+		margin-top: 20rpx;
+		padding: 20rpx 22rpx;
+		border-radius: 14rpx;
+		background: #f7f9fc;
+		color: #52657a;
+		font-size: 24rpx;
+	}
+
+	.manager-material-request .info-row:first-of-type {
+		margin-top: 12rpx;
 	}
 
 	/* ═══ 订单信息 ═══ */

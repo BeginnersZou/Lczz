@@ -80,7 +80,7 @@
 						</view>
 					</view>
 					<view class="info-row">
-						<text class="info-label">{{ userRole === 'dealer' ? '客户' : '收货人' }}</text>
+						<text class="info-label">{{ ['dealer', 'sales', 'project_manager'].includes(userRole) ? '客户' : '收货人' }}</text>
 						<text class="info-value">{{ order.name }} {{ order.phone }}</text>
 					</view>
 					<view class="info-row">
@@ -91,9 +91,13 @@
 				<text class="info-label">上门时间</text>
 				<text class="info-value highlight">{{ order.visitTime || '待管理员安排' }}</text>
 				</view>
-				<view class="info-row" v-if="userRole === 'dealer'">
-					<text class="info-label">预约提交</text>
+				<view class="info-row" v-if="['dealer', 'sales', 'project_manager'].includes(userRole)">
+					<text class="info-label">订单创建</text>
 					<text class="info-value">{{ order.createdTime }}</text>
+				</view>
+				<view class="info-row" v-if="['dealer', 'sales', 'project_manager'].includes(userRole)">
+					<text class="info-label">销售人员</text>
+					<text class="info-value">{{ order.salesName || '未指定' }}</text>
 				</view>
 			<view class="action-row" v-if="canReview(order) || isReviewed(order)">
 				<view class="review-entry" v-if="canReview(order)">
@@ -237,8 +241,7 @@ const loadUserRole = async () => {
 	try {
 		const res = await authApi.getUserInfo()
 		if (res.code === 200 && res.data) {
-			userRole.value = res.data.role === 'admin' ? 'admin'
-				: res.data.roles?.includes('dealer') ? 'dealer' : (res.data.role || '')
+			userRole.value = res.data.role || ''
 		}
 	} catch (err) {
 		// 忽略错误，按默认处理

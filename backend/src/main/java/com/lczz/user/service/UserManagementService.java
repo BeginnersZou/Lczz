@@ -15,8 +15,11 @@ import com.lczz.auth.persistence.UserRoleMapper;
 import com.lczz.common.audit.OperationAuditService;
 import com.lczz.common.exception.BusinessException;
 import com.lczz.common.time.UtcTime;
+import com.lczz.order.persistence.WorkOrderEntity;
+import com.lczz.order.persistence.WorkOrderMapper;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
@@ -39,21 +42,25 @@ public class UserManagementService {
     private static final Pattern PHONE_PATTERN = Pattern.compile("^1\\d{10}$");
     private static final Pattern USERNAME_PATTERN = Pattern.compile("^[a-z0-9._-]{4,64}$");
     private static final Set<String> ACCOUNT_STATUSES = Set.of("ENABLED", "DISABLED");
-    private static final List<String> ROLE_PRIORITY = List.of("ADMIN", "INSTALLER", "DEALER", "CUSTOMER");
+    private static final List<String> ROLE_PRIORITY = List.of(
+            "ADMIN", "PROJECT_MANAGER", "SALES", "INSTALLER", "DEALER", "CUSTOMER");
     private static final Map<String, String> GENDER_ALIASES = Map.of(
             "男", "MALE", "女", "FEMALE", "未知", "UNKNOWN");
 
     private final UserMapper userMapper;
     private final RoleMapper roleMapper;
     private final UserRoleMapper userRoleMapper;
+    private final WorkOrderMapper orderMapper;
     private final OperationAuditService auditService;
     private final PasswordEncoder passwordEncoder;
 
     public UserManagementService(UserMapper userMapper, RoleMapper roleMapper, UserRoleMapper userRoleMapper,
-                                 OperationAuditService auditService, PasswordEncoder passwordEncoder) {
+                                 WorkOrderMapper orderMapper, OperationAuditService auditService,
+                                 PasswordEncoder passwordEncoder) {
         this.userMapper = userMapper;
         this.roleMapper = roleMapper;
         this.userRoleMapper = userRoleMapper;
+        this.orderMapper = orderMapper;
         this.auditService = auditService;
         this.passwordEncoder = passwordEncoder;
     }
@@ -185,6 +192,9 @@ public class UserManagementService {
         }
         UserEntity current = lockUser(id);
         currentRoles = normalizedRoles(roleMapper.selectRoleCodesByUserId(id));
+        if (currentRoles.contains(RoleCode.SALES.name()) && nextRole != RoleCode.SALES) {
+            ensureNoOpenSalesOrders(id);
+        }
         AuditSnapshot before = snapshot(current, currentRoles);
         String nextPasswordHash = passwordCommand == null
                 ? null : validateAndEncodePassword(actor, id, current, currentRoles, passwordCommand);
@@ -256,6 +266,9 @@ public class UserManagementService {
             ensureAdminContinuity(id);
         }
         current = lockUser(id);
+        if (currentRoles.contains(RoleCode.SALES.name()) && "DISABLED".equals(nextStatus)) {
+            ensureNoOpenSalesOrders(id);
+        }
         AuditSnapshot before = snapshot(current, currentRoles);
         userMapper.update(new LambdaUpdateWrapper<UserEntity>()
                 .eq(UserEntity::getId, id)
@@ -280,6 +293,9 @@ public class UserManagementService {
             ensureAdminContinuity(id);
         }
         current = lockUser(id);
+        if (currentRoles.contains(RoleCode.SALES.name()) && blacklist) {
+            ensureNoOpenSalesOrders(id);
+        }
         AuditSnapshot before = snapshot(current, currentRoles);
         userMapper.update(new LambdaUpdateWrapper<UserEntity>()
                 .eq(UserEntity::getId, id)
@@ -293,6 +309,32 @@ public class UserManagementService {
         auditService.recordSuccess(actor.userId(), "USER_BLACKLIST_CHANGE", "USER", id,
                 context.requestId(), context.clientIp(), before, after);
         return result;
+    }
+
+    @Transactional
+    public void delete(AuthenticatedUser actor, long id, AuditContext context) {
+        if (actor == null || !actor.hasRole(RoleCode.ADMIN)) {
+            throw new BusinessException(403, "FORBIDDEN", "仅管理员可删除用户");
+        }
+        if (actor.userId() == id) {
+            throw new BusinessException(409, "SELF_DELETE_FORBIDDEN", "管理员不能删除自己的账号");
+        }
+        UserEntity current = requireUser(id);
+        List<String> roles = normalizedRoles(roleMapper.selectRoleCodesByUserId(id));
+        if (roles.contains(RoleCode.ADMIN.name())) ensureAdminContinuity(id);
+        current = lockUser(id);
+        if (roles.contains(RoleCode.SALES.name())) ensureNoOpenSalesOrders(id);
+        AuditSnapshot before = snapshot(current, roles);
+        userMapper.update(new LambdaUpdateWrapper<UserEntity>()
+                .eq(UserEntity::getId, id)
+                .eq(UserEntity::getDeleted, false)
+                .set(UserEntity::getDeleted, true)
+                .set(UserEntity::getDeletedAt, LocalDateTime.now(ZoneOffset.UTC))
+                .set(UserEntity::getAccountStatus, "DISABLED")
+                .set(UserEntity::getUpdatedBy, actor.userId())
+                .setSql("version = version + 1"));
+        auditService.recordSuccess(actor.userId(), "USER_SOFT_DELETE", "USER", id,
+                context.requestId(), context.clientIp(), before, Map.of("deleted", true));
     }
 
     private void replaceRole(long actorId, long userId, List<String> currentRoles, RoleCode nextRole) {
@@ -320,6 +362,18 @@ public class UserManagementService {
         List<Long> activeAdminIds = roleMapper.selectActiveAdminIdsForUpdate();
         if (activeAdminIds.contains(targetUserId) && activeAdminIds.size() <= 1) {
             throw new BusinessException(409, "LAST_ADMIN_REQUIRED", "系统必须至少保留一个有效管理员");
+        }
+    }
+
+    private void ensureNoOpenSalesOrders(long salesUserId) {
+        long count = orderMapper.selectCount(new LambdaQueryWrapper<WorkOrderEntity>()
+                .eq(WorkOrderEntity::getDeleted, false)
+                .notIn(WorkOrderEntity::getOrderStatus, "CANCELLED", "REVIEWED")
+                .and(part -> part.eq(WorkOrderEntity::getSalesUserId, salesUserId)
+                        .or(nested -> nested.eq(WorkOrderEntity::getOrderSource, "SALES_APPOINTMENT")
+                                .eq(WorkOrderEntity::getCreatedBy, salesUserId))));
+        if (count > 0) {
+            throw new BusinessException(409, "SALES_OPEN_ORDERS", "该销售员仍有关联的未结束订单，请先完成或重新指派");
         }
     }
 

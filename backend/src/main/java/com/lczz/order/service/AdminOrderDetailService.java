@@ -41,7 +41,19 @@ public class AdminOrderDetailService {
                 materialRequestService.listByOrderForAdmin(actor, orderId), reviewService.byOrder(actor, orderId));
     }
 
+    @Transactional(readOnly = true)
+    public ProjectManagerOrderDetailView projectManagerDetail(AuthenticatedUser actor, long orderId) {
+        if (actor == null || !actor.hasRole(RoleCode.PROJECT_MANAGER)) {
+            throw new BusinessException(403, "PROJECT_MANAGER_READ_FORBIDDEN", "仅项目经理可以查看该只读详情");
+        }
+        OrderView order = orderService.detail(actor, orderId);
+        return new ProjectManagerOrderDetailView(order, progressService.list(actor, orderId),
+                materialRequestService.listByOrderForObserver(actor, orderId));
+    }
+
     public record AdminOrderDetailView(OrderView order, List<ProgressView> progress,
                                        List<RequestView> materialRequests,
                                        @JsonInclude(JsonInclude.Include.ALWAYS) ReviewView review) { }
+    public record ProjectManagerOrderDetailView(OrderView order, List<ProgressView> progress,
+                                                List<RequestView> materialRequests) { }
 }

@@ -2,7 +2,7 @@
 
 基线：`origin/dev@652ad56b`（2026-10-27 已拉取）；本地工作分支：`codex/roles-sales-project-manager-20261027`。
 
-GitHub Issue：待创建。当前 GitHub 集成创建 Issue 返回 403，本机 `gh` 凭据失效；不得虚报 Issue 编号或把此文档当作已合入的实现。
+GitHub Issues：[#191 单角色与用户管理](https://github.com/BeginnersZou/Lczz/issues/191)、[#192 销售预约与订单归属](https://github.com/BeginnersZou/Lczz/issues/192)、[#193 项目经理只读](https://github.com/BeginnersZou/Lczz/issues/193)。
 
 ## 已确认的产品规则
 
@@ -12,14 +12,12 @@ GitHub Issue：待创建。当前 GitHub 集成创建 Issue 返回 403，本机 
 - 销售员只能查看自己创建的订单，或任何创建者明确指定给自己的订单。即销售员 A 创建并指定销售员 B 时，A、B 都能查看；未指定时仅 A 可按创建人身份查看。经销商仍只看自己提交的订单，不因选择销售员而放宽范围。
 - 原有“客户评价只有管理员可见”规则不变；项目经理、销售员不得通过详情聚合接口或文件签名链接读取评价正文/附件。
 
-## 当前代码及关键风险
+## 实施状态与发布门槛
 
-1. `RoleCode` 与数据库种子只有四种角色；`UserManagementService.replaceRole` 已执行角色替换，但 `sys_user_role` 仅有 `(user_id, role_id)` 唯一键，数据库仍可给一人插入多个角色。`UserAccountService` 把多角色组成权限集合，`AuthService.UserInfo` 从集合推导主角色，这与新规则冲突。
-2. PC `UserList.vue` 角色选项缺新角色；小程序 `auth-session.js` 只接受四种角色。PC `AuthService.passwordLogin` 仅允许 ADMIN，此规则继续保持，项目经理不开放 PC 登录。
-3. `DealerAppointmentController` 类级别只允许 DEALER；预约幂等键按经销商计，`V10` 的订单来源 CHECK 仅允许 ADMIN/DEALER_APPOINTMENT。不能让 SALES 伪装成 DEALER 创建订单。
-4. `OrderService.scopedQuery` 对未知角色回退为客户本人订单；项目经理在此会看不到全量。`WorkProgressService`、`FileService` 等还有独立的读取范围，需要同步，不能只放开订单表查询。
-5. `AdminOrderDetailService` 聚合了客户评价且仅 ADMIN 可用。项目经理不得复用此接口直接放权；需要不含评价的只读 DTO/接口。
-6. 当前 PC `OrderForm.vue`、小程序 `dealer-booking.vue` 都没有销售员选择；订单列表和详情也没有销售归属字段。
+- Issues #191/#192/#193 已创建；数据库 V17/V18、单角色鉴权、用户软删除与在途销售归属保护、销售员预约及候选接口、订单读取范围、项目经理无评价只读详情均已在本工作分支实现。
+- PC 用户管理和订单表单、小程序预约及订单展示已对接；候选销售员支持搜索、分页继续加载和清空，服务器写入时再次校验。后端跨角色集成测试已覆盖主要越权与预约场景。
+- PC 生产构建通过；小程序脚本测试通过。后端全量 206 项中 204 项通过、0 项断言失败；`HttpSmokeTests` 与 `AuthConfigurationTests.wechatHttpClientPrefersHttp11ForGatewayCompatibility` 因本机回环 HTTP 测试环境报错，需在 CI/可用网络环境复核。
+- **尚未完成发布验收**：真实 MySQL 的 V17/V18 迁移演练、已有账号多角色预检、微信开发者工具与真实后端联调仍需执行。当前分支尚未合入 `dev`，不应据此声称远程或发版分支已更新。
 
 ## 实施顺序
 
@@ -80,4 +78,4 @@ GitHub Issue：待创建。当前 GitHub 集成创建 Issue 返回 403，本机 
 
 ## 完成标准
 
-先建立可写 GitHub Issue 并记录编号，再实施迁移和后端权限，再对接 PC、小程序，最后跑集成与端到端回归；检查无越权、无评价泄漏、无旧订单兼容退化后才提 PR。当前文档是设计与 worker 任务书，**尚未实现或合并**。
+独立 Issues 和三端实现已在工作分支落地；提交 PR 前必须完成真实数据库迁移预检与跨端联调，检查无越权、无评价泄漏、无旧订单兼容退化。实施状态以代码与测试为准，不以此文档代替验收。
