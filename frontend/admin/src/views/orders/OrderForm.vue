@@ -76,12 +76,13 @@
         <el-form-item label="销售人员">
           <div class="salesperson-field">
             <el-select v-model="form.salesUserId" class="input-base" clearable filterable remote
-              :remote-method="searchSalespersons" :loading="salespersonLoading" placeholder="选填，搜索销售人员姓名或手机号">
+              :remote-method="searchSalespersons" :loading="salespersonLoading" @end-reached="loadMoreSalespersons"
+              placeholder="选填，搜索销售人员姓名或手机号">
               <el-option v-for="person in salespersons" :key="person.id" :value="person.id"
                 :label="`${person.name}${person.maskedPhone ? `（${person.maskedPhone}）` : ''}`" />
             </el-select>
             <div v-if="salespersonError" class="field-feedback is-error">
-              {{ salespersonError }} <el-button link type="primary" @click="searchSalespersons()">重试</el-button>
+              {{ salespersonError }} <el-button link type="primary" @click="retrySalespersons">重试</el-button>
             </div>
           </div>
         </el-form-item>
@@ -289,17 +290,49 @@ const regionError = ref('')
 const salespersons = ref([])
 const salespersonLoading = ref(false)
 const salespersonError = ref('')
-async function searchSalespersons(keyword = '') {
+const salespersonPage = ref(0)
+const salespersonTotal = ref(0)
+const salespersonKeyword = ref('')
+let salespersonRequestVersion = 0
+const salespersonPageSize = 30
+async function fetchSalespersons(page, keyword, replace) {
+  const version = replace ? ++salespersonRequestVersion : salespersonRequestVersion
   salespersonLoading.value = true
   salespersonError.value = ''
   try {
-    const result = await getSalespersonOptionsApi({ page: 1, pageSize: 100, keyword })
+    const result = await getSalespersonOptionsApi({ page, pageSize: salespersonPageSize, keyword })
+    if (version !== salespersonRequestVersion) return
     const found = result.list || []
     const selected = salespersons.value.find(person => person.id === form.salesUserId)
-    salespersons.value = selected && !found.some(person => person.id === selected.id)
-      ? [selected, ...found] : found
-  } catch { salespersonError.value = '销售人员加载失败'; salespersons.value = [] }
-  finally { salespersonLoading.value = false }
+    const merged = replace ? found : [...salespersons.value, ...found]
+    salespersons.value = [...new Map([
+      ...(selected ? [[selected.id, selected]] : []),
+      ...merged.map(person => [person.id, person])
+    ]).values()]
+    salespersonPage.value = page
+    salespersonTotal.value = Number(result.total) || 0
+  } catch {
+    if (version === salespersonRequestVersion) {
+      salespersonError.value = '销售人员加载失败'
+      if (replace) salespersons.value = []
+    }
+  } finally {
+    if (version === salespersonRequestVersion) salespersonLoading.value = false
+  }
+}
+function searchSalespersons(keyword = '') {
+  salespersonKeyword.value = keyword
+  salespersonPage.value = 0
+  return fetchSalespersons(1, keyword, true)
+}
+function loadMoreSalespersons(direction) {
+  if (direction !== 'bottom' || salespersonLoading.value
+    || salespersonPage.value * salespersonPageSize >= salespersonTotal.value) return
+  return fetchSalespersons(salespersonPage.value + 1, salespersonKeyword.value, false)
+}
+function retrySalespersons() {
+  return salespersonPage.value ? fetchSalespersons(salespersonPage.value + 1, salespersonKeyword.value, false)
+    : searchSalespersons(salespersonKeyword.value)
 }
 
 // 图片只在草稿中增删，确认提交后才变更业务关联。
@@ -426,7 +459,8 @@ async function loadEditData() {
       remark: result.materialRequest?.remark || ''
     }
     orderOrigin.value = { orderSource: res.orderSource, dealerName: res.dealerName,
-      salesUserId: res.salesUserId, salesName: res.salesName, statusCode: res.statusCode }
+      salesUserId: res.salesUserId, salesName: res.salesName,
+      creatorUserId: res.creatorUserId, creatorName: res.creatorName, statusCode: res.statusCode }
     if (res.salesUserId && !salespersons.value.some(person => person.id === res.salesUserId)) {
       salespersons.value.push({ id: res.salesUserId, name: res.salesName || `销售员 #${res.salesUserId}` })
     }

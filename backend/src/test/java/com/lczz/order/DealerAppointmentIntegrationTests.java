@@ -311,8 +311,11 @@ class DealerAppointmentIntegrationTests {
         assertThat(data(get("/api/orders/list"), salesAssigned).path("total").asInt()).isEqualTo(1);
         assertThat(data(get("/api/orders/list"), salesOther).path("total").asInt()).isZero();
         assertThat(data(get("/api/orders/list"), projectManager).path("total").asInt()).isEqualTo(1);
-        assertThat(data(get("/api/orders/detail/" + id), salesAssigned).path("salesUserId").asLong())
-                .isEqualTo(salesAssigned);
+        JsonNode assignedView = data(get("/api/orders/detail/" + id), salesAssigned);
+        assertThat(assignedView.path("salesUserId").asLong()).isEqualTo(salesAssigned);
+        assertThat(assignedView.path("creatorUserId").asLong()).isEqualTo(salesCreator);
+        assertThat(assignedView.path("creatorName").asText()).isEqualTo("销售甲");
+        assertThat(assignedView.path("salesName").asText()).isEqualTo("销售乙");
         mvc.perform(auth(get("/api/orders/detail/" + id), salesOther)).andExpect(status().isNotFound());
         mvc.perform(auth(get("/api/files/" + photo + "/url"), salesAssigned)).andExpect(status().isOk());
         mvc.perform(auth(get("/api/files/" + photo + "/url"), salesOther)).andExpect(status().isForbidden());
@@ -321,14 +324,79 @@ class DealerAppointmentIntegrationTests {
         assertThat(managerDetail.path("order").path("id").asLong()).isEqualTo(id);
         assertThat(managerDetail.has("review")).isFalse();
         assertThat(managerDetail.path("materialRequests").isArray()).isTrue();
+        mvc.perform(auth(get("/api/files/" + photo + "/url"), projectManager)).andExpect(status().isOk());
         mvc.perform(auth(get("/api/admin/orders/" + id), projectManager)).andExpect(status().isForbidden());
         mvc.perform(auth(post("/api/orders/" + id + "/cancel"), projectManager)).andExpect(status().isForbidden());
+        mvc.perform(auth(post("/api/orders/" + id + "/progress").contentType("application/json")
+                .content("{\"description\":\"越权提交\",\"fileIds\":[]}"), projectManager)).andExpect(status().isForbidden());
+        mvc.perform(auth(post("/api/orders/" + id + "/materials").contentType("application/json")
+                .content("{\"items\":[]}"), projectManager)).andExpect(status().isForbidden());
+        mvc.perform(auth(post("/api/orders/" + id + "/confirm-completion"), projectManager)).andExpect(status().isForbidden());
+        mvc.perform(auth(post("/api/preparation/1/finish"), projectManager)).andExpect(status().isForbidden());
         mvc.perform(auth(put("/api/orders/" + id).contentType("application/json")
                 .content(json.writeValueAsString(adminBody())), projectManager)).andExpect(status().isForbidden());
         mvc.perform(multipart("/api/files/upload")
                 .file(new MockMultipartFile("file", "x.png", "image/png", new byte[]{1}))
                 .header("Authorization", "Bearer " + tokens.issue(actor(projectManager)).value()))
                 .andExpect(status().isForbidden());
+        for (String path : List.of("/api/upload/image", "/api/orders/upload")) {
+            mvc.perform(multipart(path)
+                    .file(new MockMultipartFile("file", "x.png", "image/png", new byte[]{1}))
+                    .header("Authorization", "Bearer " + tokens.issue(actor(projectManager)).value()))
+                    .andExpect(status().isForbidden());
+        }
+        mvc.perform(auth(delete("/api/files/" + photo), projectManager)).andExpect(status().isForbidden());
+    }
+
+    @Test
+    void administratorCanAssignReplaceAndClearSalespersonWithoutChangingCreator() throws Exception {
+        long first = user("销售甲", "13900000005", RoleCode.SALES);
+        long second = user("销售乙", "13900000006", RoleCode.SALES);
+        Map<String, Object> request = adminBody();
+        request.put("salesUserId", first);
+        JsonNode created = data(post("/api/v1/orders").contentType("application/json")
+                .content(json.writeValueAsString(request)), admin);
+        long id = created.path("id").asLong();
+        assertThat(created.path("creatorUserId").asLong()).isEqualTo(admin);
+        assertThat(created.path("salesUserId").asLong()).isEqualTo(first);
+        assertThat(data(get("/api/orders/list"), first).path("total").asInt()).isEqualTo(1);
+        assertThat(data(get("/api/orders/list"), second).path("total").asInt()).isZero();
+
+        request.put("salesUserId", second);
+        JsonNode replaced = data(put("/api/v1/orders/" + id).contentType("application/json")
+                .content(json.writeValueAsString(request)), admin);
+        assertThat(replaced.path("creatorUserId").asLong()).isEqualTo(admin);
+        assertThat(replaced.path("salesUserId").asLong()).isEqualTo(second);
+        assertThat(data(get("/api/orders/list"), first).path("total").asInt()).isZero();
+        assertThat(data(get("/api/orders/list"), second).path("total").asInt()).isEqualTo(1);
+
+        request.put("salesUserId", null);
+        JsonNode cleared = data(put("/api/v1/orders/" + id).contentType("application/json")
+                .content(json.writeValueAsString(request)), admin);
+        assertThat(cleared.path("salesUserId").isMissingNode() || cleared.path("salesUserId").isNull()).isTrue();
+        assertThat(data(get("/api/orders/list"), first).path("total").asInt()).isZero();
+        assertThat(data(get("/api/orders/list"), second).path("total").asInt()).isZero();
+    }
+
+    @Test
+    void projectManagerCannotReadReviewOrReviewLinkedOrderAttachment() throws Exception {
+        long manager = user("项目经理", "13900000008", RoleCode.PROJECT_MANAGER);
+        long orderId = create(dealer, body("13800138000")).path("id").asLong();
+        long reviewFile = upload(customer);
+        jdbc.update("INSERT INTO work_order_review(order_id, reviewer_user_id, score, content) VALUES(?,?,5,?)",
+                orderId, customer, "仅管理员可见");
+        long reviewId = jdbc.queryForObject("SELECT id FROM work_order_review WHERE order_id=?", Long.class, orderId);
+        jdbc.update("INSERT INTO business_file_relation(business_type,business_id,usage_type,file_id,sort_order) "
+                + "VALUES('REVIEW',?,'REVIEW',?,0)", reviewId, reviewFile);
+        jdbc.update("INSERT INTO business_file_relation(business_type,business_id,usage_type,file_id,sort_order) "
+                + "VALUES('ORDER',?,'ATTACHMENT',?,0)", orderId, reviewFile);
+        JsonNode managerDetail = data(get("/api/project-manager/orders/" + orderId), manager);
+        assertThat(managerDetail.has("review")).isFalse();
+        assertThat(managerDetail.path("order").path("fileList").size()).isZero();
+        mvc.perform(auth(get("/api/files/" + reviewFile + "/url"), manager)).andExpect(status().isForbidden());
+        mvc.perform(auth(get("/api/orders/evaluation/" + orderId), manager)).andExpect(status().isForbidden());
+        assertThat(data(get("/api/admin/orders/" + orderId), admin).path("review").path("content").asText())
+                .isEqualTo("仅管理员可见");
     }
 
     @Test

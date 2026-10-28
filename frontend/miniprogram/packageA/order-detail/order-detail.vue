@@ -58,6 +58,10 @@
 					<text class="info-value">{{ orderInfo.orderSourceLabel || '未知' }}</text>
 				</view>
 				<view class="info-row">
+					<text class="info-label">创建人</text>
+					<text class="info-value">{{ orderInfo.creatorName || '未知' }}</text>
+				</view>
+				<view class="info-row">
 					<text class="info-label">销售人员</text>
 					<text class="info-value">{{ orderInfo.salesName || '未指定' }}</text>
 				</view>

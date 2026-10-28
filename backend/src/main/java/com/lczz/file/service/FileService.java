@@ -93,6 +93,7 @@ public class FileService {
 
     @Transactional
     public FileView upload(AuthenticatedUser actor, MultipartFile multipart, RelationCommand relation) {
+        requireBusinessWrite(actor);
         ValidatedFile file = validate(multipart);
         RelationCommand normalized = normalizeOptionalRelation(relation);
         if (normalized != null) authorizeBusiness(actor, normalized.businessType(), normalized.businessId(), true);
@@ -133,6 +134,7 @@ public class FileService {
 
     @Transactional
     public FileView bind(AuthenticatedUser actor, long fileId, RelationCommand relation) {
+        requireBusinessWrite(actor);
         FileAssetRecord file = requireFile(fileId);
         if (!actor.hasRole(RoleCode.ADMIN) && !Objects.equals(file.getUploadedBy(), actor.userId())) {
             throw new BusinessException(403, "FILE_BIND_FORBIDDEN", "只能绑定自己上传的文件");
@@ -160,8 +162,15 @@ public class FileService {
                 .filter(file -> !Boolean.TRUE.equals(file.getDeleted()))
                 .collect(Collectors.toMap(FileAssetRecord::getId, Function.identity(),
                         (left, right) -> left, LinkedHashMap::new));
+        if (files.isEmpty()) return List.of();
+        Set<Long> reviewFiles = actor != null && actor.hasRole(RoleCode.ADMIN) ? Set.of()
+                : relationMapper.selectList(new LambdaQueryWrapper<FileRelationRecord>()
+                        .in(FileRelationRecord::getFileId, files.keySet())
+                        .eq(FileRelationRecord::getBusinessType, "REVIEW"))
+                        .stream().map(FileRelationRecord::getFileId).collect(Collectors.toSet());
         return relations.stream().map(link -> files.get(link.getFileId()))
                 .filter(Objects::nonNull)
+                .filter(file -> !reviewFiles.contains(file.getId()))
                 .map(this::toView)
                 .toList();
     }
@@ -201,6 +210,7 @@ public class FileService {
 
     @Transactional
     public boolean unbind(AuthenticatedUser actor, long fileId, RelationCommand relation) {
+        requireBusinessWrite(actor);
         requireFile(fileId);
         RelationCommand normalized = normalizeRequiredRelation(relation);
         authorizeBusiness(actor, normalized.businessType(), normalized.businessId(), true);
@@ -336,6 +346,7 @@ public class FileService {
 
     @Transactional
     public boolean deleteUnboundOwned(AuthenticatedUser actor, long fileId) {
+        requireBusinessWrite(actor);
         fileMapper.selectOne(new LambdaQueryWrapper<FileAssetRecord>()
                 .eq(FileAssetRecord::getId, fileId).last("FOR UPDATE"));
         FileAssetRecord file = requireFile(fileId);
@@ -445,6 +456,9 @@ public class FileService {
         if (actor != null && actor.hasRole(RoleCode.ADMIN)) return;
         List<FileRelationRecord> relations = relationMapper.selectList(new LambdaQueryWrapper<FileRelationRecord>()
                 .eq(FileRelationRecord::getFileId, file.getId()));
+        if (relations.stream().anyMatch(relation -> "REVIEW".equals(relation.getBusinessType()))) {
+            throw new BusinessException(403, "FILE_ACCESS_FORBIDDEN", "评价附件仅管理员可见");
+        }
         if (isProductCover(actor, file.getId())) return;
         if (!relations.isEmpty()) {
             boolean allowed = relations.stream().anyMatch(relation -> canAccessBusiness(
@@ -466,6 +480,9 @@ public class FileService {
         Map<String, Boolean> businessAccess = new HashMap<>();
         for (FileAssetRecord file : files.values()) {
             List<FileRelationRecord> relations = relationsByFile.getOrDefault(file.getId(), List.of());
+            if (relations.stream().anyMatch(relation -> "REVIEW".equals(relation.getBusinessType()))) {
+                throw new BusinessException(403, "FILE_ACCESS_FORBIDDEN", "评价附件仅管理员可见");
+            }
             if (!relations.isEmpty()) {
                 boolean allowed = relations.stream().anyMatch(relation -> {
                     String key = relation.getBusinessType() + ":" + relation.getBusinessId();
@@ -492,6 +509,12 @@ public class FileService {
     private void authorizeBusiness(AuthenticatedUser actor, String businessType, long businessId, boolean write) {
         if (!canAccessBusiness(actor, businessType, businessId, write)) {
             throw new BusinessException(403, "FILE_RELATION_FORBIDDEN", "无权关联或访问该业务文件");
+        }
+    }
+
+    private void requireBusinessWrite(AuthenticatedUser actor) {
+        if (actor != null && actor.hasRole(RoleCode.PROJECT_MANAGER)) {
+            throw new BusinessException(403, "PROJECT_MANAGER_READ_ONLY", "项目经理无操作权限");
         }
     }
 

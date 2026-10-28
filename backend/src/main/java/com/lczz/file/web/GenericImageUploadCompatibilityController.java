@@ -7,6 +7,7 @@ import com.lczz.file.service.FileService.FileView;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.MediaType;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -24,6 +25,7 @@ public class GenericImageUploadCompatibilityController {
     }
 
     @PostMapping(value = "/image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("!hasRole('PROJECT_MANAGER')")
     @Operation(summary = "兼容小程序评价页的通用图片上传入口")
     ApiResponse<FileView> upload(@AuthenticationPrincipal AuthenticatedUser actor,
                                  @RequestPart("file") MultipartFile file,

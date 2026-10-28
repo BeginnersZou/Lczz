@@ -13,10 +13,15 @@ import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.authorization.AuthorizationDecision;
+import org.springframework.security.authorization.AuthorizationManager;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
+import org.springframework.security.authentication.AuthenticationCredentialsNotFoundException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.access.intercept.RequestAuthorizationContext;
 
 @Configuration
 @EnableMethodSecurity
@@ -30,6 +35,15 @@ public class SecurityConfig {
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http, ObjectMapper objectMapper,
                                             JwtAuthenticationFilter jwtFilter) throws Exception {
+        AuthorizationManager<RequestAuthorizationContext> businessWrite = (authentication, context) -> {
+            var user = authentication.get();
+            if (user == null || user instanceof AnonymousAuthenticationToken) {
+                throw new AuthenticationCredentialsNotFoundException("请先登录");
+            }
+            return new AuthorizationDecision(user.isAuthenticated()
+                    && user.getAuthorities().stream().noneMatch(authority ->
+                    "ROLE_PROJECT_MANAGER".equals(authority.getAuthority())));
+        };
         http.csrf(csrf -> csrf.disable())
                 .cors(Customizer.withDefaults())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -46,6 +60,16 @@ public class SecurityConfig {
                                 "/api/cases/*", "/api/v1/cases/*",
                                 "/api/service-page", "/api/v1/service-page").permitAll()
                         .requestMatchers(PUBLIC_AUTH).permitAll()
+                        // Account self-service stays available; all business mutations are read-only for managers.
+                        .requestMatchers(HttpMethod.POST,
+                                "/api/auth/logout", "/api/v1/auth/logout",
+                                "/api/auth/account/cancel", "/api/v1/auth/account/cancel").authenticated()
+                        .requestMatchers(HttpMethod.PUT,
+                                "/api/auth/profile", "/api/v1/auth/profile").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/**", "/api/v1/**").access(businessWrite)
+                        .requestMatchers(HttpMethod.PUT, "/api/**", "/api/v1/**").access(businessWrite)
+                        .requestMatchers(HttpMethod.PATCH, "/api/**", "/api/v1/**").access(businessWrite)
+                        .requestMatchers(HttpMethod.DELETE, "/api/**", "/api/v1/**").access(businessWrite)
                         .anyRequest().authenticated())
                 .exceptionHandling(exceptions -> exceptions
                         .authenticationEntryPoint((request, response, exception) -> {

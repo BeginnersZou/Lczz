@@ -9,6 +9,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.constraints.Min;
 import org.springframework.http.MediaType;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -27,6 +28,7 @@ public class OrderFileCompatibilityController {
     }
 
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("!hasRole('PROJECT_MANAGER')")
     @Operation(summary = "兼容现有订单页面的图片或视频上传入口")
     ApiResponse<FileView> upload(@AuthenticationPrincipal AuthenticatedUser actor,
                                  @RequestPart("file") MultipartFile file,

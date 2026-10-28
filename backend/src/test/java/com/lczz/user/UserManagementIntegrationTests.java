@@ -376,6 +376,28 @@ class UserManagementIntegrationTests {
     }
 
     @Test
+    void existingTokenImmediatelyUsesTheNewSingleRoleAndSoftDeleteRevokesIt() throws Exception {
+        String originalToken = token(customerId, RoleCode.CUSTOMER);
+        mockMvc.perform(get("/api/v1/salespersons/options")
+                .header("Authorization", "Bearer " + originalToken)).andExpect(status().isForbidden());
+        mockMvc.perform(put("/api/v1/users/{id}", customerId)
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType("application/json")
+                .content("{\"nickname\":\"普通客户\",\"role\":\"SALES\"}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/v1/salespersons/options")
+                .header("Authorization", "Bearer " + originalToken)).andExpect(status().isOk());
+        assertThatThrownBy(() -> jdbcTemplate.update("""
+                INSERT INTO sys_user_role(user_id, role_id)
+                SELECT ?, id FROM sys_role WHERE role_code='PROJECT_MANAGER'
+                """, customerId)).hasMessageContaining("Unique index");
+        mockMvc.perform(delete("/api/v1/users/{id}", customerId)
+                .header("Authorization", "Bearer " + adminToken)).andExpect(status().isOk());
+        mockMvc.perform(get("/api/v1/auth/me")
+                .header("Authorization", "Bearer " + originalToken)).andExpect(status().isUnauthorized());
+    }
+
+    @Test
     void salespersonWithOpenOrdersCannotBeDisabledReclassifiedOrDeleted() throws Exception {
         long salesId = createUser(null, "销售员", "13960000005", RoleCode.SALES);
         jdbcTemplate.update("""

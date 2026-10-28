@@ -454,7 +454,7 @@ public class OrderService {
                 .collect(Collectors.toMap(WorkOrderStatusHistoryEntity::getOrderId, Function.identity(), (first, later) -> first));
         Set<Long> userIds = orders.stream()
                 .flatMap(order -> java.util.stream.Stream.of(order.getCustomerUserId(), order.getInstallerUserId(),
-                        order.getDealerUserId(), order.getSalesUserId()))
+                        order.getDealerUserId(), order.getSalesUserId(), order.getCreatedBy()))
                 .filter(java.util.Objects::nonNull).collect(Collectors.toSet());
         Map<Long, UserEntity> users = userIds.isEmpty() ? Map.of() : userMapper.selectByIds(userIds).stream()
                 .collect(Collectors.toMap(UserEntity::getId, Function.identity()));
@@ -472,6 +472,7 @@ public class OrderService {
         List<InstallerView> masters = master == null ? List.of() : List.of(master);
         UserEntity dealer = order.getDealerUserId() == null ? null : users.get(order.getDealerUserId());
         UserEntity salesperson = order.getSalesUserId() == null ? null : users.get(order.getSalesUserId());
+        UserEntity creator = order.getCreatedBy() == null ? null : users.get(order.getCreatedBy());
         DealerView dealerView = actor.hasRole(RoleCode.ADMIN) && order.getDealerUserId() != null
                 ? new DealerView(order.getDealerUserId(), dealer == null ? "经销商" : InstallerView.from(dealer).masterName(),
                     dealer == null ? null : dealer.getPhone()) : null;
@@ -496,7 +497,10 @@ public class OrderService {
                 dealerView == null ? null : dealerView.id(), dealerView == null ? null : dealerView.name(), dealerView,
                 order.getSalesUserId(), salesperson == null ? null
                         : salesperson.getRealName() != null && !salesperson.getRealName().isBlank()
-                        ? salesperson.getRealName() : salesperson.getNickname());
+                        ? salesperson.getRealName() : salesperson.getNickname(),
+                order.getCreatedBy(), creator == null ? null
+                        : creator.getRealName() != null && !creator.getRealName().isBlank()
+                        ? creator.getRealName() : creator.getNickname());
     }
 
     String normalizePhone(String raw) {
@@ -640,5 +644,6 @@ public class OrderService {
                             String serviceName, String productName, String productSpec, String name, String phone,
                             List<FileView> fileList, Long customerConfirmedBy, OffsetDateTime customerConfirmedAt,
                             String orderSource, String orderSourceLabel, Long dealerUserId, String dealerName,
-                            DealerView dealer, Long salesUserId, String salesName) { }
+                            DealerView dealer, Long salesUserId, String salesName,
+                            Long creatorUserId, String creatorName) { }
 }

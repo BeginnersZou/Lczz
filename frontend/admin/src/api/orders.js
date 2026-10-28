@@ -240,6 +240,7 @@ export async function exportOrdersApi(params) {
   return createCsvBlob([
     { label: '订单编号', value: row => row.orderNo },
     { label: '订单来源', value: row => row.orderSourceLabel || row.orderSource || '' },
+    { label: '创建人', value: row => row.creatorName || (row.creatorUserId ? `#${row.creatorUserId}` : '') },
     { label: '销售人员', value: row => row.salesName || '未指定' },
     { label: '任务类型', value: row => row.taskType },
     { label: '客户姓名', value: row => row.customerName },
