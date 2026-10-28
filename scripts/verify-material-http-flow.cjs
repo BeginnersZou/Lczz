@@ -45,8 +45,8 @@ function transport(reply) {
     }
   }
   const requestCode = read('utils/request.js').replace(/^import .+$/gm, '').replace('export default http', 'return http')
-  const http = new Function('baseUrl', 'clearAuthSession', 'getAuthToken', 'showLoginChoice', 'uni', requestCode)(
-    baseUrl, () => {}, () => 'test-token', () => {}, uni)
+  const http = new Function('baseUrl', 'clearAuthSession', 'getAuthToken', 'getAuthUserInfo', 'showLoginChoice', 'uni', requestCode)(
+    baseUrl, () => {}, () => 'test-token', () => ({ role: 'installer' }), () => {}, uni)
   const timeCode = read('utils/time.js').replace(/export /g, '')
   const formatDateTime = new Function(timeCode + '\nreturn formatDateTime')()
   const source = read('api/api.js')

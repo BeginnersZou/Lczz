@@ -28,7 +28,8 @@ public class AccountCancellationService {
             throw new BusinessException(400, "CANCELLATION_NOT_CONFIRMED", "请确认注销账号");
         }
         Set<RoleCode> roles = principal.roles();
-        if (roles.size() != 1 || !roles.contains(RoleCode.CUSTOMER)) {
+        if (roles.size() != 1 || !(roles.contains(RoleCode.CUSTOMER)
+                || roles.contains(RoleCode.PROJECT_MANAGER))) {
             throw new BusinessException(403, "ACCOUNT_CANCELLATION_FORBIDDEN", "业务人员账号请联系管理员处理");
         }
 

@@ -16,7 +16,7 @@ GitHub Issues：[#191 单角色与用户管理](https://github.com/BeginnersZou/
 
 - Issues #191/#192/#193 已创建；数据库 V17/V18、单角色鉴权、用户软删除与在途销售归属保护、销售员预约及候选接口、订单读取范围、项目经理无评价只读详情均已在本工作分支实现。
 - PC 用户管理和订单表单、小程序预约及订单展示已对接；PC/小程序候选销售员支持搜索、分页继续加载和清空，服务器写入时再次校验。订单展示区分创建人和指定销售员，导出也保留创建人。跨角色集成测试覆盖管理员创建/改派/清空销售员，以及项目经理误触写接口 403 和评价附件隔离。
-- 2026-10-28 回归：PC 生产构建与 6 项脚本测试通过；小程序 60 项脚本测试通过；后端排除两项已知本机回环环境故障后 208 项通过、0 失败。`HttpSmokeTests` 与 `AuthConfigurationTests.wechatHttpClientPrefersHttp11ForGatewayCompatibility` 仍需在 CI/可用回环环境复核。
+- 2026-10-28 回归：PC 生产构建与 6 项脚本测试通过，后台 CI 脚本通过；小程序 62 项脚本测试及耗材/订单 CI 脚本通过；后端排除两项已知本机回环环境故障后 210 项通过、0 失败。补测经销商指派销售员、销售员不指定时自建订单可见，以及项目经理登录态下退出/主动注销；修复项目经理原被账号注销服务拒绝的问题。`HttpSmokeTests` 与 `AuthConfigurationTests.wechatHttpClientPrefersHttp11ForGatewayCompatibility` 仍需在 CI/可用回环环境复核。
 - 2026-10-28 在**隔离的临时 MySQL 8.0.40 实例**验证 V17/V18：Flyway 记录均为 `success=1`，`PROJECT_MANAGER`/`SALES` 角色、`sys_user_role.user_id` 唯一约束、`work_order.sales_user_id` 已核验。仓库既有 V9 在全新数据库迁移时会因 `uk_material_request_product` 被外键依赖而失败；为了仅验证本次 V17/V18，在临时测试库执行 V1–V6 后手动加支持索引，之后 V9–V18 通过。**该操作未改仓库迁移，也不代表全新安装路径已通过**。
 - **尚未完成发布验收**：目标环境已有账号多角色预检、微信开发者工具与真实后端联调、CI 回环测试，以及上述 V9 全新安装问题的独立处理。当前分支尚未合入 `dev`，不应据此声称远程或发版分支已更新。
 

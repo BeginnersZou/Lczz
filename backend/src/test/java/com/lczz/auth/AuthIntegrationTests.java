@@ -272,6 +272,33 @@ class AuthIntegrationTests {
                 .andExpect(status().isUnauthorized());
     }
 
+    @Test
+    void projectManagerMayLoginLogoutAndCancelOwnAccountWithoutBusinessWritePermission() throws Exception {
+        when(wechatGateway.exchangeLoginCode(anyString()))
+                .thenReturn(new WechatIdentity("wx-app", "manager-open", "manager-union"));
+        when(wechatGateway.exchangePhoneCode(anyString())).thenReturn("13800138008");
+        String token = bindNewUser("manager-login-code", "manager-phone-code");
+        long userId = jdbcTemplate.queryForObject("SELECT id FROM sys_user WHERE phone='13800138008'", Long.class);
+        jdbcTemplate.update("UPDATE sys_user_role SET role_id=(SELECT id FROM sys_role WHERE role_code='PROJECT_MANAGER') "
+                + "WHERE user_id=?", userId);
+
+        mockMvc.perform(get("/api/auth/info").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.role").value("project_manager"));
+        mockMvc.perform(post("/api/auth/logout").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/auth/account/cancel")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType("application/json").content("{\"confirmed\":true}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data").value(true));
+
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM user_wechat_identity WHERE user_id=?",
+                Long.class, userId)).isZero();
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM sys_user WHERE id=? AND deleted=TRUE",
+                Long.class, userId)).isEqualTo(1);
+        mockMvc.perform(get("/api/auth/info").header("Authorization", "Bearer " + token))
+                .andExpect(status().isUnauthorized());
+    }
+
     private String bindNewUser(String loginCode, String phoneCode) throws Exception {
         mockMvc.perform(post("/api/auth/wechat/login").contentType("application/json")
                         .content("{\"code\":\"" + loginCode + "\"}"))

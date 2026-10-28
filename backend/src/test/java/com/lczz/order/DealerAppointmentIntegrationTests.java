@@ -349,6 +349,34 @@ class DealerAppointmentIntegrationTests {
     }
 
     @Test
+    void dealerAssignedSalespersonCanReadAppointmentAndUnassignedSalesCreatorSeesOwnOrder() throws Exception {
+        long assigned = user("指定销售", "13900000005", RoleCode.SALES);
+        long creator = user("自建销售", "13900000006", RoleCode.SALES);
+        long unrelated = user("其他销售", "13900000007", RoleCode.SALES);
+        Map<String, Object> dealerRequest = body("13800138000");
+        dealerRequest.put("salesUserId", assigned);
+        long dealerOrder = create(dealer, dealerRequest).path("id").asLong();
+        JsonNode assignedList = data(get("/api/orders/list"), assigned);
+        assertThat(assignedList.path("total").asInt()).isEqualTo(1);
+        assertThat(assignedList.path("list").get(0).path("id").asLong()).isEqualTo(dealerOrder);
+        assertThat(data(get("/api/orders/detail/" + dealerOrder), assigned)
+                .path("salesUserId").asLong()).isEqualTo(assigned);
+        assertThat(data(get("/api/orders/list"), unrelated).path("total").asInt()).isZero();
+        mvc.perform(auth(get("/api/orders/detail/" + dealerOrder), creator))
+                .andExpect(status().isNotFound());
+
+        long salesOrder = data(post("/api/v1/sales/appointments").contentType("application/json")
+                .content(json.writeValueAsString(body("13800138000"))), creator).path("id").asLong();
+        JsonNode own = data(get("/api/orders/list"), creator);
+        assertThat(own.path("total").asInt()).isEqualTo(1);
+        assertThat(own.path("list").get(0).path("id").asLong()).isEqualTo(salesOrder);
+        assertThat(data(get("/api/orders/detail/" + salesOrder), creator)
+                .path("salesUserId").isMissingNode()).isTrue();
+        mvc.perform(auth(get("/api/orders/detail/" + salesOrder), assigned))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
     void administratorCanAssignReplaceAndClearSalespersonWithoutChangingCreator() throws Exception {
         long first = user("销售甲", "13900000005", RoleCode.SALES);
         long second = user("销售乙", "13900000006", RoleCode.SALES);
