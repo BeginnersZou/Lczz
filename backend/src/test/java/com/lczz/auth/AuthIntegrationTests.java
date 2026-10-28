@@ -273,7 +273,7 @@ class AuthIntegrationTests {
     }
 
     @Test
-    void projectManagerMayLoginLogoutAndCancelOwnAccountWithoutBusinessWritePermission() throws Exception {
+    void projectManagerMayLoginEditOwnProfileLogoutAndCancelWithoutBusinessWritePermission() throws Exception {
         when(wechatGateway.exchangeLoginCode(anyString()))
                 .thenReturn(new WechatIdentity("wx-app", "manager-open", "manager-union"));
         when(wechatGateway.exchangePhoneCode(anyString())).thenReturn("13800138008");
@@ -292,6 +292,18 @@ class AuthIntegrationTests {
                 .andReturn().getResponse().getContentAsString();
         String token = new com.fasterxml.jackson.databind.ObjectMapper()
                 .readTree(loginResponse).at("/data/token").asText();
+        mockMvc.perform(put("/api/v1/auth/profile")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType("application/json")
+                        .content("{\"nickname\":\"项目经理昵称\",\"realName\":\"项目经理姓名\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.nickname").value("项目经理昵称"))
+                .andExpect(jsonPath("$.data.realName").value("项目经理姓名"))
+                .andExpect(jsonPath("$.data.role").value("project_manager"));
+        mockMvc.perform(post("/api/v1/orders")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType("application/json").content("{}"))
+                .andExpect(status().isForbidden());
         mockMvc.perform(post("/api/auth/logout").header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk());
         mockMvc.perform(post("/api/auth/account/cancel")
