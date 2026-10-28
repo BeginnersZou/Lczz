@@ -277,13 +277,21 @@ class AuthIntegrationTests {
         when(wechatGateway.exchangeLoginCode(anyString()))
                 .thenReturn(new WechatIdentity("wx-app", "manager-open", "manager-union"));
         when(wechatGateway.exchangePhoneCode(anyString())).thenReturn("13800138008");
-        String token = bindNewUser("manager-login-code", "manager-phone-code");
+        String originalToken = bindNewUser("manager-login-code", "manager-phone-code");
         long userId = jdbcTemplate.queryForObject("SELECT id FROM sys_user WHERE phone='13800138008'", Long.class);
         jdbcTemplate.update("UPDATE sys_user_role SET role_id=(SELECT id FROM sys_role WHERE role_code='PROJECT_MANAGER') "
                 + "WHERE user_id=?", userId);
 
-        mockMvc.perform(get("/api/auth/info").header("Authorization", "Bearer " + token))
+        mockMvc.perform(get("/api/auth/info").header("Authorization", "Bearer " + originalToken))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.role").value("project_manager"));
+        String loginResponse = mockMvc.perform(post("/api/auth/wechat/login")
+                        .contentType("application/json").content("{\"code\":\"manager-login-again\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.needPhone").value(false))
+                .andExpect(jsonPath("$.data.userInfo.role").value("project_manager"))
+                .andReturn().getResponse().getContentAsString();
+        String token = new com.fasterxml.jackson.databind.ObjectMapper()
+                .readTree(loginResponse).at("/data/token").asText();
         mockMvc.perform(post("/api/auth/logout").header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk());
         mockMvc.perform(post("/api/auth/account/cancel")
