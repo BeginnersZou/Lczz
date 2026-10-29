@@ -1,9 +1,6 @@
 export function isInstallerProfile(userInfo = {}) {
   const role = String(userInfo.role || '').toLowerCase()
-  const roles = Array.isArray(userInfo.roles)
-    ? userInfo.roles.map(value => String(value).toLowerCase())
-    : []
-  return role === 'installer' || roles.includes('installer')
+  return role === 'installer'
 }
 
 export function profileForm(userInfo = {}) {

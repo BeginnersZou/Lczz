@@ -1,5 +1,5 @@
 import baseUrl from '../config.js'
-import { clearAuthSession, getAuthToken } from './auth-session.js'
+import { clearAuthSession, getAuthToken, getAuthUserInfo } from './auth-session.js'
 import { showLoginChoice } from './auth-guard.js'
 
 // ====================== Loading 管理（计数器，支持并发请求） ======================
@@ -38,6 +38,14 @@ function handleUnauthorized(redirectOnUnauthorized = true) {
   clearAuthSession()
   if (!redirectOnUnauthorized) return
   showLoginChoice()
+}
+
+function showForbidden(message, method) {
+  if (getAuthUserInfo()?.role === 'project_manager' && method !== 'GET') {
+    uni.showModal({ title: '无操作权限', content: '项目经理仅可查看订单，不能修改订单内容。', showCancel: false })
+  } else {
+    uni.showToast({ title: message || '无权执行此操作', icon: 'none' })
+  }
 }
 
 // ====================== 核心请求方法 ======================
@@ -121,7 +129,9 @@ const request = (options = {}) => {
           return
         }
         if (body.code === 403) {
-          if (!silent) uni.showToast({ title: body.msg || '无权执行此操作', icon: 'none' })
+          if (!silent || (getAuthUserInfo()?.role === 'project_manager' && String(method).toUpperCase() !== 'GET')) {
+            showForbidden(body.msg, String(method).toUpperCase())
+          }
           resolve(body)
           return
         }
@@ -212,7 +222,7 @@ const upload = (options = {}) => {
           return
         }
         if (body.code === 403) {
-          uni.showToast({ title: body.msg || '无权执行此操作', icon: 'none' })
+          showForbidden(body.msg, 'UPLOAD')
           resolve(body)
           return
         }

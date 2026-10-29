@@ -2,8 +2,7 @@ export const BOOKING_TASKS = ['空调安装', '空调维修', '空调清洗', '�
 export const BOOKING_DESCRIPTION = '例如品牌、主机信息、内机信息、主内机控制器、水箱等信息'
 
 export function isDealer(user = {}) {
-  return [user.role, ...(Array.isArray(user.roles) ? user.roles : [])]
-    .some(role => String(role || '').toLowerCase() === 'dealer')
+  return ['dealer', 'sales'].includes(String(user.role || '').toLowerCase())
 }
 
 // Explicit whitelist: never forward role, dealer ID, installer or admin fields.
@@ -16,6 +15,7 @@ export function bookingPayload(form, files, requestId) {
     customerPhone: String(form.customerPhone || '').trim().replace(/^\+86/, ''),
     addressArea: [...form.addressArea],
     addressDetail: String(form.addressDetail || '').trim(),
+    salesUserId: form.salesUserId == null || form.salesUserId === '' ? null : Number(form.salesUserId),
     fileIds: files.map(file => Number(file.id))
   }
 }

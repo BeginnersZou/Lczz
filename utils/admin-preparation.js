@@ -7,8 +7,7 @@ export const PREPARATION_STATUSES = Object.freeze([
 ])
 
 export function hasAdminRole(user = {}) {
-  return [user.role, ...(Array.isArray(user.roles) ? user.roles : [])]
-    .some(role => String(role || '').toLowerCase() === 'admin')
+  return String(user.role || '').toLowerCase() === 'admin'
 }
 
 export function canPrepare(record = {}) {

@@ -24,9 +24,9 @@ test('profile helper stays inside packageA instead of the main package', () => {
   assert.match(pageSource, /from '\.\.\/utils\/user-profile\.js'/)
 })
 
-test('installer detection supports primary and multi-role accounts', () => {
+test('installer detection only trusts the single primary role', () => {
   assert.equal(isInstallerProfile({ role: 'INSTALLER' }), true)
-  assert.equal(isInstallerProfile({ role: 'customer', roles: ['INSTALLER'] }), true)
+  assert.equal(isInstallerProfile({ role: 'customer', roles: ['INSTALLER'] }), false)
   assert.equal(isInstallerProfile({ role: 'customer', roles: ['DEALER'] }), false)
 })
 
