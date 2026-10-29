@@ -184,7 +184,7 @@ export function getMasterListApi(params) {
 
 /** 可指定的在职销售员，分页搜索，手机号只返回脱敏值。 */
 export function getSalespersonOptionsApi(params = {}) {
-  return request({ url: '/salespersons/options', method: 'get', params })
+  return request({ url: '/salespersons/options', method: 'get', params, silent: true })
 }
 
 /**

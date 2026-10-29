@@ -55,7 +55,7 @@ function page({ role = 'dealer', create, upload, salespersonOptions } = {}) {
   const values = [ref, reactive, computed, () => {}, () => {}, { getUserInfo: async () => ({ code: 200, data: { role } }) }, { create },
     { options: salespersonOptions || (async () => ({ code: 200, data: { list: [{ id: 12, name: '销售乙' }] } })) },
     { uploadImage: upload, deleteTemporary: async () => ({ code: 200 }) }, () => 'test-session', uni, ...Object.values(helpers)]
-  const instance = new Function(...names, `${pageScript}\nreturn { form, files, allowed, checking, locked, result, error, salespersons, salesKeyword, salespersonTotal, checkAccess, loadSalespersons, loadMoreSalespersons, selectSalesperson, chooseImages, upload, submit };`)(...values)
+  const instance = new Function(...names, `${pageScript}\nreturn { form, files, allowed, checking, locked, result, error, salespersons, salesKeyword, salespersonTotal, salespersonLoading, salespersonError, salesPickerVisible, selectedSalespersonName, checkAccess, openSalesPicker, closeSalesPicker, clearSalesperson, loadSalespersons, loadMoreSalespersons, retrySalespersons, selectSalesperson, chooseImages, upload, submit };`)(...values)
   Object.assign(instance.form, valid())
   return { ...instance, state }
 }
@@ -141,15 +141,107 @@ test('salesperson picker loads beyond first page and keeps search results separa
     }
   })
   await instance.checkAccess()
+  assert.equal(calls.length, 0, 'the optional picker must not issue a request before being opened')
+  await instance.openSalesPicker()
   assert.equal(instance.salespersons.value.length, 100)
   instance.salesKeyword.value = '乙'
   await instance.loadMoreSalespersons()
   assert.equal(calls[1].keyword, '')
   assert.equal(instance.salespersons.value.length, 101)
-  instance.selectSalesperson({ detail: { value: 100 } })
+  instance.selectSalesperson(instance.salespersons.value[100])
   assert.equal(instance.form.salesUserId, 101)
   assert.match(instance.salespersons.value[100].displayName, /138\*\*\*\*0001/)
   await instance.loadSalespersons()
   assert.equal(instance.salespersons.value.length, 1)
   assert.equal(calls[2].keyword, '乙')
+})
+
+test('salesperson service unavailable is contained in the sheet and does not block an unassigned booking', async () => {
+  const submitted = []
+  const instance = page({
+    salespersonOptions: async () => ({ code: 404, httpStatus: 404, msg: '请求的资源不存在' }),
+    create: async payload => { submitted.push(payload); return { code: 200, data: { id: 9, orderNo: 'TEST-9' } } }
+  })
+  await instance.checkAccess()
+  await instance.openSalesPicker()
+  assert.match(instance.salespersonError.value, /暂未开放/)
+  assert.doesNotMatch(instance.salespersonError.value, /资源不存在/)
+  assert.equal(instance.salesPickerVisible.value, true)
+  instance.clearSalesperson()
+  assert.equal(instance.salesPickerVisible.value, false)
+  await instance.submit()
+  assert.equal(submitted[0].salesUserId, null)
+})
+
+test('an unavailable search preserves the selected salesperson; explicit clear is the only reset', async () => {
+  let fail = false
+  const instance = page({ salespersonOptions: async () => fail ? { code: -1 } : { code: 200, data: { list: [{ id: 12, name: '销售乙' }], total: 1 } } })
+  await instance.checkAccess()
+  await instance.openSalesPicker()
+  instance.selectSalesperson(instance.salespersons.value[0])
+  fail = true
+  await instance.openSalesPicker()
+  assert.equal(instance.form.salesUserId, 12)
+  assert.equal(instance.selectedSalespersonName.value, '销售乙')
+  assert.notEqual(instance.salespersonError.value, '')
+  instance.clearSalesperson()
+  assert.equal(instance.form.salesUserId, null)
+  assert.equal(instance.selectedSalespersonName.value, '')
+})
+
+test('salesperson search ignores out-of-order replies and replies after closing the sheet', async () => {
+  const pending = []
+  const instance = page({ salespersonOptions: () => new Promise(resolve => pending.push(resolve)) })
+  await instance.checkAccess()
+  const first = instance.openSalesPicker()
+  instance.salesKeyword.value = '最新'
+  const second = instance.loadSalespersons()
+  pending[1]({ code: 200, data: { list: [{ id: 2, name: '最新销售' }], total: 1 } })
+  await second
+  pending[0]({ code: 200, data: { list: [{ id: 1, name: '旧销售' }], total: 1 } })
+  await first
+  assert.equal(instance.salespersons.value[0].id, 2)
+  const closing = instance.loadSalespersons()
+  instance.closeSalesPicker()
+  pending[2]({ code: 404 })
+  await closing
+  assert.equal(instance.salespersonError.value, '')
+  assert.equal(instance.salespersonLoading.value, false)
+})
+
+test('pagination retry requests the failed page and de-duplicates repeated rows', async () => {
+  const pages = []
+  let failed = false
+  const instance = page({ salespersonOptions: async ({ page }) => {
+    pages.push(page)
+    if (page === 2 && !failed) { failed = true; return { code: -1 } }
+    return { code: 200, data: { list: page === 1 ? [{ id: 1, name: '甲' }] : [{ id: 1, name: '甲' }, { id: 2, name: '乙' }], total: 2 } }
+  } })
+  await instance.checkAccess()
+  await instance.openSalesPicker()
+  await instance.loadMoreSalespersons()
+  assert.notEqual(instance.salespersonError.value, '')
+  await instance.retrySalespersons()
+  assert.deepEqual(pages, [1, 2, 2])
+  assert.deepEqual(instance.salespersons.value.map(person => person.id), [1, 2])
+  assert.equal(instance.salespersonError.value, '')
+})
+
+test('locked booking cannot open, clear or change the salesperson', async () => {
+  const instance = page()
+  instance.form.salesUserId = 12
+  instance.locked.value = true
+  instance.openSalesPicker()
+  instance.clearSalesperson()
+  instance.selectSalesperson({ id: 13, name: '其他销售' })
+  assert.equal(instance.form.salesUserId, 12)
+  assert.equal(instance.salesPickerVisible.value, false)
+})
+
+test('the optional field stays compact and search/list states belong to the bottom sheet', () => {
+  const formTemplate = pageSource.split('<up-popup')[0]
+  assert.match(formTemplate, /class="sales-trigger"/)
+  assert.match(formTemplate, /class="optional-tag">选填/)
+  assert.doesNotMatch(formTemplate, /v-model="salesKeyword"|搜索销售员|range="salespersons"/)
+  assert.match(pageSource, /class="sales-options" scroll-y/)
 })

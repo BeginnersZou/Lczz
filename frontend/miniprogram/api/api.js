@@ -309,7 +309,7 @@ export const dealerBookingApi = {
 }
 
 export const salespersonApi = {
-	options: (params = {}) => http.get('/salespersons/options', params, { silent: true, redirectOnUnauthorized: false })
+	options: (params = {}) => http.get('/salespersons/options', params, { silent: true, loading: false, redirectOnUnauthorized: false })
 }
 
 export const installerMaterialApi = {

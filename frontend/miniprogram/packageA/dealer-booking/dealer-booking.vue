@@ -41,17 +41,17 @@
         <textarea v-model="form.addressDetail" class="field address" :disabled="locked" :maxlength="500" placeholder="请输入街道、楼栋、门牌等详细地址" />
         <text class="hint privacy">客户信息仅用于此次服务联系与订单处理，请确保已获得客户提供信息的授权。</text>
       </view>
-      <view class="card">
-        <text class="section-title">销售人员 <text class="hint">选填</text></text>
-        <input v-model="salesKeyword" class="field sales-search" :disabled="locked" placeholder="搜索销售员姓名或手机号" @confirm="loadSalespersons" />
-        <button class="secondary" :disabled="locked || salespersonLoading" @click="loadSalespersons">搜索销售员</button>
-        <picker :range="salespersons" range-key="displayName" :disabled="locked || salespersonLoading || !salespersons.length" @change="selectSalesperson">
-          <view class="field picker">{{ selectedSalespersonName || '不指定销售人员' }}<text>›</text></view>
-        </picker>
-        <text v-if="!salespersonLoading && !salespersons.length && !salespersonError" class="hint sales-hint">暂无可选销售人员，可不选继续提交</text>
-        <button v-if="salespersons.length < salespersonTotal" class="secondary" :disabled="locked || salespersonLoading" @click="loadMoreSalespersons">{{ salespersonLoading ? '加载中...' : '加载更多销售员' }}</button>
-        <button v-if="form.salesUserId" class="secondary" :disabled="locked" @click="clearSalesperson">清除选择</button>
-        <text v-if="salespersonError" class="error">{{ salespersonError }}</text>
+      <view class="card sales-card">
+        <view class="sales-heading"><text class="section-title">销售人员</text><text class="optional-tag">选填</text></view>
+        <button class="sales-trigger" :class="{ 'has-selection': form.salesUserId }" :disabled="locked" @click="openSalesPicker">
+          <view class="sales-trigger-icon"><up-icon name="account" size="21" color="#0b63ce" /></view>
+          <view class="sales-trigger-copy">
+            <text :class="['sales-trigger-name', { placeholder: !form.salesUserId }]">{{ selectedSalespersonName || '请选择销售人员' }}</text>
+            <text v-if="form.salesUserId" class="sales-trigger-detail">{{ selectedSalespersonPhone || '已指定此订单的销售人员' }}</text>
+          </view>
+          <text v-if="form.salesUserId" class="sales-change">更换</text><up-icon name="arrow-right" size="14" color="#94a3b8" />
+        </button>
+        <text class="sales-help">可不选择；指定后，该销售人员可查看此订单</text>
       </view>
       <view class="card">
         <view class="section-row"><text class="section-title">现场附件</text><text class="hint">选填 · {{ files.length }}/9 张</text></view>
@@ -73,6 +73,47 @@
         <text class="hint">提交后由管理员安排上门时间，无需在线支付</text>
       </view>
     </template>
+    <up-popup :show="salesPickerVisible" mode="bottom" :round="24" @close="closeSalesPicker">
+      <view class="sales-sheet">
+        <view class="sheet-handle"></view>
+        <view class="sheet-header">
+          <view><text class="sheet-title">选择销售人员</text><text class="sheet-subtitle">选择一位销售人员，或保持不指定</text></view>
+          <button class="sheet-close" aria-label="关闭销售人员选择" @click="closeSalesPicker"><up-icon name="close" size="18" color="#64748b" /></button>
+        </view>
+        <view class="sheet-search">
+          <up-icon name="search" size="20" color="#94a3b8" />
+          <input v-model="salesKeyword" class="sheet-search-input" placeholder="搜索姓名或手机号" :maxlength="100" confirm-type="search" @input="scheduleSalesSearch" @confirm="loadSalespersons" />
+          <button v-if="salesKeyword" class="search-clear" aria-label="清空搜索" @click="clearSalesSearch"><up-icon name="close-circle-fill" size="17" color="#94a3b8" /></button>
+          <button class="search-action" @click="loadSalespersons">搜索</button>
+        </view>
+        <scroll-view class="sales-options" scroll-y :lower-threshold="80" @scrolltolower="loadMoreSalespersons">
+          <button class="sales-option no-assignment" :class="{ selected: !form.salesUserId }" @click="clearSalesperson">
+            <view class="option-avatar neutral"><up-icon name="minus" size="20" color="#64748b" /></view>
+            <view class="option-copy"><text class="option-name">不指定销售人员</text><text class="option-detail">不影响预约提交，后续可由管理员指派</text></view>
+            <view :class="['option-radio', { checked: !form.salesUserId }]"><up-icon v-if="!form.salesUserId" name="checkmark" size="12" color="#fff" /></view>
+          </button>
+          <text class="options-caption">{{ activeSalesKeyword ? '搜索结果' : '平台销售人员' }}</text>
+          <button v-for="person in salespersons" :key="person.id" class="sales-option" :class="{ selected: form.salesUserId === person.id }" @click="selectSalesperson(person)">
+            <view class="option-avatar">{{ person.name.slice(0, 1) }}</view>
+            <view class="option-copy"><text class="option-name">{{ person.name }}</text><text class="option-detail">{{ person.maskedPhone || '平台销售人员' }}</text></view>
+            <view :class="['option-radio', { checked: form.salesUserId === person.id }]"><up-icon v-if="form.salesUserId === person.id" name="checkmark" size="12" color="#fff" /></view>
+          </button>
+          <view v-if="salespersonError" class="sales-list-state">
+            <up-icon name="info-circle" size="30" color="#94a3b8" />
+            <text class="list-state-title">销售人员暂不可用</text><text class="list-state-description">{{ salespersonError }}</text>
+            <button class="list-retry" :disabled="salespersonLoading" @click="retrySalespersons">重新加载</button>
+          </view>
+          <view v-else-if="salespersonLoading" class="sales-list-state compact"><up-loading-icon size="20" color="#0b63ce" /><text class="list-state-description">正在加载销售人员…</text></view>
+          <view v-else-if="!salespersons.length" class="sales-list-state">
+            <up-icon name="account" size="32" color="#b8c5d5" />
+            <text class="list-state-title">{{ activeSalesKeyword ? '未找到匹配的销售人员' : '暂无可选销售人员' }}</text>
+            <text class="list-state-description">{{ activeSalesKeyword ? '试试其他姓名或手机号，也可暂不指定' : '可选择“不指定销售人员”继续预约' }}</text>
+          </view>
+          <button v-else-if="salespersons.length < salespersonTotal" class="load-more-sales" @click="loadMoreSalespersons">加载更多销售人员</button>
+          <text v-else class="sales-list-end">已显示全部 {{ salespersons.length }} 位销售人员</text>
+        </scroll-view>
+      </view>
+    </up-popup>
   </view>
 </template>
 
@@ -91,43 +132,92 @@ const activeSalesKeyword = ref('')
 const salespersonLoading = ref(false)
 const salespersonError = ref('')
 const selectedSalespersonName = ref('')
+const selectedSalespersonPhone = ref('')
+const salesPickerVisible = ref(false)
 const salespersonPage = ref(0)
 const salespersonTotal = ref(0)
-const toSalespersonOption = person => ({ ...person, displayName: person.maskedPhone ? `${person.name}（${person.maskedPhone}）` : person.name })
-function selectSalesperson(event) {
-  const person = salespersons.value[Number(event.detail.value)]
+let salespersonRequestVersion = 0
+let salesSearchTimer = null
+const toSalespersonOption = person => ({ ...person, id: Number(person.id), name: String(person.name || '未命名销售人员'), displayName: person.maskedPhone ? `${person.name}（${person.maskedPhone}）` : person.name })
+function selectSalesperson(person) {
+  if (locked.value) return
   form.salesUserId = person?.id || null
-  selectedSalespersonName.value = person?.displayName || ''
+  selectedSalespersonName.value = person?.name || ''
+  selectedSalespersonPhone.value = person?.maskedPhone || ''
+  closeSalesPicker()
 }
-function clearSalesperson() { form.salesUserId = null; selectedSalespersonName.value = '' }
-async function loadSalespersons() {
-  if (salespersonLoading.value) return
+function clearSalesperson() { selectSalesperson(null) }
+function openSalesPicker() {
+  if (locked.value) return
+  salesPickerVisible.value = true
+  salesKeyword.value = ''
+  return loadSalespersons()
+}
+function closeSalesPicker() {
+  salesPickerVisible.value = false
+  clearTimeout(salesSearchTimer)
+  salespersonRequestVersion++
+  salespersonLoading.value = false
+}
+function scheduleSalesSearch() {
+  clearTimeout(salesSearchTimer)
+  // Invalidate the previous query immediately, including during the debounce window.
+  salespersonRequestVersion++
   salespersonLoading.value = true
   salespersonError.value = ''
+  salespersons.value = []
+  salespersonPage.value = 0
+  salespersonTotal.value = 0
+  salesSearchTimer = setTimeout(loadSalespersons, 300)
+}
+function clearSalesSearch() { salesKeyword.value = ''; return loadSalespersons() }
+function salesErrorMessage(response) {
+  const code = Number(response?.httpStatus || response?.code)
+  if (code === 404) return '销售人员服务暂未开放，可暂不指定，或稍后重试。'
+  if (code === 401) return '登录状态已失效，请重新登录后选择。'
+  if (code === 403) return '当前账号暂无选择权限，请联系管理员。'
+  return '暂时无法加载，请检查网络后重试；也可不指定销售人员。'
+}
+async function loadSalespersons() {
+  clearTimeout(salesSearchTimer)
+  const version = ++salespersonRequestVersion
+  const keyword = salesKeyword.value.trim()
+  salespersonLoading.value = true
+  salespersonError.value = ''
+  activeSalesKeyword.value = keyword
+  salespersons.value = []
+  salespersonPage.value = 0
+  salespersonTotal.value = 0
   try {
-    const keyword = salesKeyword.value.trim()
     const response = await salespersonApi.options({ page: 1, pageSize: 100, keyword })
-    if (response.code !== 200) throw new Error(response.msg || '销售人员列表加载失败')
-    activeSalesKeyword.value = keyword
-    salespersons.value = (response.data?.list || []).map(toSalespersonOption)
+    if (version !== salespersonRequestVersion || disposed) return
+    if (response.code !== 200 || !Array.isArray(response.data?.list)) { salespersonError.value = salesErrorMessage(response); return }
+    salespersons.value = [...new Map(response.data.list.map(toSalespersonOption).map(person => [person.id, person])).values()]
     salespersonPage.value = 1
-    salespersonTotal.value = Number(response.data?.total || 0)
-  } catch (err) { salespersonError.value = err.message || '销售人员列表加载失败，请重新进入页面' }
-  finally { salespersonLoading.value = false }
+    salespersonTotal.value = Number(response.data.total) || salespersons.value.length
+  } catch (err) { if (version === salespersonRequestVersion && !disposed) salespersonError.value = salesErrorMessage(err) }
+  finally { if (version === salespersonRequestVersion) salespersonLoading.value = false }
 }
 async function loadMoreSalespersons() {
-  if (salespersonLoading.value || salespersons.value.length >= salespersonTotal.value) return
+  if (salespersonLoading.value || salespersonError.value || salespersons.value.length >= salespersonTotal.value) return
+  return fetchMoreSalespersons()
+}
+function retrySalespersons() { return salespersonPage.value ? fetchMoreSalespersons() : loadSalespersons() }
+async function fetchMoreSalespersons() {
+  if (salespersonLoading.value) return
+  const version = salespersonRequestVersion
   salespersonLoading.value = true
   salespersonError.value = ''
   try {
     const nextPage = salespersonPage.value + 1
     const response = await salespersonApi.options({ page: nextPage, pageSize: 100, keyword: activeSalesKeyword.value })
-    if (response.code !== 200) throw new Error(response.msg || '销售人员列表加载失败')
-    salespersons.value = [...salespersons.value, ...(response.data?.list || []).map(toSalespersonOption)]
+    if (version !== salespersonRequestVersion || disposed) return
+    if (response.code !== 200 || !Array.isArray(response.data?.list)) { salespersonError.value = salesErrorMessage(response); return }
+    salespersons.value = [...new Map([...salespersons.value, ...response.data.list.map(toSalespersonOption)].map(person => [person.id, person])).values()]
     salespersonPage.value = nextPage
     salespersonTotal.value = Number(response.data?.total || 0)
-  } catch (err) { salespersonError.value = err.message || '销售人员列表加载失败，请重试' }
-  finally { salespersonLoading.value = false }
+  } catch (err) { if (version === salespersonRequestVersion && !disposed) salespersonError.value = salesErrorMessage(err) }
+  finally { if (version === salespersonRequestVersion) salespersonLoading.value = false }
 }
 const checking = ref(true)
 const accessError = ref('')
@@ -153,12 +243,11 @@ async function checkAccess() {
     allowed.value = isDealer(res.data)
     role.value = String(res.data?.role || '').toLowerCase()
     if (!allowed.value) accessError.value = '预约安装仅对经销商或销售员开放'
-    else await loadSalespersons()
   } catch { allowed.value = false; accessError.value = '网络异常，请重新检查账号权限' }
   finally { checking.value = false }
 }
 onShow(checkAccess)
-onUnload(() => { disposed = true })
+onUnload(() => { disposed = true; closeSalesPicker() })
 
 async function upload(file) {
   if (locked.value || file.status === 'uploading' || file.status === 'done' || !allowed.value || !files.value.some(item => item.key === file.key)) return
@@ -254,7 +343,19 @@ function cancel() {
 .card { padding:30rpx; margin-bottom:24rpx; background:#fff; border-radius:24rpx; }.section-title { font-size:30rpx; font-weight:650; }.section-row { display:flex; justify-content:space-between; align-items:center; margin-bottom:12rpx; }.label { display:block; font-size:27rpx; margin:28rpx 0 14rpx; }.required { color:#df4747; }
 .field { box-sizing:border-box; width:100%; min-height:88rpx; border:1rpx solid #e3eaf2; border-radius:14rpx; padding:20rpx; font-size:27rpx; background:#f8fafc; }.picker { display:flex; justify-content:space-between; align-items:center; }.textarea { height:230rpx; line-height:1.6; }.address { margin-top:16rpx; height:150rpx; }.counter { display:block; text-align:right; font-size:22rpx; color:#8897aa; margin-top:8rpx; }.privacy { margin-top:18rpx; }
 .photos { display:flex; flex-wrap:wrap; gap:18rpx; margin-top:24rpx; }.photo,.add-photo { position:relative; width:190rpx; height:230rpx; margin:0; overflow:hidden; border-radius:14rpx; }.photo image { width:190rpx; height:180rpx; }.remove { margin:0; height:50rpx; padding:0; line-height:50rpx; font-size:23rpx; color:#b42332; background:#fff1f2; }.upload-state,.retry { position:absolute; top:64rpx; left:0; width:100%; background:rgba(0,0,0,.65); color:#fff; text-align:center; font-size:23rpx; line-height:60rpx; padding:0; }.add-photo { height:180rpx; border:1rpx dashed #b9cce0; display:flex; flex-direction:column; align-items:center; justify-content:center; background:#f6faff; color:#0b63ce; font-size:24rpx; }.plus { font-size:48rpx; line-height:1.3; }
-.sales-search { margin-top:18rpx; }
-.sales-hint { margin-top:14rpx; }
+.sales-heading { display:flex; align-items:center; gap:14rpx; margin-bottom:24rpx; }
+.optional-tag { padding:3rpx 12rpx; border-radius:8rpx; background:#f1f5f9; color:#7a8ba0; font-size:21rpx; line-height:1.5; }
+.sales-trigger { display:flex; align-items:center; gap:18rpx; width:100%; min-height:100rpx; margin:0; padding:22rpx; border:1rpx solid #e3eaf2; border-radius:16rpx; background:#f8fafc; text-align:left; line-height:1.5; }
+.sales-trigger.has-selection { background:#f5f9ff; border-color:#d5e5f8; }.sales-trigger[disabled] { opacity:.6; }
+.sales-trigger-icon { display:flex; align-items:center; justify-content:center; width:62rpx; height:62rpx; flex-shrink:0; border-radius:16rpx; background:#e8f1fd; }
+.sales-trigger-copy { flex:1; min-width:0; }.sales-trigger-name { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#172b42; font-size:28rpx; font-weight:600; }.sales-trigger-name.placeholder { color:#8493a6; font-weight:400; }
+.sales-trigger-detail { display:block; margin-top:4rpx; color:#7a8ba0; font-size:23rpx; }.sales-change { flex-shrink:0; color:#0b63ce; font-size:24rpx; }.sales-help { display:block; margin-top:16rpx; color:#8291a5; font-size:23rpx; line-height:1.6; }
+.sales-sheet { padding:14rpx 28rpx 20rpx; color:#172b42; }.sheet-handle { width:64rpx; height:7rpx; margin:0 auto 28rpx; border-radius:8rpx; background:#dbe3ed; }
+.sheet-header { display:flex; align-items:flex-start; justify-content:space-between; gap:20rpx; margin:0 8rpx 28rpx; }.sheet-title { display:block; font-size:34rpx; font-weight:700; line-height:1.4; }.sheet-subtitle { display:block; margin-top:8rpx; font-size:23rpx; color:#8493a6; line-height:1.6; }
+.sheet-close { display:flex; align-items:center; justify-content:center; flex-shrink:0; width:64rpx; height:64rpx; padding:0; margin:0; border-radius:50%; background:#f1f5f9; }
+.sheet-search { display:flex; align-items:center; gap:14rpx; padding:0 18rpx; height:88rpx; background:#f4f7fb; border:1rpx solid #e7edf5; border-radius:16rpx; }.sheet-search-input { flex:1; min-width:0; font-size:26rpx; }.search-clear { display:flex; align-items:center; justify-content:center; width:48rpx; height:72rpx; padding:0; margin:0; background:transparent; }.search-action { flex-shrink:0; padding:0 6rpx 0 20rpx; margin:0; border-left:1rpx solid #dbe3ed; border-radius:0; background:transparent; color:#0b63ce; font-size:25rpx; line-height:48rpx; }
+.sales-options { height:52vh; margin-top:22rpx; }.sales-option { box-sizing:border-box; display:flex; align-items:center; gap:20rpx; width:100%; min-height:120rpx; padding:22rpx 18rpx; margin:0 0 10rpx; border:1rpx solid transparent; border-radius:16rpx; background:#fff; text-align:left; line-height:1.5; }.sales-option.selected { background:#f0f6ff; border-color:#dceaff; }.sales-option:active { background:#f4f7fb; }.no-assignment { margin-bottom:26rpx; }
+.option-avatar { flex-shrink:0; display:flex; align-items:center; justify-content:center; width:68rpx; height:68rpx; border-radius:18rpx; background:#e8f1fd; color:#0b63ce; font-size:28rpx; font-weight:650; }.option-avatar.neutral { background:#f1f5f9; }.option-copy { flex:1; min-width:0; }.option-name { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:27rpx; font-weight:600; }.option-detail { display:block; margin-top:5rpx; color:#8493a6; font-size:22rpx; }.option-radio { display:flex; align-items:center; justify-content:center; width:34rpx; height:34rpx; flex-shrink:0; border:2rpx solid #d6dfe9; border-radius:50%; }.option-radio.checked { background:#0b63ce; border-color:#0b63ce; }
+.options-caption { display:block; margin:0 18rpx 10rpx; color:#94a3b8; font-size:22rpx; }.sales-list-state { display:flex; flex-direction:column; align-items:center; gap:14rpx; padding:52rpx 28rpx; text-align:center; }.sales-list-state.compact { padding:32rpx; }.list-state-title { color:#4d6078; font-size:27rpx; font-weight:600; }.list-state-description { color:#8998aa; font-size:23rpx; line-height:1.65; }.list-retry { margin:10rpx 0 0; padding:0 34rpx; border:1rpx solid #d8e5f5; border-radius:12rpx; color:#0b63ce; background:#fff; font-size:24rpx; line-height:68rpx; }.load-more-sales { margin:10rpx 0; background:transparent; color:#0b63ce; font-size:24rpx; line-height:76rpx; }.sales-list-end { display:block; padding:24rpx 0 32rpx; color:#a2afbf; text-align:center; font-size:21rpx; }
 button::after { border:0; }.primary,.secondary { width:100%; margin:20rpx 0 0; min-height:88rpx; line-height:88rpx; border-radius:16rpx; font-size:28rpx; }.primary { background:#0b63ce; color:#fff; }.secondary { background:#fff; color:#45617f; border:1rpx solid #d7e1ed; }.primary[disabled] { background:#aac7e9; color:#fff; }.actions .hint { margin-top:20rpx; text-align:center; }.error,.notice { display:block; font-size:25rpx; line-height:1.6; color:#a54a12; }.notice { padding:24rpx; margin-bottom:24rpx; background:#fff5e6; border-radius:16rpx; }.state { text-align:center; padding:60rpx 30rpx; }.state .title,.state .hint { margin:22rpx 0; }
 </style>
