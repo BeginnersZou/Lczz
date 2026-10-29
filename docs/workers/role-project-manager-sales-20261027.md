@@ -4,6 +4,8 @@
 
 GitHub Issues：[#191 单角色与用户管理](https://github.com/BeginnersZou/Lczz/issues/191)、[#192 销售预约与订单归属](https://github.com/BeginnersZou/Lczz/issues/192)、[#193 项目经理只读](https://github.com/BeginnersZou/Lczz/issues/193)。
 
+发布修正（2026-10-29）：线上已执行辅材分类 V17，后文开发记录中的“角色 V17 / 销售 V18”现已顺延为 **角色 V18 / 销售 V19**，完整保留已发布的辅材 V17。实际发版以 [迁移兼容说明](../MIGRATION_RELEASE_20261029.md) 和仓库迁移文件为准；不要修改生产迁移历史。
+
 ## 已确认的产品规则
 
 - 用户只能拥有一个角色。新增 `PROJECT_MANAGER`（项目经理）和 `SALES`（销售员），均由管理员在 PC 用户管理中新增或指定。
