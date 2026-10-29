@@ -74,16 +74,36 @@
         </el-form-item>
 
         <el-form-item label="销售人员">
+          <template #label><span>销售人员 <span class="optional-label">选填</span></span></template>
           <div class="salesperson-field">
-            <el-select v-model="form.salesUserId" class="input-base" clearable filterable remote
+            <el-select v-model="form.salesUserId" class="input-base salesperson-select" clearable filterable remote remote-show-suffix
+              popper-class="salesperson-select-popper" :reserve-keyword="false" aria-label="销售人员（选填）"
+              :popper-options="salespersonPopperOptions" :fallback-placements="['top-start', 'bottom-start']"
               :remote-method="searchSalespersons" :loading="salespersonLoading" @end-reached="loadMoreSalespersons"
-              placeholder="选填，搜索销售人员姓名或手机号">
+              @visible-change="onSalespersonVisible" placeholder="请选择销售人员，可搜索姓名或手机号">
+              <template #prefix><el-icon><User /></el-icon></template>
               <el-option v-for="person in salespersons" :key="person.id" :value="person.id"
-                :label="`${person.name}${person.maskedPhone ? `（${person.maskedPhone}）` : ''}`" />
+                :label="`${person.name}${person.maskedPhone ? `（${person.maskedPhone}）` : ''}`">
+                <div class="salesperson-option">
+                  <span class="salesperson-avatar">{{ (person.name || '销').slice(0, 1) }}</span>
+                  <span class="salesperson-option-copy"><span class="salesperson-name">{{ person.name }}</span><span class="salesperson-phone">{{ person.maskedPhone || '平台销售人员' }}</span></span>
+                  <span v-if="person.retained" class="salesperson-retained">当前已选</span>
+                  <el-icon v-if="person.id === form.salesUserId" class="salesperson-check"><Check /></el-icon>
+                </div>
+              </el-option>
+              <template #empty>
+                <div class="salesperson-empty"><el-icon><User /></el-icon><strong>{{ salespersonError ? '销售人员暂不可用' : salespersonKeyword ? '未找到匹配的销售人员' : '暂无可选销售人员' }}</strong>
+                  <span>{{ salespersonError || (salespersonKeyword ? '请尝试其他姓名或手机号' : '可暂不选择，不影响订单提交') }}</span>
+                  <el-button v-if="salespersonError" size="small" plain type="primary" @click.stop="retrySalespersons">重新加载</el-button>
+                </div>
+              </template>
+              <template #footer>
+                <div v-if="salespersonError && salespersons.length" class="sales-dropdown-footer is-error"><span>{{ salespersonError }}</span><el-button link type="primary" @click.stop="retrySalespersons">重试</el-button></div>
+                <div v-else-if="salespersonPage * salespersonPageSize < salespersonTotal" class="sales-dropdown-footer"><span>向下滚动查看更多</span><el-button link type="primary" :loading="salespersonLoading" @click.stop="loadMoreSalespersons('bottom')">加载更多</el-button></div>
+                <div v-else class="sales-dropdown-footer"><span>可不选择；已选人员可通过输入框右侧清除</span></div>
+              </template>
             </el-select>
-            <div v-if="salespersonError" class="field-feedback is-error">
-              {{ salespersonError }} <el-button link type="primary" @click="retrySalespersons">重试</el-button>
-            </div>
+            <div class="salesperson-help" :class="{ 'is-unavailable': salespersonError }">{{ salespersonError || '指定后，该销售人员可在小程序查看此订单；不指定不影响提交。' }}</div>
           </div>
         </el-form-item>
 
@@ -227,7 +247,7 @@
 import { ref, reactive, computed, onMounted, watch, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  ArrowLeft, Document, Check, Search
+  ArrowLeft, Document, Check, Search, User
 } from '@element-plus/icons-vue'
 import { useRouter, useRoute } from 'vue-router'
 import {
@@ -295,6 +315,10 @@ const salespersonTotal = ref(0)
 const salespersonKeyword = ref('')
 let salespersonRequestVersion = 0
 const salespersonPageSize = 30
+const salespersonPopperOptions = {
+  strategy: 'fixed',
+  modifiers: [{ name: 'preventOverflow', options: { altAxis: true, padding: 12 } }]
+}
 async function fetchSalespersons(page, keyword, replace) {
   const version = replace ? ++salespersonRequestVersion : salespersonRequestVersion
   salespersonLoading.value = true
@@ -306,27 +330,32 @@ async function fetchSalespersons(page, keyword, replace) {
     const selected = salespersons.value.find(person => person.id === form.salesUserId)
     const merged = replace ? found : [...salespersons.value, ...found]
     salespersons.value = [...new Map([
-      ...(selected ? [[selected.id, selected]] : []),
+      ...(selected ? [[selected.id, { ...selected, retained: replace && !found.some(person => person.id === selected.id) }]] : []),
       ...merged.map(person => [person.id, person])
     ]).values()]
     salespersonPage.value = page
     salespersonTotal.value = Number(result.total) || 0
-  } catch {
+  } catch (error) {
     if (version === salespersonRequestVersion) {
-      salespersonError.value = '销售人员加载失败'
-      if (replace) salespersons.value = []
+      salespersonError.value = error.response?.status === 404
+        ? '销售人员服务暂未开放，可暂不选择，或稍后重试。'
+        : '销售人员加载失败，请重试；也可暂不选择。'
+      if (replace) salespersons.value = salespersons.value.filter(person => person.id === form.salesUserId)
     }
   } finally {
     if (version === salespersonRequestVersion) salespersonLoading.value = false
   }
 }
 function searchSalespersons(keyword = '') {
+  keyword = String(keyword || '').trim().slice(0, 100)
   salespersonKeyword.value = keyword
   salespersonPage.value = 0
+  salespersonTotal.value = 0
   return fetchSalespersons(1, keyword, true)
 }
+function onSalespersonVisible(visible) { if (visible) return searchSalespersons() }
 function loadMoreSalespersons(direction) {
-  if (direction !== 'bottom' || salespersonLoading.value
+  if (direction !== 'bottom' || salespersonLoading.value || salespersonError.value
     || salespersonPage.value * salespersonPageSize >= salespersonTotal.value) return
   return fetchSalespersons(salespersonPage.value + 1, salespersonKeyword.value, false)
 }
@@ -410,7 +439,7 @@ watch([form, progressEntries, materialDraft, selectedMasterList], () => {
 }, { deep: true })
 
 onMounted(async () => {
-  const tasks = [loadRegions(), searchSalespersons()]
+  const tasks = [loadRegions()]
   if (route.params.id) {
     isEdit.value = true
     orderId.value = route.params.id
@@ -896,7 +925,12 @@ function returnToOrderList() {
 
   .salesperson-field {
     width: 100%;
+    max-width: 640px;
   }
+
+  .optional-label { margin-left: 4px; color: var(--text-tertiary); font-size: 11px; font-weight: 400; }
+  .salesperson-help { margin-top: 7px; color: #8491a3; font-size: 12px; line-height: 1.6; }
+  .salesperson-help.is-unavailable { color: #a16b2a; }
 
   .time-row {
     display: flex;
@@ -1272,5 +1306,26 @@ function returnToOrderList() {
     width: 100%;
     justify-content: flex-end;
   }
+}
+</style>
+
+<!-- el-select teleports its menu to body, outside the form's scoped ancestor. -->
+<style lang="scss">
+.salesperson-select-popper {
+  .el-select-dropdown__item { height: auto; min-height: 58px; padding: 4px 16px; }
+  .el-select-dropdown__wrap { max-height: min(280px, 40vh); }
+  .salesperson-option { display: flex; align-items: center; gap: 12px; min-height: 58px; }
+  .salesperson-avatar { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 34px; height: 34px; border-radius: 10px; background: #eaf2ff; color: var(--brand-primary); font-size: 14px; font-weight: 600; }
+  .salesperson-option-copy { display: flex; flex-direction: column; flex: 1; gap: 3px; min-width: 0; line-height: 1.4; }
+  .salesperson-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); font-size: 14px; font-weight: 500; }
+  .salesperson-phone { color: #94a3b8; font-size: 12px; }
+  .salesperson-check { flex-shrink: 0; color: var(--brand-primary); }
+  .salesperson-retained { flex-shrink: 0; color: #94a3b8; font-size: 11px; }
+  .salesperson-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 28px 24px; text-align: center; }
+  .salesperson-empty > .el-icon { color: #a8b6c7; font-size: 26px; }
+  .salesperson-empty strong { color: #52647b; font-size: 13px; font-weight: 500; }
+  .salesperson-empty > span { max-width: 360px; color: #94a3b8; font-size: 12px; line-height: 1.6; }
+  .sales-dropdown-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: #94a3b8; font-size: 12px; line-height: 1.6; }
+  .sales-dropdown-footer.is-error { color: #a16b2a; }
 }
 </style>
