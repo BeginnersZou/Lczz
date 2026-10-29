@@ -269,6 +269,7 @@ import { useRoute, useRouter } from 'vue-router'
 import {
   changeUserStatusApi,
   createUserApi,
+  deleteUserApi,
   getUserDetailApi,
   getUserListApi,
   toggleBlacklistApi,
@@ -284,6 +285,8 @@ const userStore = useUserStore()
 
 const roleOptions = [
   { label: '管理员', value: 'ADMIN' },
+  { label: '项目经理', value: 'PROJECT_MANAGER' },
+  { label: '销售员', value: 'SALES' },
   { label: '安装师傅', value: 'INSTALLER' },
   { label: '普通用户', value: 'CUSTOMER' },
   { label: '经销商', value: 'DEALER' }
@@ -635,7 +638,8 @@ function userActions(row) {
   return [
     { command: 'edit', label: '编辑用户' },
     { command: 'status', label: row.accountStatus === 'ENABLED' ? '停用账号' : '启用账号', danger: row.accountStatus === 'ENABLED' },
-    { command: 'blacklist', label: row.blacklist ? '移出黑名单' : '加入黑名单', danger: !row.blacklist }
+    { command: 'blacklist', label: row.blacklist ? '移出黑名单' : '加入黑名单', danger: !row.blacklist },
+    { command: 'delete', label: '删除用户', danger: true }
   ]
 }
 
@@ -643,6 +647,20 @@ function handleUserAction(command, row) {
   if (command === 'edit') openDialog('edit', row)
   else if (command === 'status') handleStatusChange(row)
   else if (command === 'blacklist') openBlacklistDialog(row)
+  else if (command === 'delete') handleDelete(row)
+}
+
+async function handleDelete(row) {
+  try {
+    await ElMessageBox.confirm('此操作将停用并软删除该用户，历史订单及审计记录仍保留。确认继续？',
+      '删除用户', { type: 'warning', confirmButtonText: '确认删除', cancelButtonText: '取消' })
+  } catch { return }
+  statusLoadingId.value = row.id
+  try {
+    await deleteUserApi(row.id)
+    ElMessage.success('用户已删除')
+    await loadList()
+  } finally { statusLoadingId.value = null }
 }
 
 function resetBlacklistDialog() {
@@ -670,11 +688,11 @@ async function handleBlacklist() {
 }
 
 function getRoleTagType(role) {
-  return { ADMIN: 'danger', INSTALLER: 'warning', CUSTOMER: 'success', DEALER: 'primary' }[String(role || '').toUpperCase()] || 'info'
+  return { ADMIN: 'danger', PROJECT_MANAGER: 'info', SALES: 'primary', INSTALLER: 'warning', CUSTOMER: 'success', DEALER: 'primary' }[String(role || '').toUpperCase()] || 'info'
 }
 
 function getRoleText(role) {
-  return { ADMIN: '管理员', INSTALLER: '安装师傅', CUSTOMER: '普通用户', DEALER: '经销商' }[String(role || '').toUpperCase()] || role || '-'
+  return { ADMIN: '管理员', PROJECT_MANAGER: '项目经理', SALES: '销售员', INSTALLER: '安装师傅', CUSTOMER: '普通用户', DEALER: '经销商' }[String(role || '').toUpperCase()] || role || '-'
 }
 
 function getGenderText(gender) {

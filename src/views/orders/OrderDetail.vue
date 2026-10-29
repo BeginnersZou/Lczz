@@ -6,7 +6,10 @@
         <h2>订单详情</h2>
         <p v-if="order" class="muted">{{ order.orderNo }} · {{ order.taskType }}</p>
       </div>
-      <el-button :icon="Refresh" :loading="loading" @click="loadDetail">刷新详情</el-button>
+      <div class="detail-header-actions">
+        <el-button :icon="Refresh" :loading="loading" @click="loadDetail">刷新详情</el-button>
+        <el-button v-if="order" type="primary" :disabled="loading" @click="openReassign">更换师傅</el-button>
+      </div>
     </div>
 
     <el-card v-if="loading" shadow="never" aria-label="正在加载订单详情">
@@ -116,15 +119,28 @@
         <el-empty v-else description="客户尚未提交评价" :image-size="70" />
       </el-card>
     </template>
+    <el-dialog v-model="reassignVisible" title="更换安装师傅" width="480px" destroy-on-close>
+      <p>订单 {{ order?.orderNo }} · 当前师傅：{{ order?.selectedMasterList?.[0]?.masterName || '待指派' }}</p>
+      <p class="muted">改派后原师傅立即失去订单权限；历史施工进度和耗材申请会保留。</p>
+      <el-select v-model="targetMasterId" filterable placeholder="请选择一位安装师傅" style="width:100%" :loading="masterLoading">
+        <el-option v-for="master in masters" :key="master.id" :label="`${master.masterName} · ${master.masterPhone}`" :value="master.id" />
+      </el-select>
+      <el-input v-model="reassignReason" type="textarea" maxlength="500" show-word-limit :rows="2"
+        placeholder="改派原因（选填）" style="margin-top:12px" />
+      <template #footer>
+        <el-button @click="reassignVisible = false">取消</el-button>
+        <el-button type="primary" :loading="reassignSaving" :disabled="!targetMasterId || masterLoading" @click="saveReassign">确认改派</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { ElRate, ElResult, ElSkeleton, ElTimeline, ElTimelineItem } from 'element-plus'
+import { ElMessage, ElMessageBox, ElRate, ElResult, ElSkeleton, ElTimeline, ElTimelineItem } from 'element-plus'
 import { ArrowLeft, Refresh } from '@element-plus/icons-vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getAdminOrderDetailApi } from '@/api/orders'
+import { assignMasterApi, getAdminOrderDetailApi, getMasterListApi } from '@/api/orders'
 import { formatDateTime, formatPhone } from '@/utils/format'
 import OrderDetailMedia from './OrderDetailMedia.vue'
 import OrderOrigin from './OrderOrigin.vue'
@@ -136,6 +152,12 @@ const loadError = ref('')
 const errorTitle = ref('订单详情加载失败')
 const canRetry = ref(true)
 const detail = ref(null)
+const reassignVisible = ref(false)
+const masterLoading = ref(false)
+const reassignSaving = ref(false)
+const masters = ref([])
+const targetMasterId = ref(null)
+const reassignReason = ref('')
 const compactScreen = window.matchMedia('(max-width: 768px)')
 const descriptionColumns = ref(compactScreen.matches ? 1 : 2)
 const updateColumns = event => { descriptionColumns.value = event.matches ? 1 : 2 }
@@ -158,6 +180,48 @@ const reviewImages = computed(() => {
 
 function backToList() {
   router.push({ name: 'Orders', query: route.query })
+}
+
+async function openReassign() {
+  if (!order.value) return
+  reassignVisible.value = true
+  targetMasterId.value = order.value.selectedMasterList?.[0]?.id || null
+  reassignReason.value = ''
+  masterLoading.value = true
+  try {
+    const result = await getMasterListApi()
+    masters.value = Array.isArray(result) ? result : result?.list || []
+  } catch (error) {
+    ElMessage.error(error.response?.data?.message || '师傅列表加载失败')
+    masters.value = []
+  } finally {
+    masterLoading.value = false
+  }
+}
+
+async function saveReassign() {
+  if (!order.value || !targetMasterId.value || reassignSaving.value) return
+  if (targetMasterId.value === order.value.selectedMasterList?.[0]?.id) {
+    reassignVisible.value = false
+    return
+  }
+  try {
+    await ElMessageBox.confirm('确认更换安装师傅？原师傅将立即失去该订单的查看和操作权限。', '确认改派', { type: 'warning' })
+  } catch { return }
+  reassignSaving.value = true
+  try {
+    await assignMasterApi(order.value.id, {
+      masterIds: [targetMasterId.value], reason: reassignReason.value.trim(),
+      expectedInstallerId: order.value.selectedMasterList?.[0]?.id || 0
+    })
+    reassignVisible.value = false
+    ElMessage.success('师傅已更换')
+    await loadDetail()
+  } catch (error) {
+    ElMessage.error(error.response?.data?.message || '更换师傅失败，请刷新订单后重试')
+  } finally {
+    reassignSaving.value = false
+  }
 }
 
 async function loadDetail() {
@@ -201,6 +265,7 @@ onBeforeUnmount(() => {
 .order-detail-page { padding: 0; max-width: var(--form-content-width); margin: 0; }
 .detail-header, .request-header, .review-summary, .review-labels { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .detail-header { justify-content: space-between; margin-bottom: 20px; }
+.detail-header-actions { display: flex; gap: 8px; }
 h2 { margin: 14px 0 8px; font-size: 22px; color: #1f2937; }
 h3 { margin: 0; font-size: 16px; }
 h4 { margin-bottom: 12px; }

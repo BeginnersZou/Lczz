@@ -51,7 +51,7 @@ export function getUserDetailApi(id) {
  * @param {string|null} data.realName
  * @param {'MALE'|'FEMALE'|'UNKNOWN'|null} data.gender
  * @param {string} data.phone
- * @param {'ADMIN'|'INSTALLER'|'CUSTOMER'|'DEALER'} data.role
+ * @param {'ADMIN'|'PROJECT_MANAGER'|'SALES'|'INSTALLER'|'CUSTOMER'|'DEALER'} data.role
  * @param {string} [data.username] - 管理员登录账号
  * @param {string} [data.password] - 管理员登录密码
  * @param {string} [data.confirmPassword] - 确认密码
@@ -107,4 +107,9 @@ export function toggleBlacklistApi(id, data) {
     method: 'post',
     data
   })
+}
+
+/** 软删除用户；历史订单与审计记录保留。 */
+export function deleteUserApi(id) {
+  return request({ url: `/users/${id}`, method: 'delete' })
 }

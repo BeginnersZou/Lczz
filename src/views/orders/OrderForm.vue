@@ -14,7 +14,7 @@
       <el-button type="primary" link @click="loadEditData">重新加载</el-button>
     </div>
     <el-form v-else v-loading="pageLoading" ref="orderFormRef" :disabled="submitLoading || !editable" :model="form" :rules="rules" label-width="120px" class="form-content">
-      <el-alert v-if="isEdit && !editable" title="已作废订单只读，无法保存修改。" type="warning" :closable="false" show-icon />
+      <el-alert v-if="isEdit && !editable" title="已作废订单的其它信息只读；如需更换师傅，请在订单详情操作。" type="warning" :closable="false" show-icon />
       <el-alert v-else-if="isEdit && ['PENDING_REVIEW', 'REVIEWED'].includes(orderOrigin.statusCode)"
         title="此订单已完成。管理员更正会保留客户确认及完成状态；修改耗材清单将重新备货。" type="info" :closable="false" show-icon />
       <p v-if="lastEdit" class="edit-audit">上次管理员修改：{{ lastEdit.operatorName }} · {{ formatDateTime(lastEdit.editedAt, { seconds: true }) }}</p>
@@ -73,6 +73,20 @@
             placeholder="请输入项目名称、园区或施工地点" class="input-base" />
         </el-form-item>
 
+        <el-form-item label="销售人员">
+          <div class="salesperson-field">
+            <el-select v-model="form.salesUserId" class="input-base" clearable filterable remote
+              :remote-method="searchSalespersons" :loading="salespersonLoading" @end-reached="loadMoreSalespersons"
+              placeholder="选填，搜索销售人员姓名或手机号">
+              <el-option v-for="person in salespersons" :key="person.id" :value="person.id"
+                :label="`${person.name}${person.maskedPhone ? `（${person.maskedPhone}）` : ''}`" />
+            </el-select>
+            <div v-if="salespersonError" class="field-feedback is-error">
+              {{ salespersonError }} <el-button link type="primary" @click="retrySalespersons">重试</el-button>
+            </div>
+          </div>
+        </el-form-item>
+
         <!-- 订单时间 双日期框 -->
         <el-form-item label="订单时间" prop="orderEndTime" required>
           <div class="time-row">
@@ -88,7 +102,7 @@
           <div class="master-select-wrap">
             <el-button plain :disabled="!canChangeInstaller || submitLoading || pageLoading" @click="openMasterDialog">添加</el-button>
           </div>
-          <p v-if="isEdit && !canChangeInstaller" class="edit-tip">当前订单已进入处理中或已结束，不能修改安装师傅。</p>
+          <p v-if="isEdit && !canChangeInstaller" class="edit-tip">此页只读，请到订单详情更换师傅。</p>
           <!-- 已选师傅表格 -->
           <el-table v-if="selectedMasterList.length > 0" :data="selectedMasterList" border size="small"
             style="width: 100%;margin-top:10px">
@@ -218,7 +232,7 @@ import {
 import { useRouter, useRoute } from 'vue-router'
 import {
   getAdminOrderEditorApi, saveAdminOrderEditorApi, addOrderApi,
-  bindOrderFileApi, getMasterListApi, cancelOrderApi
+  bindOrderFileApi, getMasterListApi, getSalespersonOptionsApi, cancelOrderApi
 } from '@/api/orders'
 import { getRegionTreeApi } from '@/api/regions'
 import { useUnsavedChanges } from '@/composables/useUnsavedChanges'
@@ -250,8 +264,7 @@ const orderId = ref('')
 const submitLoading = ref(false)
 const pageLoading = ref(false)
 const loadError = ref('')
-const canChangeInstaller = computed(() => editable.value && (!isEdit.value
-  || ['PENDING_ASSIGNMENT', 'PENDING_VISIT'].includes(orderOrigin.value.statusCode)))
+const canChangeInstaller = computed(() => editable.value)
 
 const masterDialogVisible = ref(false)
 const leaveDialogVisible = ref(false)
@@ -274,6 +287,53 @@ const materialsChanged = computed(() => !!initialDraft.value && materialSignatur
 const cityOptions = ref([])
 const regionLoading = ref(false)
 const regionError = ref('')
+const salespersons = ref([])
+const salespersonLoading = ref(false)
+const salespersonError = ref('')
+const salespersonPage = ref(0)
+const salespersonTotal = ref(0)
+const salespersonKeyword = ref('')
+let salespersonRequestVersion = 0
+const salespersonPageSize = 30
+async function fetchSalespersons(page, keyword, replace) {
+  const version = replace ? ++salespersonRequestVersion : salespersonRequestVersion
+  salespersonLoading.value = true
+  salespersonError.value = ''
+  try {
+    const result = await getSalespersonOptionsApi({ page, pageSize: salespersonPageSize, keyword })
+    if (version !== salespersonRequestVersion) return
+    const found = result.list || []
+    const selected = salespersons.value.find(person => person.id === form.salesUserId)
+    const merged = replace ? found : [...salespersons.value, ...found]
+    salespersons.value = [...new Map([
+      ...(selected ? [[selected.id, selected]] : []),
+      ...merged.map(person => [person.id, person])
+    ]).values()]
+    salespersonPage.value = page
+    salespersonTotal.value = Number(result.total) || 0
+  } catch {
+    if (version === salespersonRequestVersion) {
+      salespersonError.value = '销售人员加载失败'
+      if (replace) salespersons.value = []
+    }
+  } finally {
+    if (version === salespersonRequestVersion) salespersonLoading.value = false
+  }
+}
+function searchSalespersons(keyword = '') {
+  salespersonKeyword.value = keyword
+  salespersonPage.value = 0
+  return fetchSalespersons(1, keyword, true)
+}
+function loadMoreSalespersons(direction) {
+  if (direction !== 'bottom' || salespersonLoading.value
+    || salespersonPage.value * salespersonPageSize >= salespersonTotal.value) return
+  return fetchSalespersons(salespersonPage.value + 1, salespersonKeyword.value, false)
+}
+function retrySalespersons() {
+  return salespersonPage.value ? fetchSalespersons(salespersonPage.value + 1, salespersonKeyword.value, false)
+    : searchSalespersons(salespersonKeyword.value)
+}
 
 // 图片只在草稿中增删，确认提交后才变更业务关联。
 const form = reactive({
@@ -284,6 +344,7 @@ const form = reactive({
   addressArea: [],
   addressDetail: '',
   projectAddress: '',
+  salesUserId: null,
   orderStartTime: '',
   orderEndTime: '',
   images: [],
@@ -349,7 +410,7 @@ watch([form, progressEntries, materialDraft, selectedMasterList], () => {
 }, { deep: true })
 
 onMounted(async () => {
-  const tasks = [loadRegions()]
+  const tasks = [loadRegions(), searchSalespersons()]
   if (route.params.id) {
     isEdit.value = true
     orderId.value = route.params.id
@@ -397,7 +458,12 @@ async function loadEditData() {
         quantity: Number(item.count), name: item.name, skuId: item.skuId, stock: item.stock })),
       remark: result.materialRequest?.remark || ''
     }
-    orderOrigin.value = { orderSource: res.orderSource, dealerName: res.dealerName, statusCode: res.statusCode }
+    orderOrigin.value = { orderSource: res.orderSource, dealerName: res.dealerName,
+      salesUserId: res.salesUserId, salesName: res.salesName,
+      creatorUserId: res.creatorUserId, creatorName: res.creatorName, statusCode: res.statusCode }
+    if (res.salesUserId && !salespersons.value.some(person => person.id === res.salesUserId)) {
+      salespersons.value.push({ id: res.salesUserId, name: res.salesName || `销售员 #${res.salesUserId}` })
+    }
     // 回显 fileList：远程图片 url 直接作为 previewUrl，file 为 null
     const remoteFiles = res.fileList || res.images || []
     const fileList = remoteFiles.map(toDraftFile)
@@ -408,6 +474,7 @@ async function loadEditData() {
       addressArea: res.addressArea || [],
       addressDetail: res.addressDetail || '',
       projectAddress: res.projectAddress || '',
+      salesUserId: res.salesUserId || null,
       orderStartTime: formatDateTimeInput(res.orderStartTime),
       orderEndTime: formatDateTimeInput(res.orderEndTime),
       customerName: res.customerName || '',
@@ -547,7 +614,8 @@ function toDraftFile(item) {
 function orderPayload() {
   return { taskType: form.taskType, description: form.description, customerName: form.customerName,
     customerPhone: form.customerPhone, addressArea: [...form.addressArea], addressDetail: form.addressDetail,
-    projectAddress: form.projectAddress, orderStartTime: form.orderStartTime, orderEndTime: form.orderEndTime,
+    projectAddress: form.projectAddress, salesUserId: form.salesUserId || null,
+    orderStartTime: form.orderStartTime, orderEndTime: form.orderEndTime,
     masterIds: selectedMasterList.value.map(master => master.id).filter(id => id != null), adminRemark: form.adminRemark || '' }
 }
 function currentDraft() {
@@ -630,7 +698,6 @@ async function handleSubmit() {
   } catch (error) {
     if (error === 'cancel' || error === 'close') return
     saveConflict.value = error.response?.data?.error === 'ORDER_EDIT_CONFLICT'
-      || error.response?.data?.error === 'ORDER_INSTALLER_CHANGE_FORBIDDEN'
       || error.response?.status === 409 && /已被修改|重新加载/.test(error.response?.data?.message || error.message || '')
     submitError.value = error.response?.data?.message || error.message || '保存失败，请检查后重试。'
   } finally {
@@ -825,6 +892,10 @@ function returnToOrderList() {
     &.is-error {
       color: var(--brand-danger);
     }
+  }
+
+  .salesperson-field {
+    width: 100%;
   }
 
   .time-row {
